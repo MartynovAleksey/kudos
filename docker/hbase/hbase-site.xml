@@ -1,0 +1,95 @@
+<?xml version="1.0"?>
+<!--
+  Copyright 2026 Aleksey Martynov and contributors
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<configuration>
+  <property>
+    <name>hbase.rootdir</name>
+    <value>file:///data/hbase</value>
+  </property>
+  <property>
+    <name>hbase.cluster.distributed</name>
+    <value>true</value>
+  </property>
+  <property>
+    <name>hbase.zookeeper.quorum</name>
+    <value>hbase.test.local</value>
+  </property>
+  <property>
+    <name>hbase.zookeeper.property.dataDir</name>
+    <value>/data/hbase/zookeeper</value>
+  </property>
+  <property>
+    <name>hbase.master.hostname</name>
+    <value>hbase.test.local</value>
+  </property>
+  <property>
+    <name>hbase.regionserver.hostname</name>
+    <value>hbase.test.local</value>
+  </property>
+  <property>
+    <name>hbase.unsafe.stream.capability.enforce</name>
+    <value>false</value>
+  </property>
+  <property>
+    <name>hbase.security.authentication</name>
+    <value>kerberos</value>
+  </property>
+  <property>
+    <name>hbase.security.authorization</name>
+    <value>true</value>
+  </property>
+  <property>
+    <name>hbase.superuser</name>
+    <value>admin</value>
+  </property>
+  <property>
+    <name>hbase.coprocessor.region.classes</name>
+    <value>org.apache.hadoop.hbase.security.token.TokenProvider</value>
+  </property>
+  <property>
+    <name>hadoop.security.authentication</name>
+    <value>kerberos</value>
+  </property>
+  <property>
+    <name>hbase.master.kerberos.principal</name>
+    <value>hbase/_HOST@TEST.LOCAL</value>
+  </property>
+  <property>
+    <name>hbase.master.keytab.file</name>
+    <value>/shared/hbase-hbase.test.local.keytab</value>
+  </property>
+  <property>
+    <name>hbase.regionserver.kerberos.principal</name>
+    <value>hbase/_HOST@TEST.LOCAL</value>
+  </property>
+  <property>
+    <name>hbase.regionserver.keytab.file</name>
+    <value>/shared/hbase-hbase.test.local.keytab</value>
+  </property>
+  <property>
+    <name>hbase.thrift.kerberos.principal</name>
+    <value>hbase/_HOST@TEST.LOCAL</value>
+  </property>
+  <property>
+    <name>hbase.thrift.keytab.file</name>
+    <value>/shared/hbase-hbase.test.local.keytab</value>
+  </property>
+  <property>
+    <name>hbase.thrift.security.qop</name>
+    <value>auth</value>
+  </property>
+</configuration>

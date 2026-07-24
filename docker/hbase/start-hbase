@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Copyright 2026 Aleksey Martynov and contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+set -euo pipefail
+
+export HBASE_HOME=/opt/hbase
+export HBASE_CONF_DIR=/opt/hbase/conf
+export HBASE_LOG_DIR=/tmp/hbase-logs
+export HBASE_MANAGES_ZK=true
+export HBASE_OPTS="${HBASE_OPTS:-} -Djava.security.krb5.conf=/shared/krb5.conf"
+
+until test -r /shared/hbase-hbase.test.local.keytab &&
+  test -r /shared/krb5.conf; do
+  sleep 2
+done
+
+export KRB5_CONFIG=/shared/krb5.conf
+kinit -kt /shared/hbase-hbase.test.local.keytab hbase/hbase.test.local@TEST.LOCAL
+mkdir -p "$HBASE_LOG_DIR" /data/hbase
+"$HBASE_HOME/bin/hbase-daemon.sh" start zookeeper &
+
+until bash -c ': > /dev/tcp/127.0.0.1/2181' 2>/dev/null; do
+  sleep 1
+done
+
+"$HBASE_HOME/bin/hbase-daemon.sh" start master &
+"$HBASE_HOME/bin/hbase-daemon.sh" start regionserver &
+"$HBASE_HOME/bin/hbase-daemon.sh" start thrift -p 9090 &
+
+stop_hbase() {
+  "$HBASE_HOME/bin/hbase-daemon.sh" stop thrift
+  "$HBASE_HOME/bin/hbase-daemon.sh" stop regionserver
+  "$HBASE_HOME/bin/hbase-daemon.sh" stop master
+}
+
+trap stop_hbase TERM INT
+tail -F "$HBASE_LOG_DIR"/*

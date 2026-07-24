@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Copyright 2026 Aleksey Martynov and contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+set -euo pipefail
+
+export OZONE_CONF_DIR=/opt/hadoop/etc/hadoop
+export HADOOP_CONF_DIR=/opt/hadoop/etc/hadoop
+export KRB5_CONFIG=/shared/krb5.conf
+export OZONE_OPTS="${OZONE_OPTS:-} -Djava.security.krb5.conf=/shared/krb5.conf"
+
+until test -r /shared/om-ozone.test.local.keytab &&
+  test -r /shared/scm-ozone.test.local.keytab &&
+  test -r /shared/dn-ozone.test.local.keytab; do
+  sleep 2
+done
+
+kinit -kt /shared/scm-ozone.test.local.keytab scm/ozone.test.local@TEST.LOCAL
+mkdir -p /data/ozone/metadata
+ozone scm --init || true
+ozone --daemon start scm
+
+until bash -c ': > /dev/tcp/127.0.0.1/9860' 2>/dev/null; do
+  sleep 1
+done
+
+kinit -kt /shared/om-ozone.test.local.keytab om/ozone.test.local@TEST.LOCAL
+ozone om --init || true
+# Ozone 2.0 can leave this bootstrap scratch directory behind when an init is
+# interrupted. On the next start it mistakes "tmp" for a persisted Raft group
+# id and refuses to start OM. It never contains committed OM state.
+rm -rf /data/ozone/om-ratis/tmp
+ozone --daemon start om
+kinit -kt /shared/dn-ozone.test.local.keytab dn/ozone.test.local@TEST.LOCAL
+ozone --daemon start datanode
+
+stop_ozone() {
+  ozone --daemon stop datanode
+  ozone --daemon stop om
+  ozone --daemon stop scm
+}
+
+trap stop_ozone TERM INT
+tail -F /opt/ozone/logs/*

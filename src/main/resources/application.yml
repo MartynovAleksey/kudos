@@ -1,0 +1,31 @@
+# Copyright 2026 Aleksey Martynov and contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+spring:
+  application.name: k8spark-ui
+  ldap:
+    urls: ${LDAP_URL:ldap://localhost:389}
+    base: ${LDAP_BASE:dc=example,dc=org}
+    username: ${LDAP_MANAGER_DN:}
+    password: ${LDAP_MANAGER_PASSWORD:}
+    user-dn-pattern: ${LDAP_USER_DN_PATTERN:uid={0}}
+server.error.include-message: always
+k8spark.cluster:
+  webhdfs-url: ${WEBHDFS_URL:http://localhost:9870}
+  kyuubi-url: ${KYUUBI_JDBC_URL:jdbc:hive2://localhost:10009/default;auth=KERBEROS;principal=kyuubi/_HOST@EXAMPLE.COM}
+  hbase-quorum: ${HBASE_ZK_QUORUM:localhost}
+  ozone-ofs-uri: ${OZONE_OFS_URI:ofs://omservice/}
+  # Keytabs are mounted per user; this preserves each LDAP user's Kerberos identity.
+  kerberos-principal: ${KERBEROS_PRINCIPAL_TEMPLATE:{user}@EXAMPLE.COM}
+  kerberos-keytab: ${KERBEROS_KEYTAB_TEMPLATE:/run/keytabs/{user}.keytab}

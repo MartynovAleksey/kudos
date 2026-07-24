@@ -1,0 +1,7 @@
+.git
+.mvn/repository
+.m2
+target
+vendor
+src/main/resources/vendor
+src/main/resources/hue-upstream

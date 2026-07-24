@@ -1,0 +1,136 @@
+#!/bin/bash
+# Copyright 2026 Aleksey Martynov and contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+set -euo pipefail
+
+# Do not submit credentials until the freshly installed KDC is active. Early
+# retries are counted by FreeIPA and can lock admin during the first boot.
+until systemctl is-active --quiet ipa.service &&
+  {
+    {
+      test -r /shared/admin.keytab &&
+        kinit -kt /shared/admin.keytab admin@TEST.LOCAL 2>/dev/null
+    } || echo "${IPA_TEST_PASSWORD}" | kinit admin@TEST.LOCAL 2>/dev/null
+  }; do
+  sleep 5
+done
+
+until ipa user-show admin >/dev/null 2>&1; do
+  sleep 2
+done
+
+# Fresh realms already use IPA_TEST_PASSWORD as their installer password. Make
+# a user keytab from that same password only when it is absent or stale. On
+# subsequent boots neither the password nor its Kerberos keys are changed.
+if ! echo "${IPA_TEST_PASSWORD}" | kinit admin@TEST.LOCAL 2>/dev/null ||
+  ! kinit -kt /shared/admin.keytab admin@TEST.LOCAL 2>/dev/null; then
+  rm -f /shared/admin.keytab.new
+  printf '%s\n%s\n' "${IPA_TEST_PASSWORD}" "${IPA_TEST_PASSWORD}" \
+    | ipa-getkeytab \
+      -P \
+      -s freeipa.test.local \
+      -p admin@TEST.LOCAL \
+      -k /shared/admin.keytab.new \
+      -D 'cn=Directory Manager' \
+      -w "${IPA_DM_PASSWORD}"
+  mv /shared/admin.keytab.new /shared/admin.keytab
+fi
+
+echo "${IPA_TEST_PASSWORD}" | kinit admin@TEST.LOCAL
+ipa host-add kyuubi.test.local --force || true
+ipa service-add kyuubi/kyuubi.test.local --force || true
+
+for host in hdfs.test.local ozone.test.local hbase.test.local; do
+  ipa host-add "$host" --force || true
+done
+
+service_principals=(
+  nn/hdfs.test.local
+  dn/hdfs.test.local
+  HTTP/hdfs.test.local
+  om/ozone.test.local
+  scm/ozone.test.local
+  dn/ozone.test.local
+  HTTP/ozone.test.local
+  hbase/hbase.test.local
+  HTTP/hbase.test.local
+)
+
+for principal in "${service_principals[@]}"; do
+  ipa service-add "$principal" --force || true
+done
+
+# Kyuubi 1.10 test image runs on Java 8, which does not understand the newer
+# AES-SHA2 Kerberos enctype selected by JDK 21 clients. Keep test tickets on
+# the AES-SHA1 enctypes supported by both runtimes.
+keytab_enctypes='aes256-cts-hmac-sha1-96,aes128-cts-hmac-sha1-96'
+if test -s /shared/kyuubi.keytab; then
+  ipa-getkeytab \
+    -r \
+    -s freeipa.test.local \
+    -p kyuubi/kyuubi.test.local@TEST.LOCAL \
+    -k /shared/kyuubi.keytab.new \
+    -D 'cn=Directory Manager' \
+    -w "${IPA_DM_PASSWORD}"
+  mv /shared/kyuubi.keytab.new /shared/kyuubi.keytab
+else
+  ipa-getkeytab \
+    -s freeipa.test.local \
+    -p kyuubi/kyuubi.test.local@TEST.LOCAL \
+    -k /shared/kyuubi.keytab \
+    -D 'cn=Directory Manager' \
+    -w "${IPA_DM_PASSWORD}" \
+    -e "${keytab_enctypes}"
+fi
+
+for principal in "${service_principals[@]}"; do
+  file="/shared/${principal//\//-}.keytab"
+  if test -s "$file"; then
+    ipa-getkeytab \
+      -r \
+      -s freeipa.test.local \
+      -p "$principal@TEST.LOCAL" \
+      -k "$file.new" \
+      -D 'cn=Directory Manager' \
+      -w "${IPA_DM_PASSWORD}"
+    mv "$file.new" "$file"
+  else
+    ipa-getkeytab \
+      -s freeipa.test.local \
+      -p "$principal@TEST.LOCAL" \
+      -k "$file" \
+      -D 'cn=Directory Manager' \
+      -w "${IPA_DM_PASSWORD}" \
+      -e "${keytab_enctypes}"
+  fi
+done
+
+cat > /shared/krb5.conf <<'EOF'
+[libdefaults]
+default_realm = TEST.LOCAL
+dns_lookup_kdc = false
+rdns = false
+
+[realms]
+TEST.LOCAL = {
+  kdc = freeipa.test.local
+  admin_server = freeipa.test.local
+}
+
+[domain_realm]
+.test.local = TEST.LOCAL
+test.local = TEST.LOCAL
+EOF
+chmod 0644 /shared/*.keytab /shared/krb5.conf

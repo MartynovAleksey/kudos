@@ -1,0 +1,288 @@
+# Copyright 2026 Aleksey Martynov and contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: k8spark-ui-test
+
+services:
+  freeipa:
+    build: ./docker/freeipa
+    hostname: freeipa.test.local
+    # Keep systemd alive when a reusable test volume needs an upgrade; the
+    # upstream image otherwise powers off before dependent services can report
+    # the actual FreeIPA unit error.
+    command: ["no-exit"]
+    # FreeIPA runs systemd and needs a writable cgroup hierarchy.  Do not use
+    # privileged: the upstream image explicitly does not support that mode.
+    cgroup: host
+    environment:
+      IPA_SERVER_HOSTNAME: freeipa.test.local
+      IPA_SERVER_INSTALL_OPTS: >-
+        -U --realm=TEST.LOCAL --domain=test.local --hostname=freeipa.test.local
+        --no-ntp -p DirectoryManager1 -a K8SparkAdmin2026Secure!
+      IPA_DM_PASSWORD: DirectoryManager1
+      IPA_ADMIN_INITIAL_PASSWORD: K8SparkAdmin2026Secure!
+      IPA_TEST_PASSWORD: K8SparkAdmin2026Secure!
+    # Docker Desktop tmpfs lacks POSIX ACL support, while 389 Directory Server
+    # uses setfacl under /run. Docker-managed ext4 volumes provide it.
+    volumes:
+      - freeipa-data:/data
+      - kerberos-shared:/shared
+      - freeipa-run:/run
+      - freeipa-tmp:/tmp
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    ports:
+      - "389:389"
+      - "636:636"
+      - "88:88/udp"
+      - "88:88"
+      - "464:464/udp"
+      - "464:464"
+    networks:
+      default:
+        aliases:
+          - freeipa.test.local
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          systemctl is-active --quiet bootstrap-test-identities.service
+          && test -f /shared/dn-ozone.test.local.keytab
+          && kinit -kt /shared/admin.keytab admin@TEST.LOCAL
+      interval: 10s
+      timeout: 5s
+      retries: 36
+      start_period: 90s
+
+  kyuubi:
+    build: ./docker/kyuubi
+    platform: linux/amd64
+    hostname: kyuubi.test.local
+    depends_on:
+      freeipa:
+        condition: service_healthy
+    volumes:
+      - kerberos-shared:/shared:ro
+    ports:
+      - "10009:10009"
+    networks:
+      default:
+        aliases:
+          - kyuubi.test.local
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          test -f /shared/kyuubi.keytab
+          && bash -c ': > /dev/tcp/kyuubi.test.local/10009'
+      interval: 10s
+      timeout: 5s
+      retries: 18
+
+  hdfs:
+    build: ./docker/hdfs
+    # Apache Hadoop 3.4.2 publishes the image used by this test stack for
+    # amd64; Docker Desktop emulates it on Apple Silicon.
+    platform: linux/amd64
+    hostname: hdfs.test.local
+    depends_on:
+      freeipa:
+        condition: service_healthy
+    volumes:
+      - kerberos-shared:/shared:ro
+      - hdfs-data:/data
+    ports:
+      - "9870:9870"
+    networks:
+      default:
+        aliases:
+          - hdfs.test.local
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          test -r /shared/nn-hdfs.test.local.keytab
+          && ps -ef
+          | grep -q '[o]rg.apache.hadoop.hdfs.server.datanode.DataNode'
+          && bash -c ': > /dev/tcp/hdfs.test.local/9870'
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  hbase:
+    build: ./docker/hbase
+    hostname: hbase.test.local
+    depends_on:
+      freeipa:
+        condition: service_healthy
+    volumes:
+      - kerberos-shared:/shared:ro
+      - hbase-data:/data
+    ports:
+      - "9090:9090"
+      - "16010:16010"
+    networks:
+      default:
+        aliases:
+          - hbase.test.local
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          ps -ef
+          | grep -q '[o]rg.apache.hadoop.hbase.master.HMaster'
+          && ps -ef
+          | grep -q '[o]rg.apache.hadoop.hbase.regionserver.HRegionServer'
+          && bash -c ': > /dev/tcp/hbase.test.local/9090'
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  ozone:
+    build: ./docker/ozone
+    hostname: ozone.test.local
+    depends_on:
+      freeipa:
+        condition: service_healthy
+    volumes:
+      - kerberos-shared:/shared:ro
+      - ozone-data:/data
+    ports:
+      - "9862:9862"
+      - "9874:9874"
+    networks:
+      default:
+        aliases:
+          - ozone.test.local
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          ps -ef
+          | grep -q '[o]rg.apache.hadoop.hdds.scm.server.StorageContainerManagerStarter'
+          && ps -ef
+          | grep -q '[o]rg.apache.hadoop.ozone.om.OzoneManagerStarter'
+          && ps -ef
+          | grep -q '[o]rg.apache.hadoop.ozone.HddsDatanodeService'
+          && bash -c ': > /dev/tcp/ozone.test.local/9862'
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  app:
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+    hostname: app.test.local
+    depends_on:
+      freeipa:
+        condition: service_healthy
+      kyuubi:
+        condition: service_healthy
+      hdfs:
+        condition: service_healthy
+      hbase:
+        condition: service_healthy
+      ozone:
+        condition: service_healthy
+    volumes:
+      - kerberos-shared:/run/keytabs:ro
+    environment:
+      LDAP_URL: ldap://freeipa.test.local:389
+      LDAP_BASE: dc=test,dc=local
+      LDAP_MANAGER_DN: cn=Directory Manager
+      LDAP_MANAGER_PASSWORD: DirectoryManager1
+      LDAP_USER_DN_PATTERN: uid={0},cn=users,cn=accounts
+      KYUUBI_JDBC_URL: jdbc:hive2://kyuubi.test.local:10009/default;principal=kyuubi/kyuubi.test.local@TEST.LOCAL
+      WEBHDFS_URL: http://hdfs.test.local:9870
+      HBASE_ZK_QUORUM: hbase.test.local
+      OZONE_OFS_URI: ofs://ozone.test.local/
+      KERBEROS_PRINCIPAL_TEMPLATE: "{user}@TEST.LOCAL"
+      KERBEROS_KEYTAB_TEMPLATE: /run/keytabs/{user}.keytab
+      JAVA_TOOL_OPTIONS: >-
+        -Djava.security.krb5.conf=/run/keytabs/krb5.conf
+        --add-exports=java.security.jgss/sun.security.krb5=ALL-UNNAMED
+    # Java integration API. Port 8080 is reserved for the Hue UI below.
+    ports:
+      - "8081:8080"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          curl --fail --silent --max-time 5
+          http://127.0.0.1:8080/actuator/health
+          | grep -q '"status":"UP"'
+      interval: 5s
+      timeout: 10s
+      retries: 24
+      start_period: 30s
+
+  # Docker Hub Hue used only as a visual/behavioural reference. The derived
+  # image replaces only Polars with its official legacy-CPU wheel so the
+  # upstream amd64 Hue can also run through Rosetta on Apple Silicon.
+  hue-reference:
+    build: ./docker/hue-reference
+    image: k8spark-ui-hue-reference:latest
+    platform: linux/amd64
+    hostname: hue-reference.test.local
+    command: ["./build/env/bin/hue", "runcpserver"]
+    ports:
+      - "8082:8888"
+    networks:
+      default:
+        aliases:
+          - hue-reference.test.local
+
+  # Built from the vendored Hue source tree. No pre-built Hue image is used.
+  # It is the unmodified Django/Mako/Knockout presentation renderer.
+  hue:
+    # Temporarily excluded from the default test environment while the
+    # Kerberized storage/SQL services are being stabilized. Start explicitly
+    # with: docker compose --profile hue up hue
+    profiles:
+      - hue
+    build:
+      context: ./vendor/hue-renderer
+      dockerfile: tools/docker/hue/Dockerfile
+    hostname: hue.test.local
+    depends_on:
+      freeipa:
+        condition: service_healthy
+      kyuubi:
+        condition: service_healthy
+      hdfs:
+        condition: service_healthy
+      hbase:
+        condition: service_healthy
+      ozone:
+        condition: service_healthy
+    volumes:
+      - ./docker/hue/z-k8spark-ui.ini:/usr/share/hue/desktop/conf/z-k8spark-ui.ini:ro
+      - kerberos-shared:/run/keytabs:ro
+      - ./docker/ozone:/etc/ozone/conf:ro
+    # Hue's native renderer is the public application entrypoint.
+    ports:
+      - "8080:8888"
+    networks:
+      default:
+        aliases:
+          - hue.test.local
+
+volumes:
+  freeipa-data:
+  kerberos-shared:
+  freeipa-run:
+  freeipa-tmp:
+  hdfs-data:
+  hbase-data:
+  ozone-data:

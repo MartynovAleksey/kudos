@@ -1,0 +1,51 @@
+<?xml version="1.0"?>
+<!--
+  Copyright 2026 Aleksey Martynov and contributors
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<configuration>
+  <property>
+    <name>fs.defaultFS</name>
+    <value>hdfs://hdfs.test.local:8020</value>
+  </property>
+  <property>
+    <name>hadoop.security.authentication</name>
+    <value>kerberos</value>
+  </property>
+  <property>
+    <name>hadoop.security.authorization</name>
+    <value>true</value>
+  </property>
+  <property>
+    <name>hadoop.http.authentication.type</name>
+    <value>kerberos</value>
+  </property>
+  <property>
+    <name>hadoop.http.authentication.kerberos.principal</name>
+    <value>HTTP/_HOST@TEST.LOCAL</value>
+  </property>
+  <property>
+    <name>hadoop.http.authentication.kerberos.keytab</name>
+    <value>/shared/HTTP-hdfs.test.local.keytab</value>
+  </property>
+  <property>
+    <name>hadoop.security.auth_to_local</name>
+    <value>
+      RULE:[2:$1@$0](.*@TEST.LOCAL)s/@.*//
+      RULE:[1:$1@$0](.*@TEST.LOCAL)s/@.*//
+      DEFAULT
+    </value>
+  </property>
+</configuration>
