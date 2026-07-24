@@ -52,11 +52,14 @@ echo "${IPA_TEST_PASSWORD}" | kinit admin@TEST.LOCAL
 ipa host-add kyuubi.test.local --force || true
 ipa service-add kyuubi/kyuubi.test.local --force || true
 
-for host in hdfs.test.local ozone.test.local hbase.test.local; do
+for host in hdfs.test.local ozone.test.local hbase.test.local \
+  sparkhistory.test.local; do
   ipa host-add "$host" --force || true
 done
 
 service_principals=(
+  # Kyuubi's REST frontend serves its web UI over SPNEGO.
+  HTTP/kyuubi.test.local
   nn/hdfs.test.local
   dn/hdfs.test.local
   HTTP/hdfs.test.local
@@ -66,6 +69,10 @@ service_principals=(
   HTTP/ozone.test.local
   hbase/hbase.test.local
   HTTP/hbase.test.local
+  # The history server reads event logs over Kerberos and serves its own UI
+  # and REST API over SPNEGO.
+  spark/sparkhistory.test.local
+  HTTP/sparkhistory.test.local
 )
 
 for principal in "${service_principals[@]}"; do

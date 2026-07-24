@@ -24,5 +24,7 @@ public record ClusterProperties(
     String kyuubiUrl,
     String hbaseQuorum,
     String ozoneOfsUri,
+    String ozoneConfDir,
+    String sparkHistoryUrl,
     String kerberosPrincipal,
     String kerberosKeytab) {}

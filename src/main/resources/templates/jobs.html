@@ -1,0 +1,88 @@
+<!--
+  Copyright 2026 Aleksey Martynov and contributors
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security"
+      th:replace="~{layout :: page('jobs', 'Jobs', ~{:: #content})}">
+<body>
+<div id="content">
+  <nav class="navbar hue-title-bar nokids">
+    <div class="navbar-inner">
+      <div class="container-fluid">
+        <ul class="nav editor-nav">
+          <li class="app-header"><i class="fa fa-fw fa-tasks"></i> Spark Jobs</li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <div class="card card-small">
+    <div class="card-body">
+      <!-- The user filter starts on the signed-in user and the range on the
+           last week, so the screen opens on this user's recent work. -->
+      <div class="k8s-toolbar">
+        <span class="k8s-toolbar-item">
+          <i class="fa fa-fw fa-search muted"></i>
+          <input type="text" id="jobSearch" class="k8s-search"
+                 placeholder="Filter by application, id, user or start time"
+                 th:attr="data-default-user=${#authentication.name}"/>
+        </span>
+
+        <span class="k8s-toolbar-item">
+          <label for="jobRange" class="muted">Started</label>
+          <select id="jobRange">
+            <option value="1">Last day</option>
+            <option value="7" selected="selected">Last week</option>
+            <option value="30">Last month</option>
+            <option value="custom">Custom range</option>
+          </select>
+        </span>
+
+        <span class="k8s-toolbar-item k8s-hidden" id="jobCustomRange">
+          <label for="jobFrom" class="muted">From</label>
+          <input type="date" id="jobFrom"/>
+          <label for="jobTo" class="muted">To</label>
+          <input type="date" id="jobTo"/>
+        </span>
+
+        <span class="k8s-toolbar-item">
+          <label for="jobPageSize" class="muted">Rows</label>
+          <select id="jobPageSize">
+            <option value="10">10</option>
+            <option value="25" selected="selected">25</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+          </select>
+        </span>
+
+        <span class="k8s-toolbar-item">
+          <a id="refreshJobs" href="javascript:void(0)">
+            <i class="fa fa-fw fa-refresh"></i> Refresh
+          </a>
+        </span>
+      </div>
+
+      <div id="jobList">
+        <div class="k8s-muted">Loading…</div>
+      </div>
+
+      <div class="k8s-pager" id="jobPager"></div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

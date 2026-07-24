@@ -1,0 +1,62 @@
+<!--
+  Copyright 2026 Aleksey Martynov and contributors
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>k8spark-ui - Sign in</title>
+  <link rel="stylesheet" th:href="@{/static/desktop/css/roboto.css}"/>
+  <link rel="stylesheet" th:href="@{/static/desktop/ext/css/font-awesome.min.css}"/>
+  <link rel="stylesheet" th:href="@{/static/desktop/ext/css/cui/cui.css}"/>
+  <link rel="stylesheet" th:href="@{/static/desktop/ext/css/cui/bootstrap2.css}"/>
+  <link rel="stylesheet" th:href="@{/static/desktop/ext/css/cui/bootstrap-responsive2.css}"/>
+  <link rel="stylesheet" th:href="@{/static/desktop/css/hue.css}"/>
+  <link rel="stylesheet" th:href="@{/static/desktop/css/login.css}"/>
+  <link rel="stylesheet" th:href="@{/static/app/k8spark.css}"/>
+</head>
+<body>
+<div class="login-page">
+  <div class="login-container">
+    <form method="POST" th:action="@{/login}" autocomplete="off">
+      <div class="logo">
+        <span style="color: #fff; font-size: 34px; font-weight: 300; letter-spacing: 2px;">
+          k8spark-ui
+        </span>
+      </div>
+      <h3>Query. Explore. Repeat.</h3>
+
+      <div class="alert alert-error center" th:if="${param.error}">
+        Invalid username or password.
+      </div>
+      <div class="alert alert-info center" th:if="${param.logout}">
+        You have been signed out.
+      </div>
+
+      <div class="text-input">
+        <input type="text" name="username" placeholder="Username" autocapitalize="off"
+               autocorrect="off" spellcheck="false" autofocus="autofocus"/>
+      </div>
+      <div class="text-input">
+        <input type="password" name="password" placeholder="Password"/>
+      </div>
+      <input type="submit" class="btn btn-primary" value="Sign In"/>
+    </form>
+  </div>
+</div>
+</body>
+</html>

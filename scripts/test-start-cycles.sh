@@ -144,7 +144,7 @@ verify_endpoints() {
     dump_endpoint_diagnostics hue-reference
     return 1
   fi
-  for port in 10009 9870 9090 9862; do
+  for port in 10009 10099 9870 9090 9862 18080; do
     if ! bash -c ": >/dev/tcp/127.0.0.1/$port" 2>/dev/null; then
       log "Published port $port is not reachable from the host" >&2
       return 1
@@ -156,7 +156,7 @@ for cycle in $(seq 1 "$cycles"); do
   log "=== restart verification $cycle/$cycles ==="
   run_compose down --remove-orphans
   run_compose up -d --no-build --remove-orphans
-  for service in freeipa kyuubi hdfs hbase ozone app; do
+  for service in freeipa kyuubi hdfs hbase ozone spark-history app; do
     wait_healthy "$service"
     log "$service is ready"
   done

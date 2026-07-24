@@ -17,14 +17,24 @@
 package com.k8spark.ui.service;
 
 import com.k8spark.ui.config.ClusterProperties;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.Cell;
+import org.apache.hadoop.hbase.CellUtil;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.Admin;
 import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.client.ConnectionFactory;
+import org.apache.hadoop.hbase.client.Result;
+import org.apache.hadoop.hbase.client.ResultScanner;
+import org.apache.hadoop.hbase.client.Scan;
+import org.apache.hadoop.hbase.client.Table;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -39,6 +49,47 @@ public class HbaseService {
   }
 
   public List<String> tables() throws Exception {
+    return withConnection(
+        connection -> {
+          try (Admin admin = connection.getAdmin()) {
+            return Arrays.stream(admin.listTableNames())
+                .map(TableName::getNameAsString)
+                .toList();
+          }
+        });
+  }
+
+  /** Scans the first rows of a table for the row browser. */
+  public List<HbaseRow> scan(String table, int limit) throws Exception {
+    return withConnection(
+        connection -> {
+          try (Table handle = connection.getTable(TableName.valueOf(table));
+              ResultScanner scanner = handle.getScanner(new Scan().setLimit(limit))) {
+            List<HbaseRow> rows = new ArrayList<>();
+            for (Result result : scanner) {
+              if (rows.size() >= limit) {
+                break;
+              }
+              Map<String, String> cells = new LinkedHashMap<>();
+              for (Cell cell : result.listCells()) {
+                String qualifier =
+                    new String(CellUtil.cloneFamily(cell), StandardCharsets.UTF_8)
+                        + ":"
+                        + new String(CellUtil.cloneQualifier(cell), StandardCharsets.UTF_8);
+                cells.put(
+                    qualifier,
+                    new String(CellUtil.cloneValue(cell), StandardCharsets.UTF_8));
+              }
+              rows.add(
+                  new HbaseRow(
+                      new String(result.getRow(), StandardCharsets.UTF_8), cells));
+            }
+            return rows;
+          }
+        });
+  }
+
+  private <T> T withConnection(ConnectionAction<T> action) throws Exception {
     return kerberos.asLoggedInUser(
         () -> {
           Configuration configuration = HBaseConfiguration.create();
@@ -49,12 +100,14 @@ public class HbaseService {
           configuration.set("hbase.regionserver.kerberos.principal", "hbase/_HOST@TEST.LOCAL");
           configuration.setBoolean(
               "hbase.unsafe.client.kerberos.hostname.disable.reversedns", true);
-          try (Connection connection = ConnectionFactory.createConnection(configuration);
-              Admin admin = connection.getAdmin()) {
-            return Arrays.stream(admin.listTableNames())
-                .map(TableName::getNameAsString)
-                .toList();
+          try (Connection connection = ConnectionFactory.createConnection(configuration)) {
+            return action.apply(connection);
           }
         });
+  }
+
+  @FunctionalInterface
+  private interface ConnectionAction<T> {
+    T apply(Connection connection) throws Exception;
   }
 }

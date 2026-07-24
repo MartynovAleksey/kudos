@@ -1,0 +1,322 @@
+/*
+ * Copyright 2026 Aleksey Martynov and contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/*
+ * The Hue 4 page chrome (top nav, content wrapper, page content, data tables)
+ * comes from the vendored hue.css. Its left sidebar is styled from inside Hue's
+ * JavaScript bundle, which is not vendored, so the sidebar rules below restate
+ * the measurements and colours read off the reference container.
+ */
+
+/*
+ * The vendored bootstrap2.css styles .btn-primary only in its hover, focus and
+ * disabled states, so a button at rest would render with no fill at all. These
+ * are the same two blues that stylesheet uses for the interactive states.
+ */
+.btn-primary {
+  background-color: #0b7fad;
+  border-color: #0b7fad;
+}
+
+.btn-primary:hover {
+  background-color: #29a7de;
+  border-color: #29a7de;
+}
+
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 56px;
+  background-color: #132329;
+  display: flex;
+  flex-direction: column;
+  z-index: 1050;
+}
+
+.sidebar-header {
+  height: 56px;
+  padding: 0 0 0 11px;
+  background-color: #0b7fad;
+  display: flex;
+  align-items: center;
+}
+
+.sidebar-header a,
+.sidebar-header a:hover {
+  color: #fff;
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  text-decoration: none;
+}
+
+.sidebar-body {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  padding-top: 8px;
+}
+
+.sidebar-sidebar-spacer {
+  flex-grow: 1;
+}
+
+.sidebar-sidebar-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  background-color: transparent;
+  color: #adb2b6;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.sidebar-sidebar-item:hover {
+  color: #fff;
+  background-color: #1b2b31;
+}
+
+.sidebar-sidebar-item-icon {
+  width: 56px;
+  height: 24px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-accordion-item.sidebar-active .sidebar-sidebar-item {
+  color: #fff;
+  background-color: #1b2b31;
+  box-shadow: inset 3px 0 0 #0b7fad;
+}
+
+.sidebar-sidebar-item span {
+  display: none;
+}
+
+.sidebar-footer {
+  padding-bottom: 8px;
+}
+
+.sidebar-footer-bottom-color-line {
+  height: 3px;
+  background: linear-gradient(90deg, #0b7fad 0%, #7e5ba6 100%);
+}
+
+/* The chrome is fixed at 56px, so the page itself starts after it. */
+.main-page {
+  margin-left: 56px;
+}
+
+/*
+ * Hue 4 draws its cards and navs from component styles that live in the
+ * JavaScript bundle, so the vendored hue.css leaves .card and .nav with no
+ * padding and with the browser's default list markers. Restore both.
+ */
+.nav,
+.nav > li {
+  list-style: none;
+}
+
+.card {
+  margin: 10px;
+  padding: 10px 16px;
+  background-color: #ffffff;
+  border: 1px solid #e5e5e5;
+  border-radius: 2px;
+}
+
+.card-heading {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.hue-title-bar {
+  margin: 0;
+  padding: 0 16px;
+  border-bottom: 1px solid #e5e5e5;
+  background-color: #f8f8f8;
+}
+
+.hue-title-bar .app-header {
+  font-size: 17px;
+  line-height: 40px;
+  color: #0b7fad;
+}
+
+/* Filter bar and pager of the jobs screen. */
+.k8s-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  padding: 4px 0 12px;
+  border-bottom: 1px solid #e5e5e5;
+  margin-bottom: 8px;
+}
+
+.k8s-toolbar-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.k8s-toolbar-item label {
+  margin: 0;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.k8s-toolbar-item input,
+.k8s-toolbar-item select {
+  margin: 0;
+  height: 28px;
+}
+
+.k8s-search {
+  width: 320px;
+  max-width: 100%;
+}
+
+.k8s-hidden {
+  display: none;
+}
+
+.k8s-pager {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-top: 10px;
+}
+
+.k8s-pager-button {
+  padding: 2px 10px;
+  border: 1px solid #dddddd;
+  border-radius: 2px;
+}
+
+.k8s-pager-button.k8s-disabled {
+  color: #cccccc;
+  border-color: #eeeeee;
+  cursor: default;
+}
+
+/* Sortable column headings. */
+.table-huedatatable thead th a {
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* Screen-level helpers used by the four app pages. */
+.k8s-breadcrumbs {
+  padding: 8px 12px;
+  font-size: 14px;
+}
+
+.k8s-breadcrumbs a {
+  cursor: pointer;
+}
+
+.k8s-editor-area {
+  width: 100%;
+  min-height: 180px;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 13px;
+  padding: 8px;
+  border: 1px solid #dddddd;
+  border-radius: 2px;
+  resize: vertical;
+}
+
+.k8s-result-scroll {
+  max-height: 420px;
+  overflow: auto;
+}
+
+.k8s-preview {
+  max-height: 420px;
+  overflow: auto;
+  background-color: #f8f8f8;
+  border: 1px solid #dddddd;
+  padding: 8px;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.k8s-error {
+  color: #b94a48;
+  background-color: #f2dede;
+  border: 1px solid #eed3d7;
+  border-radius: 2px;
+  padding: 8px 12px;
+  margin: 8px 0;
+}
+
+/* The proxied Spark UI fills the content area below the breadcrumb row. */
+.k8s-spark-frame {
+  display: block;
+  width: 100%;
+  height: calc(100vh - 150px);
+  min-height: 400px;
+  border: 1px solid #e5e5e5;
+  background-color: #ffffff;
+}
+
+.k8s-spaced {
+  margin-left: 16px;
+}
+
+.k8s-ok {
+  color: #3fae2a;
+}
+
+.k8s-running {
+  color: #0b7fad;
+}
+
+.k8s-muted {
+  color: #999999;
+  font-style: italic;
+}
+
+.k8s-table-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.k8s-table-list li a {
+  display: block;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.k8s-table-list li.active a {
+  background-color: #f5f5f5;
+  font-weight: 500;
+}

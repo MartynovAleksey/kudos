@@ -26,6 +26,11 @@ k8spark.cluster:
   kyuubi-url: ${KYUUBI_JDBC_URL:jdbc:hive2://localhost:10009/default;auth=KERBEROS;principal=kyuubi/_HOST@EXAMPLE.COM}
   hbase-quorum: ${HBASE_ZK_QUORUM:localhost}
   ozone-ofs-uri: ${OZONE_OFS_URI:ofs://omservice/}
+  # Ozone's own service configuration, mounted read-only. The ofs:// client
+  # needs the cluster's Kerberos principals and addresses from it.
+  ozone-conf-dir: ${OZONE_CONF_DIR:/etc/ozone/conf}
+  # Spark History Server, read over SPNEGO by the jobs screen.
+  spark-history-url: ${SPARK_HISTORY_URL:http://localhost:18080}
   # Keytabs are mounted per user; this preserves each LDAP user's Kerberos identity.
   kerberos-principal: ${KERBEROS_PRINCIPAL_TEMPLATE:{user}@EXAMPLE.COM}
   kerberos-keytab: ${KERBEROS_KEYTAB_TEMPLATE:/run/keytabs/{user}.keytab}

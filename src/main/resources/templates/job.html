@@ -1,0 +1,55 @@
+<!--
+  Copyright 2026 Aleksey Martynov and contributors
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{layout :: page('jobs', 'Job', ~{:: #content})}">
+<body>
+<div id="content">
+  <nav class="navbar hue-title-bar nokids">
+    <div class="navbar-inner">
+      <div class="container-fluid">
+        <ul class="nav editor-nav">
+          <li class="app-header">
+            <i class="fa fa-fw fa-tasks"></i>
+            <a th:href="@{/jobs}">Spark Jobs</a>
+            <span th:text="' / ' + ${applicationId}"> / application</span>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <div class="k8s-breadcrumbs">
+    <a th:href="@{/jobs}"><i class="fa fa-fw fa-arrow-left"></i> Back to jobs</a>
+    <a class="k8s-spaced"
+       th:href="@{'/spark-ui/api/v1/applications/' + ${applicationId} + '/logs'}">
+      <i class="fa fa-fw fa-download"></i> Download logs
+    </a>
+    <a class="k8s-spaced" target="_blank"
+       th:href="@{'/spark-ui/history/' + ${applicationId} + '/jobs/'}">
+      <i class="fa fa-fw fa-external-link"></i> Open in a new tab
+    </a>
+  </div>
+
+  <!-- The Spark UI itself, proxied through this application so it is served
+       from the same origin and behind the same session. -->
+  <iframe id="sparkUi" class="k8s-spark-frame"
+          th:src="@{'/spark-ui/history/' + ${applicationId} + '/jobs/'}"
+          title="Spark UI"></iframe>
+</div>
+</body>
+</html>

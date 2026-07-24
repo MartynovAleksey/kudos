@@ -45,6 +45,21 @@ ozone --daemon start om
 kinit -kt /shared/dn-ozone.test.local.keytab dn/ozone.test.local@TEST.LOCAL
 ozone --daemon start datanode
 
+# Spark event logs live in Ozone: Kyuubi's engines write them and the history
+# server reads them. Both need the location to exist before they start, and
+# neither creates volumes. Ownership stays with admin, the identity the engines
+# run as; spark reads through ozone.administrators.
+kinit -kt /shared/admin.keytab admin@TEST.LOCAL
+until ozone sh volume list >/dev/null 2>&1; do
+  sleep 2
+done
+ozone sh volume create /spark --user=admin 2>/dev/null || true
+ozone sh bucket create /spark/eventlogs 2>/dev/null || true
+# Dependants wait on this marker: a healthy OM is not enough, they need the
+# bucket itself.
+ozone sh bucket info /spark/eventlogs >/dev/null
+touch /data/ozone/.eventlogs-ready
+
 stop_ozone() {
   ozone --daemon stop datanode
   ozone --daemon stop om

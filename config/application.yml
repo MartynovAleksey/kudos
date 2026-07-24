@@ -1,0 +1,60 @@
+# Copyright 2026 Aleksey Martynov and contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Runtime configuration for the k8spark-ui container.
+#
+# This file is mounted read-only at /etc/k8spark-ui/application.yml and loaded
+# through spring.config.additional-location, so it overrides the defaults
+# packaged in the jar. Edit it and restart the app service:
+#
+#   docker compose restart app
+#
+# Nothing here needs a rebuild. Keep the cluster addresses out of compose.yaml
+# so this file stays the single place they are defined: OS environment
+# variables outrank an external config file in Spring Boot, and a leftover
+# variable would silently win over an edit made here.
+
+spring:
+  ldap:
+    urls: ldap://freeipa.test.local:389
+    base: dc=test,dc=local
+    username: cn=Directory Manager
+    password: DirectoryManager1
+    user-dn-pattern: uid={0},cn=users,cn=accounts
+
+k8spark:
+  cluster:
+    # WebHDFS endpoint used by the file browser, over SPNEGO.
+    webhdfs-url: http://hdfs.test.local:9870
+
+    # Kyuubi HiveServer2 JDBC endpoint used by the query editor.
+    kyuubi-url: jdbc:hive2://kyuubi.test.local:10009/default;principal=kyuubi/kyuubi.test.local@TEST.LOCAL
+
+    # ZooKeeper quorum the HBase client bootstraps from.
+    hbase-quorum: hbase.test.local
+
+    # Root of the Ozone filesystem browsed by the Ozone screen.
+    ozone-ofs-uri: ofs://ozone.test.local/
+
+    # Ozone's own core-site.xml and ozone-site.xml, mounted read-only. The
+    # ofs:// client reads the service principals and addresses from them.
+    ozone-conf-dir: /etc/ozone/conf
+
+    # Spark History Server, read over SPNEGO by the jobs screen.
+    spark-history-url: http://sparkhistory.test.local:18080
+
+    # Every request runs as the logged-in LDAP user: {user} is substituted with
+    # their login, giving each user their own Kerberos identity.
+    kerberos-principal: "{user}@TEST.LOCAL"
+    kerberos-keytab: /run/keytabs/{user}.keytab

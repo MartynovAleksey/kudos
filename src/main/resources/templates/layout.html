@@ -1,0 +1,106 @@
+<!--
+  Copyright 2026 Aleksey Martynov and contributors
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security"
+      th:fragment="page(app, title, content)">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title th:text="'k8spark-ui - ' + ${title}">k8spark-ui</title>
+  <link rel="stylesheet" th:href="@{/static/desktop/css/roboto.css}"/>
+  <link rel="stylesheet" th:href="@{/static/desktop/ext/css/font-awesome.min.css}"/>
+  <link rel="stylesheet" th:href="@{/static/desktop/ext/css/cui/cui.css}"/>
+  <link rel="stylesheet" th:href="@{/static/desktop/ext/css/cui/bootstrap2.css}"/>
+  <link rel="stylesheet" th:href="@{/static/desktop/ext/css/cui/bootstrap-responsive2.css}"/>
+  <link rel="stylesheet" th:href="@{/static/desktop/css/hue.css}"/>
+  <link rel="stylesheet" th:href="@{/static/app/k8spark.css}"/>
+  <script th:src="@{/static/app/k8spark.js}" defer="defer"></script>
+</head>
+<body th:attr="data-app=${app}">
+<div class="hue-page">
+  <div class="sidebar sidebar-collapsed">
+    <div class="sidebar-header">
+      <a th:href="@{/editor}">k8s</a>
+    </div>
+    <nav class="sidebar-body">
+      <div class="sidebar-accordion-item"
+           th:classappend="${app == 'editor'} ? ' sidebar-active'">
+        <a class="sidebar-sidebar-item" th:href="@{/editor}" title="Editor" aria-label="Editor">
+          <div class="sidebar-sidebar-item-icon"><i class="fa fa-fw fa-code"></i></div>
+          <span>Editor</span>
+        </a>
+      </div>
+      <div class="sidebar-accordion-item"
+           th:classappend="${app == 'filebrowser'} ? ' sidebar-active'">
+        <a class="sidebar-sidebar-item" th:href="@{/filebrowser}" title="Files" aria-label="Files">
+          <div class="sidebar-sidebar-item-icon"><i class="fa fa-fw fa-files-o"></i></div>
+          <span>Files</span>
+        </a>
+      </div>
+      <div class="sidebar-accordion-item"
+           th:classappend="${app == 'ozone'} ? ' sidebar-active'">
+        <a class="sidebar-sidebar-item" th:href="@{/ozone}" title="Ozone" aria-label="Ozone">
+          <div class="sidebar-sidebar-item-icon"><i class="fa fa-fw fa-cloud"></i></div>
+          <span>Ozone</span>
+        </a>
+      </div>
+      <div class="sidebar-accordion-item"
+           th:classappend="${app == 'hbase'} ? ' sidebar-active'">
+        <a class="sidebar-sidebar-item" th:href="@{/hbase}" title="HBase" aria-label="HBase">
+          <div class="sidebar-sidebar-item-icon"><i class="fa fa-fw fa-database"></i></div>
+          <span>HBase</span>
+        </a>
+      </div>
+      <div class="sidebar-accordion-item"
+           th:classappend="${app == 'jobs'} ? ' sidebar-active'">
+        <a class="sidebar-sidebar-item" th:href="@{/jobs}" title="Jobs" aria-label="Jobs">
+          <div class="sidebar-sidebar-item-icon"><i class="fa fa-fw fa-tasks"></i></div>
+          <span>Jobs</span>
+        </a>
+      </div>
+      <div class="sidebar-sidebar-spacer"></div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="sidebar-accordion-item">
+        <a class="sidebar-sidebar-item" th:href="@{/logout}" title="Sign out" aria-label="Sign out">
+          <div class="sidebar-sidebar-item-icon"><i class="fa fa-fw fa-sign-out"></i></div>
+          <span>Sign out</span>
+        </a>
+      </div>
+      <div class="sidebar-footer-bottom-color-line"></div>
+    </div>
+  </div>
+
+  <div class="main-page">
+    <nav class="navbar navbar-default">
+      <div class="navbar-inner top-nav">
+        <div class="top-nav-left"></div>
+        <div class="top-nav-middle"></div>
+        <div class="top-nav-right">
+          <span class="muted" style="line-height: 54px; padding-right: 12px;"
+                sec:authentication="name">user</span>
+        </div>
+      </div>
+    </nav>
+    <div class="content-wrapper">
+      <div class="page-content" th:insert="${content}"></div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

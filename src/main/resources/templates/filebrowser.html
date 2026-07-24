@@ -1,0 +1,41 @@
+<!--
+  Copyright 2026 Aleksey Martynov and contributors
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{layout :: page('filebrowser', 'File Browser', ~{:: #content})}">
+<body>
+<div id="content">
+  <nav class="navbar hue-title-bar nokids">
+    <div class="navbar-inner">
+      <div class="container-fluid">
+        <ul class="nav editor-nav">
+          <li class="app-header"><i class="fa fa-fw fa-files-o"></i> HDFS</li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <div class="card card-small">
+    <div class="card-body">
+      <div id="breadcrumbs" class="k8s-breadcrumbs"></div>
+      <div id="listing" th:attr="data-path=${path}"></div>
+      <div id="preview"></div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -151,4 +151,153 @@ hue_page="$(curl --fail --silent --location --connect-timeout 5 --max-time 30 \
   http://127.0.0.1:8082/)"
 grep -qi 'hue' <<<"$hue_page"
 echo "PASS Spring health + Docker Hub Hue reference"
+
+# Exercise every storage path through the application itself, not just through
+# the service containers. A dependency missing from the app image fails only
+# here: the container CLIs carry their own copies and stay green.
+app_api() {
+  curl --fail --silent --connect-timeout 5 --max-time 60 \
+    -u "admin:$admin_password" "$@"
+}
+
+app_api --get --data-urlencode 'path=/' http://127.0.0.1:8081/api/hdfs/list \
+  | grep -q '\['
+echo "PASS Spring API HDFS listing"
+
+app_api --get --data-urlencode 'path=/' http://127.0.0.1:8081/api/ozone/list \
+  | grep -q '\['
+echo "PASS Spring API Ozone listing"
+
+app_api http://127.0.0.1:8081/api/hbase/tables | grep -q '\['
+echo "PASS Spring API HBase tables"
+
+app_api -H 'Content-Type: application/json' \
+  -d '{"sql":"SELECT 40 + 2 AS result"}' \
+  http://127.0.0.1:8081/api/sql/execute \
+  | grep -q '42'
+echo "PASS Spring API Kyuubi SQL"
+
+# The SQL above started a Spark engine, so its event log must have reached
+# Ozone and, once the history server picks it up, the jobs endpoint.
+run_docker exec "$ozone_id" bash -lc '
+  set -euo pipefail
+  export KRB5_CONFIG=/shared/krb5.conf
+  export OZONE_CONF_DIR=/opt/hadoop/etc/hadoop HADOOP_CONF_DIR=/opt/hadoop/etc/hadoop
+  export OZONE_OPTS="-Djava.security.krb5.conf=/shared/krb5.conf"
+  kdestroy 2>/dev/null || true
+  kinit -kt /shared/admin.keytab admin@TEST.LOCAL
+  deadline=$((SECONDS + 120))
+  while (( SECONDS < deadline )); do
+    if ozone sh key list /spark/eventlogs 2>/dev/null | grep -q "\"name\""; then
+      exit 0
+    fi
+    sleep 5
+  done
+  echo "No Spark event log appeared in ofs://ozone.test.local/spark/eventlogs" >&2
+  exit 1
+'
+echo "PASS Spark event log written to Ozone"
+
+deadline=$((SECONDS + 180))
+spark_jobs_ok=0
+while (( SECONDS < deadline )); do
+  if app_api 'http://127.0.0.1:8081/api/spark/applications?limit=10' \
+      | grep -q '"id"'; then
+    spark_jobs_ok=1
+    break
+  fi
+  sleep 5
+done
+if (( ! spark_jobs_ok )); then
+  echo "Spark History returned no applications through the app API" >&2
+  exit 1
+fi
+echo "PASS Spring API Spark History applications"
+
+# The jobs screen drills into a run through this application's proxy, so the
+# Spark UI and its assets have to come back from port 8081, not 18080.
+#
+# Only a completed application is usable: the history server serves a run's
+# pages after it has replayed the event log, and the engine this script just
+# started is still being written when the list first reports it. The list comes
+# back newest first, so take the oldest entry — that one is certainly replayed.
+spark_app_id=""
+proxied_page=""
+proxy_status=""
+deadline=$((SECONDS + 300))
+while (( SECONDS < deadline )); do
+  spark_app_id="$(
+    app_api 'http://127.0.0.1:8081/api/spark/applications?limit=20' \
+      | tr '}' '\n' \
+      | grep '"completed":true' \
+      | sed -n 's/.*"id":"\([^"]*\)".*/\1/p' \
+      | tail -1
+  )"
+  if [[ -n "$spark_app_id" ]]; then
+    proxy_url="http://127.0.0.1:8081/spark-ui/history/$spark_app_id/jobs/"
+    # The first request for a run makes the history server replay its event
+    # log, which takes far longer than serving the page afterwards.
+    proxy_status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+      --connect-timeout 5 --max-time 120 -u "admin:$admin_password" "$proxy_url")"
+    if [[ "$proxy_status" == "200" ]]; then
+      proxied_page="$(curl --fail --silent --connect-timeout 5 --max-time 120 \
+        -u "admin:$admin_password" "$proxy_url")"
+      [[ -n "$proxied_page" ]] && break
+    fi
+  fi
+  proxied_page=""
+  sleep 5
+done
+if [[ -z "$proxied_page" ]]; then
+  echo "The proxied Spark UI never became available for a completed run" >&2
+  echo "  application: ${spark_app_id:-<none found>}" >&2
+  echo "  last proxy status: ${proxy_status:-<no request made>}" >&2
+  exit 1
+fi
+
+# Spark renders its links against X-Forwarded-Context; unprefixed links would
+# send the browser straight to the history server and out of this application.
+grep -q 'href="/spark-ui/' <<<"$proxied_page"
+echo "PASS Spark UI proxied through the app"
+
+# Every asset the page pulls has to survive the proxy too. A body that does not
+# match its declared length shows up here and nowhere else.
+while read -r asset; do
+  [[ -z "$asset" ]] && continue
+  app_api --output /dev/null "http://127.0.0.1:8081$asset"
+done < <(grep -oE '(href|src)="/spark-ui/static/[^"]*"' <<<"$proxied_page" \
+  | sed 's/.*="//;s/"$//' | sort -u)
+echo "PASS Spark UI assets proxied through the app"
+
+logs_headers="$(app_api --output /dev/null --dump-header - \
+  "http://127.0.0.1:8081/spark-ui/api/v1/applications/$spark_app_id/logs")"
+grep -qi 'content-disposition:.*attachment' <<<"$logs_headers"
+echo "PASS Spark event log download through the app"
+
+# The UI shell has to render for a signed-in browser session as well.
+curl --fail --silent --connect-timeout 5 --max-time 15 http://127.0.0.1:8081/login \
+  | grep -q 'Sign In'
+echo "PASS Spring UI login page"
+
+# Kyuubi serves its web UI under /ui and redirects the root there.
+curl --fail --silent --location --output /dev/null \
+  --connect-timeout 5 --max-time 20 http://127.0.0.1:10099/
+echo "PASS Kyuubi built-in web UI"
+
+# Its REST API stays behind SPNEGO, so an anonymous call must be refused. A
+# success here would mean the frontend came up unauthenticated.
+kyuubi_api_status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+  --connect-timeout 5 --max-time 20 http://127.0.0.1:10099/api/v1/ping)"
+if [[ "$kyuubi_api_status" != "401" && "$kyuubi_api_status" != "403" ]]; then
+  echo "Kyuubi REST API answered $kyuubi_api_status instead of refusing anonymous access" >&2
+  exit 1
+fi
+echo "PASS Kyuubi REST API requires SPNEGO"
+
+# The history server's own UI is deliberately unauthenticated; see the known
+# limitations in README.md.
+curl --fail --silent --output /dev/null \
+  --connect-timeout 5 --max-time 20 http://127.0.0.1:18080/
+echo "PASS Spark History web UI"
+
 echo "All Kerberos functional checks passed."

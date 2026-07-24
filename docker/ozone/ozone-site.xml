@@ -48,6 +48,17 @@
     <name>ozone.server.default.replication</name>
     <value>1</value>
   </property>
+  <!-- The server default above does not reach clients. Writers such as the
+       Spark engines pick RATIS/THREE otherwise, which a single-datanode stand
+       cannot satisfy: "Required 3. Found 1." -->
+  <property>
+    <name>ozone.replication</name>
+    <value>1</value>
+  </property>
+  <property>
+    <name>ozone.replication.type</name>
+    <value>RATIS</value>
+  </property>
   <property>
     <name>ozone.scm.names</name>
     <value>ozone.test.local</value>
@@ -82,7 +93,9 @@
   </property>
   <property>
     <name>ozone.administrators</name>
-    <value>admin</value>
+    <!-- spark is the local name the history server's principal maps to; it has
+         to read the event logs the Kyuubi engines write as admin. -->
+    <value>admin,spark</value>
   </property>
   <property>
     <name>ozone.om.kerberos.principal</name>

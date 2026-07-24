@@ -58,4 +58,30 @@ public class KyuubiService {
           }
         });
   }
+
+  /** Same query path, shaped for the editor's result grid. */
+  public QueryResult execute(String sql, int maxRows) throws Exception {
+    return kerberos.asLoggedInUser(
+        () -> {
+          try (Connection connection = DriverManager.getConnection(properties.kyuubiUrl());
+              Statement statement = connection.createStatement();
+              ResultSet resultSet = statement.executeQuery(sql)) {
+            ResultSetMetaData metadata = resultSet.getMetaData();
+            int columnCount = metadata.getColumnCount();
+            List<String> columns = new ArrayList<>(columnCount);
+            for (int index = 1; index <= columnCount; index++) {
+              columns.add(metadata.getColumnLabel(index));
+            }
+            List<List<Object>> rows = new ArrayList<>();
+            while (resultSet.next() && rows.size() < maxRows) {
+              List<Object> row = new ArrayList<>(columnCount);
+              for (int index = 1; index <= columnCount; index++) {
+                row.add(resultSet.getObject(index));
+              }
+              rows.add(row);
+            }
+            return new QueryResult(columns, rows);
+          }
+        });
+  }
 }

@@ -57,7 +57,7 @@ services:
         - CMD-SHELL
         - >-
           systemctl is-active --quiet bootstrap-test-identities.service
-          && test -f /shared/dn-ozone.test.local.keytab
+          && test -f /shared/HTTP-sparkhistory.test.local.keytab
           && kinit -kt /shared/admin.keytab admin@TEST.LOCAL
       interval: 10s
       timeout: 5s
@@ -65,16 +65,23 @@ services:
       start_period: 90s
 
   kyuubi:
-    build: ./docker/kyuubi
+    build:
+      context: ./docker
+      dockerfile: kyuubi/Dockerfile
     platform: linux/amd64
     hostname: kyuubi.test.local
     depends_on:
       freeipa:
         condition: service_healthy
+      # Engines write their event logs to Ozone from the first query onwards.
+      ozone:
+        condition: service_healthy
     volumes:
       - kerberos-shared:/shared:ro
     ports:
       - "10009:10009"
+      # Kyuubi's built-in web UI and REST API.
+      - "10099:10099"
     networks:
       default:
         aliases:
@@ -85,6 +92,7 @@ services:
         - >-
           test -f /shared/kyuubi.keytab
           && bash -c ': > /dev/tcp/kyuubi.test.local/10009'
+          && bash -c ': > /dev/tcp/kyuubi.test.local/10099'
       interval: 10s
       timeout: 5s
       retries: 18
@@ -174,7 +182,39 @@ services:
           | grep -q '[o]rg.apache.hadoop.ozone.om.OzoneManagerStarter'
           && ps -ef
           | grep -q '[o]rg.apache.hadoop.ozone.HddsDatanodeService'
+          && test -f /data/ozone/.eventlogs-ready
           && bash -c ': > /dev/tcp/ozone.test.local/9862'
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  spark-history:
+    build:
+      context: ./docker
+      dockerfile: spark-history/Dockerfile
+    # apache/spark:4.1.0 is multi-architecture, so this one runs natively on
+    # both Intel and Apple Silicon instead of through emulation.
+    hostname: sparkhistory.test.local
+    depends_on:
+      freeipa:
+        condition: service_healthy
+      ozone:
+        condition: service_healthy
+    volumes:
+      - kerberos-shared:/shared:ro
+    ports:
+      - "18080:18080"
+    networks:
+      default:
+        aliases:
+          - sparkhistory.test.local
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          ps -ef
+          | grep -q '[o]rg.apache.spark.deploy.history.HistoryServer'
+          && bash -c ': > /dev/tcp/sparkhistory.test.local/18080'
       interval: 10s
       timeout: 5s
       retries: 30
@@ -195,20 +235,19 @@ services:
         condition: service_healthy
       ozone:
         condition: service_healthy
+      spark-history:
+        condition: service_healthy
     volumes:
       - kerberos-shared:/run/keytabs:ro
+      # The ofs:// client needs the cluster's own service principals and
+      # addresses; reuse the service configuration instead of restating it.
+      - ./docker/ozone:/etc/ozone/conf:ro
+      # Every k8spark.cluster setting lives here and is editable without a
+      # rebuild. See config/application.yml for why none of them are set as
+      # environment variables below.
+      - ./config:/etc/k8spark-ui:ro
     environment:
-      LDAP_URL: ldap://freeipa.test.local:389
-      LDAP_BASE: dc=test,dc=local
-      LDAP_MANAGER_DN: cn=Directory Manager
-      LDAP_MANAGER_PASSWORD: DirectoryManager1
-      LDAP_USER_DN_PATTERN: uid={0},cn=users,cn=accounts
-      KYUUBI_JDBC_URL: jdbc:hive2://kyuubi.test.local:10009/default;principal=kyuubi/kyuubi.test.local@TEST.LOCAL
-      WEBHDFS_URL: http://hdfs.test.local:9870
-      HBASE_ZK_QUORUM: hbase.test.local
-      OZONE_OFS_URI: ofs://ozone.test.local/
-      KERBEROS_PRINCIPAL_TEMPLATE: "{user}@TEST.LOCAL"
-      KERBEROS_KEYTAB_TEMPLATE: /run/keytabs/{user}.keytab
+      SPRING_CONFIG_ADDITIONAL_LOCATION: file:/etc/k8spark-ui/
       JAVA_TOOL_OPTIONS: >-
         -Djava.security.krb5.conf=/run/keytabs/krb5.conf
         --add-exports=java.security.jgss/sun.security.krb5=ALL-UNNAMED

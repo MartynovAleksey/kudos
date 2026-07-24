@@ -1,0 +1,60 @@
+<!--
+  Copyright 2026 Aleksey Martynov and contributors
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{layout :: page('editor', 'Editor', ~{:: #content})}">
+<body>
+<div id="content">
+  <nav class="navbar hue-title-bar nokids">
+    <div class="navbar-inner">
+      <div class="container-fluid">
+        <ul class="nav editor-nav">
+          <li class="app-header"><i class="fa fa-fw fa-code"></i> Kyuubi Spark SQL</li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <div class="card card-small">
+    <div class="card-body">
+      <textarea id="queryField" class="k8s-editor-area" tabindex="1"
+                spellcheck="false"
+                placeholder="Example: SELECT 40 + 2 AS result"></textarea>
+      <div class="actions" style="margin-top: 10px;">
+        <button type="button" id="executeQuery" class="btn btn-primary" tabindex="2">Execute</button>
+        <span class="muted" style="padding-left: 10px;">Ctrl + Enter</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card card-small scrollable resultsContainer">
+    <div class="card-body">
+      <ul class="nav nav-tabs">
+        <li class="active"><a href="javascript:void(0)">Results</a></li>
+      </ul>
+      <div class="tab-content">
+        <div class="tab-pane active">
+          <div id="queryResults">
+            <div class="k8s-muted">Run a query to see its results.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

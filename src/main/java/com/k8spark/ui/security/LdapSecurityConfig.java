@@ -25,6 +25,9 @@ import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.ldap.LdapBindAuthenticationManagerFactory;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
+import org.springframework.security.web.authentication.www.BasicAuthenticationEntryPoint;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 
 @Configuration
 public class LdapSecurityConfig {
@@ -42,16 +45,48 @@ public class LdapSecurityConfig {
   SecurityFilterChain security(
       HttpSecurity http, AuthenticationManager ldapAuthenticationManager) throws Exception {
     return http
-        .csrf(csrf -> csrf.disable())
+        // The UI posts forms with a token; /api stays token-free so the scripted
+        // Basic-auth clients documented in the README keep working unchanged.
+        .csrf(csrf -> csrf.ignoringRequestMatchers("/api/**"))
         .authenticationManager(ldapAuthenticationManager)
         .authorizeHttpRequests(
             authorization ->
                 authorization
-                    .requestMatchers("/actuator/health")
+                    .requestMatchers("/actuator/health", "/login", "/static/**")
                     .permitAll()
                     .anyRequest()
                     .authenticated())
+        .formLogin(
+            login ->
+                login
+                    .loginPage("/login")
+                    .loginProcessingUrl("/login")
+                    .defaultSuccessUrl("/editor", true)
+                    .failureUrl("/login?error")
+                    .permitAll())
+        // The job detail screen embeds the proxied Spark UI in an iframe from
+        // this same origin, which the default DENY would block.
+        .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()))
+        .logout(logout -> logout.logoutSuccessUrl("/login?logout").permitAll())
+        // Retained so the same endpoints stay usable from curl and scripts.
         .httpBasic(Customizer.withDefaults())
+        // Pin both challenges by path. Left to its defaults Spring Security picks
+        // between them from the Accept header, so a page request without an
+        // explicit text/html preference would get a Basic challenge instead of
+        // the login form.
+        .exceptionHandling(
+            handling ->
+                handling
+                    .defaultAuthenticationEntryPointFor(
+                        basicAuthenticationEntryPoint(),
+                        PathPatternRequestMatcher.withDefaults().matcher("/api/**"))
+                    .authenticationEntryPoint(new LoginUrlAuthenticationEntryPoint("/login")))
         .build();
+  }
+
+  private static BasicAuthenticationEntryPoint basicAuthenticationEntryPoint() {
+    var entryPoint = new BasicAuthenticationEntryPoint();
+    entryPoint.setRealmName("k8spark-ui");
+    return entryPoint;
   }
 }

@@ -26,6 +26,26 @@
     <name>hadoop.security.authorization</name>
     <value>true</value>
   </property>
+  <!-- Kyuubi launches each Spark engine as the session user and the engine then
+       reaches Ozone through a proxy user, so the OM has to accept the
+       impersonation. Without these the engine fails to start with
+       "is not allowed to impersonate". -->
+  <property>
+    <name>hadoop.proxyuser.admin.hosts</name>
+    <value>*</value>
+  </property>
+  <property>
+    <name>hadoop.proxyuser.admin.groups</name>
+    <value>*</value>
+  </property>
+  <property>
+    <name>hadoop.proxyuser.kyuubi.hosts</name>
+    <value>*</value>
+  </property>
+  <property>
+    <name>hadoop.proxyuser.kyuubi.groups</name>
+    <value>*</value>
+  </property>
   <property>
     <name>hadoop.security.auth_to_local</name>
     <value>

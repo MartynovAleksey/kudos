@@ -34,6 +34,7 @@
     <hadoop.version>3.4.2</hadoop.version>
     <!-- Use HBase's Hadoop 3 build; the unqualified artifact targets Hadoop 2. -->
     <hbase.version>2.6.2-hadoop3</hbase.version>
+    <ozone.version>2.0.0</ozone.version>
   </properties>
   <dependencies>
     <dependency>
@@ -54,12 +55,31 @@
     </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-thymeleaf</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.thymeleaf.extras</groupId>
+      <artifactId>thymeleaf-extras-springsecurity6</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-actuator</artifactId>
     </dependency>
     <dependency>
       <groupId>org.apache.hadoop</groupId>
       <artifactId>hadoop-client</artifactId>
       <version>${hadoop.version}</version>
+    </dependency>
+    <!--
+      Supplies org.apache.hadoop.fs.ozone.RootedOzoneFileSystem, the ofs://
+      implementation. Use the plain hadoop3 build, not the -client one: the
+      latter relocates Ozone's generated protobuf messages, which then fail to
+      cast to the com.google.protobuf types Hadoop's RPC engine hands them.
+    -->
+    <dependency>
+      <groupId>org.apache.ozone</groupId>
+      <artifactId>ozone-filesystem-hadoop3</artifactId>
+      <version>${ozone.version}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.hbase</groupId>
