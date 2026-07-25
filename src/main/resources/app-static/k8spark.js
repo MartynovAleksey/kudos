@@ -316,9 +316,12 @@
     var listing = el('listing');
     var breadcrumbs = el('breadcrumbs');
     var preview = el('preview');
+    var refresh = el('refreshBrowser');
     var base = '/api/' + kind;
+    var currentPath = '/';
 
     function navigate(path) {
+      currentPath = path;
       history.replaceState(null, '', '?path=' + encodeURIComponent(path));
       renderBreadcrumbs(path);
       preview.innerHTML = '';
@@ -413,6 +416,12 @@
         });
         breadcrumbs.appendChild(link);
       }
+    }
+
+    if (refresh) {
+      refresh.addEventListener('click', function () {
+        navigate(currentPath);
+      });
     }
 
     navigate(listing.getAttribute('data-path') || '/');
@@ -523,6 +532,9 @@
     var current = null;
 
     el('newTableButton').addEventListener('click', openCreateTable);
+    el('refreshTables').addEventListener('click', function () {
+      loadTables(current ? current.name : null);
+    });
 
     // A filter box above the list keeps it usable with thousands of tables; the
     // list itself scrolls (see .k8s-table-list in the stylesheet).
