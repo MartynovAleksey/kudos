@@ -16,7 +16,5 @@
 
 package com.k8spark.ui.service;
 
-import java.util.List;
-
-/** One scanned HBase row: its key and the latest value of each of its cells. */
-public record HbaseRow(String rowKey, List<HbaseCell> cells) {}
+/** One region of a table: its encoded name and row-key boundaries. */
+public record HbaseRegion(String name, String startKey, String endKey) {}

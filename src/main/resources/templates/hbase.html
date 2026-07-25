@@ -25,6 +25,11 @@
         <ul class="nav editor-nav">
           <li class="app-header"><i class="fa fa-fw fa-database"></i> HBase</li>
         </ul>
+        <div class="pull-right" style="padding: 7px 0;">
+          <button id="newTableButton" class="btn btn-primary btn-small" type="button">
+            <i class="fa fa-plus"></i> New table
+          </button>
+        </div>
       </div>
     </div>
   </nav>
@@ -43,8 +48,8 @@
     <div class="span9">
       <div class="card card-small">
         <div class="card-body">
-          <div id="tableRows">
-            <div class="k8s-muted">Pick a table to scan its first rows.</div>
+          <div id="tableView">
+            <div class="k8s-muted">Pick a table to browse its rows, or create a new one.</div>
           </div>
         </div>
       </div>

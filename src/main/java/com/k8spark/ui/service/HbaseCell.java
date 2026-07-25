@@ -16,7 +16,10 @@
 
 package com.k8spark.ui.service;
 
-import java.util.List;
-
-/** One scanned HBase row: its key and the latest value of each of its cells. */
-public record HbaseRow(String rowKey, List<HbaseCell> cells) {}
+/**
+ * One HBase cell: its {@code family:qualifier} column, the value, and the
+ * version timestamp. {@code binary} is true when the stored bytes were not
+ * printable text and {@code value} is therefore Base64 — the browser shows it
+ * read-only rather than mangling it.
+ */
+public record HbaseCell(String column, String value, long timestamp, boolean binary) {}

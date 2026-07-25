@@ -16,7 +16,5 @@
 
 package com.k8spark.ui.service;
 
-import java.util.List;
-
-/** One scanned HBase row: its key and the latest value of each of its cells. */
-public record HbaseRow(String rowKey, List<HbaseCell> cells) {}
+/** A table in the cluster and whether it is currently enabled. */
+public record HbaseTableInfo(String name, boolean enabled) {}

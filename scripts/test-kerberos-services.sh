@@ -180,6 +180,47 @@ echo "PASS Spring API Ozone listing"
 app_api $app_base/api/hbase/tables | grep -q '\['
 echo "PASS Spring API HBase tables"
 
+# Full HBase browser lifecycle, the way Hue's HBase app drives it: create a
+# table with column families, write and read a row, alter a family, then drop
+# it. A regression in any of these operations fails the run.
+hb_table="k8s_selftest_$$"
+hb_json=(-H 'Content-Type: application/json')
+app_api "${hb_json[@]}" -X POST "$app_base/api/hbase/table/delete" \
+  -d "{\"table\":\"$hb_table\"}" >/dev/null 2>&1 || true
+app_api "${hb_json[@]}" -X POST "$app_base/api/hbase/table/create" \
+  -d "{\"table\":\"$hb_table\",\"families\":[{\"name\":\"cf\",\"maxVersions\":3}]}" >/dev/null
+app_api "$app_base/api/hbase/tables" | grep -q "\"name\":\"$hb_table\",\"enabled\":true"
+app_api "${hb_json[@]}" -X POST "$app_base/api/hbase/row" \
+  -d "{\"table\":\"$hb_table\",\"row\":\"r1\",\"cells\":{\"cf:a\":\"hello\"}}" >/dev/null
+app_api "$app_base/api/hbase/scan?table=$hb_table&limit=10" \
+  | grep -q '"column":"cf:a","value":"hello"'
+
+# Cursor pagination, the way the row browser pages forward: a page ends on a
+# row key, and the next page starts exclusively after it — no repeats, no gaps.
+for k in row_a row_b row_c; do
+  app_api "${hb_json[@]}" -X POST "$app_base/api/hbase/row" \
+    -d "{\"table\":\"$hb_table\",\"row\":\"$k\",\"cells\":{\"cf:a\":\"$k\"}}" >/dev/null
+done
+page2="$(app_api "$app_base/api/hbase/scan?table=$hb_table&start=row_b&startInclusive=false&limit=10")"
+if ! grep -q '"rowKey":"row_c"' <<<"$page2" || grep -q '"rowKey":"row_b"' <<<"$page2"; then
+  echo "HBase cursor pagination repeated or skipped a row" >&2
+  exit 1
+fi
+echo "PASS HBase cursor pagination (start-exclusive next page)"
+
+app_api "${hb_json[@]}" -X POST "$app_base/api/hbase/family/modify" \
+  -d "{\"table\":\"$hb_table\",\"family\":{\"name\":\"cf\",\"maxVersions\":7}}" >/dev/null
+app_api "$app_base/api/hbase/describe?table=$hb_table" | grep -q '"name":"cf","maxVersions":7'
+app_api "${hb_json[@]}" -X POST "$app_base/api/hbase/row/delete" \
+  -d "{\"table\":\"$hb_table\",\"row\":\"r1\"}" >/dev/null
+app_api "${hb_json[@]}" -X POST "$app_base/api/hbase/table/delete" \
+  -d "{\"table\":\"$hb_table\"}" >/dev/null
+if app_api "$app_base/api/hbase/tables" | grep -q "\"name\":\"$hb_table\""; then
+  echo "HBase self-test table $hb_table was not dropped" >&2
+  exit 1
+fi
+echo "PASS HBase browser lifecycle (create, put, scan, alter, drop)"
+
 app_api -H 'Content-Type: application/json' \
   -d '{"sql":"SELECT 40 + 2 AS result"}' \
   $app_base/api/sql/execute \

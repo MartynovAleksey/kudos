@@ -2,7 +2,5 @@
 .mvn/repository
 .m2
 target
-vendor
-src/main/resources/vendor
 # src/main/resources/hue-upstream stays in the build context: the UI serves its
 # stylesheets and fonts at runtime.

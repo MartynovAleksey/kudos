@@ -290,41 +290,6 @@ services:
         aliases:
           - hue-reference.test.local
 
-  # Built from the vendored Hue source tree. No pre-built Hue image is used.
-  # It is the unmodified Django/Mako/Knockout presentation renderer.
-  hue:
-    # Temporarily excluded from the default test environment while the
-    # Kerberized storage/SQL services are being stabilized. Start explicitly
-    # with: docker compose --profile hue up hue
-    profiles:
-      - hue
-    build:
-      context: ./vendor/hue-renderer
-      dockerfile: tools/docker/hue/Dockerfile
-    hostname: hue.test.local
-    depends_on:
-      freeipa:
-        condition: service_healthy
-      kyuubi:
-        condition: service_healthy
-      hdfs:
-        condition: service_healthy
-      hbase:
-        condition: service_healthy
-      ozone:
-        condition: service_healthy
-    volumes:
-      - ./docker/hue/z-k8spark-ui.ini:/usr/share/hue/desktop/conf/z-k8spark-ui.ini:ro
-      - kerberos-shared:/run/keytabs:ro
-      - ./docker/ozone:/etc/ozone/conf:ro
-    # Hue's native renderer is the public application entrypoint.
-    ports:
-      - "8080:8888"
-    networks:
-      default:
-        aliases:
-          - hue.test.local
-
 volumes:
   freeipa-data:
   kerberos-shared:

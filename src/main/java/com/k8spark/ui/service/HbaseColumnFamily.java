@@ -16,7 +16,18 @@
 
 package com.k8spark.ui.service;
 
-import java.util.List;
-
-/** One scanned HBase row: its key and the latest value of each of its cells. */
-public record HbaseRow(String rowKey, List<HbaseCell> cells) {}
+/**
+ * A column family's settings, used both to describe an existing family and to
+ * create or alter one. On the create/alter path any {@code null} field is left
+ * at the HBase default, so the browser can send only the properties it changed.
+ */
+public record HbaseColumnFamily(
+    String name,
+    Integer maxVersions,
+    Integer minVersions,
+    String compression,
+    Integer timeToLive,
+    Boolean blockCacheEnabled,
+    String bloomFilterType,
+    String dataBlockEncoding,
+    Boolean inMemory) {}

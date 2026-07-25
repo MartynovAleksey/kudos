@@ -317,6 +317,14 @@
   list-style: none;
   margin: 0;
   padding: 0;
+  /* Thousands of tables have to stay scrollable inside the card. */
+  max-height: calc(100vh - 240px);
+  overflow-y: auto;
+}
+
+.k8s-table-filter {
+  width: 100%;
+  margin-bottom: 8px;
 }
 
 .k8s-table-list li a {
@@ -393,4 +401,235 @@
   width: auto;
   max-width: 100%;
   margin: 0 auto;
+}
+
+/* ------------------------------------------------------------- HBase browser */
+.k8s-table-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.k8s-table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.k8s-toolbar-item.k8s-grow {
+  flex: 1 1 220px;
+}
+
+.k8s-grow .k8s-input {
+  width: 100%;
+}
+
+.k8s-input {
+  height: 28px;
+  padding: 2px 8px;
+  border: 1px solid #ccd0d4;
+  border-radius: 3px;
+  box-sizing: border-box;
+  margin: 0;
+}
+
+.k8s-input-narrow {
+  width: 80px;
+}
+
+.k8s-textarea {
+  width: 100%;
+  min-height: 120px;
+  height: auto;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 12px;
+  resize: vertical;
+}
+
+.k8s-badge-off {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background-color: #eceff1;
+  color: #8a9196;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.k8s-rowkey {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.k8s-cell {
+  cursor: pointer;
+  display: inline-block;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.k8s-cell:hover {
+  color: #0b7fad;
+  text-decoration: underline;
+}
+
+.k8s-row-actions {
+  display: inline-flex;
+  gap: 10px;
+  white-space: nowrap;
+}
+
+.k8s-link {
+  border: 0;
+  background: transparent;
+  color: #0b7fad;
+  cursor: pointer;
+  padding: 0;
+  font-size: 13px;
+}
+
+.k8s-link:hover {
+  text-decoration: underline;
+}
+
+.k8s-link-danger {
+  color: #b94a48;
+}
+
+/* Fields and family forms inside modals. */
+.k8s-field {
+  margin-bottom: 12px;
+}
+
+.k8s-field > label {
+  display: block;
+  margin: 0 0 4px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #6a7278;
+}
+
+.k8s-field-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.k8s-field-row .k8s-field {
+  flex: 1 1 120px;
+}
+
+.k8s-subhead {
+  margin: 12px 0 8px;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.k8s-card-inset {
+  border: 1px solid #e5e5e5;
+  border-radius: 3px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.k8s-family-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid #eee;
+}
+
+/* ------------------------------------------------------------------- modal */
+.k8s-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(19, 35, 41, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  z-index: 2000;
+  overflow: auto;
+  padding: 48px 16px;
+}
+
+.k8s-modal {
+  background-color: #ffffff;
+  border-radius: 4px;
+  width: 640px;
+  max-width: 100%;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+}
+
+.k8s-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e5e5e5;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.k8s-modal-close {
+  border: 0;
+  background: transparent;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  color: #8a9196;
+}
+
+.k8s-modal-body {
+  padding: 16px;
+  max-height: 65vh;
+  overflow: auto;
+}
+
+.k8s-modal-message {
+  padding: 4px 0 8px;
+}
+
+.k8s-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid #e5e5e5;
+}
+
+.btn-danger {
+  background-color: #b94a48;
+  border-color: #b94a48;
+  color: #ffffff;
+}
+
+.btn-danger:hover {
+  background-color: #a5423f;
+  border-color: #a5423f;
+  color: #ffffff;
+}
+
+/* --------------------------------------------------------------- toast */
+.k8s-toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #132329;
+  color: #ffffff;
+  padding: 10px 18px;
+  border-radius: 4px;
+  font-size: 13px;
+  z-index: 2100;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }

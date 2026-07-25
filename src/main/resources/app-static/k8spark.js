@@ -110,6 +110,157 @@
     return table;
   }
 
+  /* ----------------------------------------------------------- dom helpers */
+
+  // Tiny element builder: element('input', { type: 'text', value: x }, [child]).
+  function element(tag, attrs, children) {
+    var node = document.createElement(tag);
+    if (attrs) {
+      Object.keys(attrs).forEach(function (key) {
+        if (key === 'class') {
+          node.className = attrs[key];
+        } else if (key === 'text') {
+          node.appendChild(text(attrs[key]));
+        } else if (key in node) {
+          node[key] = attrs[key];
+        } else {
+          node.setAttribute(key, attrs[key]);
+        }
+      });
+    }
+    (children || []).forEach(function (child) {
+      if (child == null) {
+        return;
+      }
+      node.appendChild(child instanceof Node ? child : text(child));
+    });
+    return node;
+  }
+
+  function button(label, className, onClick) {
+    var btn = element('button', { type: 'button', class: className }, [label]);
+    btn.addEventListener('click', onClick);
+    return btn;
+  }
+
+  function field(labelText, control) {
+    return element('div', { class: 'k8s-field' }, [
+      element('label', { text: labelText }),
+      control
+    ]);
+  }
+
+  // POST JSON and resolve to the parsed body (or nothing for an empty 200).
+  function send(url, body) {
+    return request(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {})
+    });
+  }
+
+  /* ------------------------------------------------------------------ modal */
+
+  // A single reusable modal. openModal returns a handle whose close() removes it.
+  function openModal(title, bodyNode, buttons) {
+    var backdrop = element('div', { class: 'k8s-modal-backdrop' });
+    var footer = element('div', { class: 'k8s-modal-footer' });
+    var handle = {
+      buttons: [],
+      close: function () {
+        if (backdrop.parentNode) {
+          backdrop.parentNode.removeChild(backdrop);
+        }
+        document.removeEventListener('keydown', onKey);
+      }
+    };
+    (buttons || []).forEach(function (spec) {
+      var btn = button(spec.label, spec.class || 'btn btn-small', function () {
+        spec.action(handle);
+      });
+      handle.buttons.push(btn);
+      footer.appendChild(btn);
+    });
+    var dialog = element('div', { class: 'k8s-modal' }, [
+      element('div', { class: 'k8s-modal-header' }, [
+        element('span', { text: title }),
+        button('×', 'k8s-modal-close', handle.close)
+      ]),
+      element('div', { class: 'k8s-modal-body' }, [bodyNode]),
+      footer
+    ]);
+    backdrop.appendChild(dialog);
+    backdrop.addEventListener('click', function (event) {
+      if (event.target === backdrop) {
+        handle.close();
+      }
+    });
+    function onKey(event) {
+      if (event.key === 'Escape') {
+        handle.close();
+      }
+    }
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(backdrop);
+    return handle;
+  }
+
+  function confirmModal(message, onConfirm) {
+    openModal('Confirm', element('div', { class: 'k8s-modal-message', text: message }), [
+      { label: 'Cancel', action: function (h) { h.close(); } },
+      {
+        label: 'OK',
+        class: 'btn btn-small btn-danger',
+        action: function (h) {
+          h.close();
+          onConfirm();
+        }
+      }
+    ]);
+  }
+
+  // A destructive action guarded by a typed confirmation: the button stays
+  // disabled until the user types the exact keyword, so a stray click cannot
+  // drop a table or delete a row.
+  function confirmDestructive(message, keyword, onConfirm) {
+    var input = textInput('', keyword);
+    var body = element('div', {}, [
+      element('div', { class: 'k8s-modal-message', text: message }),
+      element('div', { class: 'k8s-muted', text: 'Type "' + keyword + '" to confirm.' }),
+      field(keyword, input)
+    ]);
+    var handle = openModal('Confirm', body, [
+      { label: 'Cancel', action: function (h) { h.close(); } },
+      {
+        label: 'Confirm',
+        class: 'btn btn-small btn-danger',
+        action: function (h) {
+          if (input.value.trim() !== keyword) {
+            input.focus();
+            return;
+          }
+          h.close();
+          onConfirm();
+        }
+      }
+    ]);
+    var confirmBtn = handle.buttons[handle.buttons.length - 1];
+    confirmBtn.disabled = true;
+    input.addEventListener('input', function () {
+      confirmBtn.disabled = input.value.trim() !== keyword;
+    });
+    input.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter' && input.value.trim() === keyword) {
+        handle.close();
+        onConfirm();
+      }
+    });
+    setTimeout(function () {
+      input.focus();
+    }, 0);
+    return handle;
+  }
+
   /* ------------------------------------------------------------------ editor */
 
   function initEditor() {
@@ -269,76 +420,869 @@
 
   /* ------------------------------------------------------------------- hbase */
 
-  function initHbase() {
-    var tables = el('tableList');
-    var rows = el('tableRows');
+  var HBASE_COMPRESSION = ['NONE', 'GZ', 'SNAPPY', 'LZ4', 'ZSTD'];
+  var HBASE_BLOOM = ['NONE', 'ROW', 'ROWCOL'];
+  var HBASE_ENCODING = ['NONE', 'PREFIX', 'DIFF', 'FAST_DIFF', 'ROW_INDEX_V1'];
+  var MAX_HBASE_COLUMNS = 60;
 
-    function loadRows(name, item) {
-      Array.prototype.forEach.call(tables.querySelectorAll('li'), function (li) {
-        li.className = li === item ? 'active' : '';
+  function toast(message) {
+    var note = element('div', { class: 'k8s-toast', text: message });
+    document.body.appendChild(note);
+    setTimeout(function () {
+      if (note.parentNode) {
+        note.parentNode.removeChild(note);
+      }
+    }, 2600);
+  }
+
+  function selectInput(options, value) {
+    var control = element('select', { class: 'k8s-input' });
+    options.forEach(function (option) {
+      var opt = element('option', { value: option, text: option });
+      if (option === value) {
+        opt.selected = true;
+      }
+      control.appendChild(opt);
+    });
+    return control;
+  }
+
+  function textInput(value, placeholder) {
+    return element('input', {
+      type: 'text',
+      class: 'k8s-input',
+      value: value == null ? '' : value,
+      placeholder: placeholder || ''
+    });
+  }
+
+  function numberInput(value) {
+    return element('input', { type: 'number', class: 'k8s-input k8s-input-narrow', value: value });
+  }
+
+  function checkbox(checked) {
+    var input = element('input', { type: 'checkbox' });
+    input.checked = !!checked;
+    return input;
+  }
+
+  // Build the editor for one column family; read() returns its JSON form.
+  function familyForm(existing) {
+    var name = textInput(existing ? existing.name : '', 'name');
+    if (existing) {
+      name.disabled = true;
+    }
+    var maxVersions = numberInput(existing ? existing.maxVersions : 1);
+    var minVersions = numberInput(existing ? existing.minVersions : 0);
+    var compression = selectInput(HBASE_COMPRESSION, existing ? existing.compression : 'NONE');
+    var ttl = numberInput(existing ? existing.timeToLive : 2147483647);
+    var blockCache = checkbox(existing ? existing.blockCacheEnabled : true);
+    var bloom = selectInput(HBASE_BLOOM, existing ? existing.bloomFilterType : 'ROW');
+    var encoding = selectInput(HBASE_ENCODING, existing ? existing.dataBlockEncoding : 'NONE');
+    var inMemory = checkbox(existing ? existing.inMemory : false);
+
+    var node = element('div', { class: 'k8s-family-form' }, [
+      field('Family', name),
+      element('div', { class: 'k8s-field-row' }, [
+        field('Max versions', maxVersions),
+        field('Min versions', minVersions),
+        field('TTL (s)', ttl)
+      ]),
+      element('div', { class: 'k8s-field-row' }, [
+        field('Compression', compression),
+        field('Bloom filter', bloom),
+        field('Encoding', encoding)
+      ]),
+      element('div', { class: 'k8s-field-row' }, [
+        field('Block cache', blockCache),
+        field('In memory', inMemory)
+      ])
+    ]);
+
+    return {
+      node: node,
+      read: function () {
+        return {
+          name: name.value.trim(),
+          maxVersions: parseInt(maxVersions.value, 10),
+          minVersions: parseInt(minVersions.value, 10),
+          compression: compression.value,
+          timeToLive: parseInt(ttl.value, 10),
+          blockCacheEnabled: blockCache.checked,
+          bloomFilterType: bloom.value,
+          dataBlockEncoding: encoding.value,
+          inMemory: inMemory.checked
+        };
+      }
+    };
+  }
+
+  function initHbase() {
+    var tablesEl = el('tableList');
+    var viewEl = el('tableView');
+    var current = null;
+
+    el('newTableButton').addEventListener('click', openCreateTable);
+
+    // A filter box above the list keeps it usable with thousands of tables; the
+    // list itself scrolls (see .k8s-table-list in the stylesheet).
+    var tableFilter = textInput('', 'filter tables…');
+    tableFilter.className = 'k8s-input k8s-table-filter';
+    tablesEl.parentNode.insertBefore(tableFilter, tablesEl);
+    tableFilter.addEventListener('input', applyTableFilter);
+
+    function applyTableFilter() {
+      var query = tableFilter.value.trim().toLowerCase();
+      Array.prototype.forEach.call(tablesEl.querySelectorAll('li'), function (li) {
+        var name = li.textContent.toLowerCase();
+        li.style.display = !query || name.indexOf(query) !== -1 ? '' : 'none';
       });
-      rows.innerHTML = '<div class="k8s-muted">Scanning…</div>';
-      request('/api/hbase/scan?table=' + encodeURIComponent(name) + '&limit=50')
-        .then(function (scanned) {
-          rows.innerHTML = '';
-          if (!scanned.length) {
-            var empty = document.createElement('div');
-            empty.className = 'k8s-muted';
-            empty.appendChild(text('The table is empty.'));
-            rows.appendChild(empty);
+    }
+
+    /* --------------------------------------------------------- table list */
+
+    function loadTables(selectName) {
+      request('/api/hbase/tables')
+        .then(function (tables) {
+          tablesEl.innerHTML = '';
+          if (!tables.length) {
+            tablesEl.appendChild(element('li', { class: 'k8s-muted', text: 'No tables.' }));
             return;
           }
-          var columns = [];
-          scanned.forEach(function (row) {
-            Object.keys(row.cells).forEach(function (cell) {
-              if (columns.indexOf(cell) === -1) {
-                columns.push(cell);
-              }
+          tables.forEach(function (table) {
+            var link = element('a', { href: 'javascript:void(0)' }, [
+              element('span', { text: table.name }),
+              table.enabled ? null : element('span', { class: 'k8s-badge-off', text: 'disabled' })
+            ]);
+            var li = element('li', {}, [link]);
+            link.addEventListener('click', function () {
+              Array.prototype.forEach.call(tablesEl.querySelectorAll('li'), function (other) {
+                other.className = '';
+              });
+              li.className = 'active';
+              openTable(table);
             });
+            tablesEl.appendChild(li);
+            if (table.name === selectName) {
+              li.className = 'active';
+              openTable(table);
+            }
           });
-          var scroll = document.createElement('div');
-          scroll.className = 'k8s-result-scroll';
-          scroll.appendChild(
-            buildTable(['Row key'].concat(columns), scanned, function (row) {
-              return [row.rowKey].concat(
-                columns.map(function (column) {
-                  return row.cells[column] === undefined ? '' : row.cells[column];
-                })
-              );
-            })
-          );
-          rows.appendChild(scroll);
+          applyTableFilter();
         })
         .catch(function (error) {
-          showError(rows, error);
+          showError(tablesEl, error);
         });
     }
 
-    request('/api/hbase/tables')
-      .then(function (names) {
-        tables.innerHTML = '';
-        if (!names.length) {
-          var empty = document.createElement('li');
-          empty.className = 'k8s-muted';
-          empty.appendChild(text('No tables.'));
-          tables.appendChild(empty);
-          return;
-        }
-        names.forEach(function (name) {
-          var item = document.createElement('li');
-          var link = document.createElement('a');
-          link.href = 'javascript:void(0)';
-          link.appendChild(text(name));
-          link.addEventListener('click', function () {
-            loadRows(name, item);
-          });
-          item.appendChild(link);
-          tables.appendChild(item);
+    /* ------------------------------------------------------------ actions */
+
+    function lifecycle(url, body, message) {
+      send(url, body)
+        .then(function () {
+          toast(message);
+          loadTables(current ? current.name : null);
+        })
+        .catch(function (error) {
+          toast(error.message || String(error));
         });
-      })
-      .catch(function (error) {
-        showError(tables, error);
+    }
+
+    function tableActions(table) {
+      var toggle = table.enabled
+        ? button('Disable', 'btn btn-small', function () {
+            lifecycle('/api/hbase/table/disable', { table: table.name }, 'Table disabled');
+          })
+        : button('Enable', 'btn btn-small', function () {
+            lifecycle('/api/hbase/table/enable', { table: table.name }, 'Table enabled');
+          });
+      return element('div', { class: 'k8s-table-actions' }, [
+        button('New row', 'btn btn-small btn-primary', function () {
+          openRowEditor(table.name, null);
+        }),
+        button('Bulk upload', 'btn btn-small', function () {
+          openBulkUpload(table.name);
+        }),
+        button('Families', 'btn btn-small', function () {
+          openFamilies(table.name);
+        }),
+        button('Regions', 'btn btn-small', function () {
+          openRegions(table.name);
+        }),
+        toggle,
+        button('Truncate', 'btn btn-small', function () {
+          confirmDestructive(
+            'Truncate ' + table.name + '? Every row is permanently deleted.',
+            'truncate',
+            function () {
+              lifecycle(
+                '/api/hbase/table/truncate',
+                { table: table.name, preserveSplits: true },
+                'Table truncated'
+              );
+            }
+          );
+        }),
+        button('Drop', 'btn btn-small btn-danger', function () {
+          confirmDestructive('Drop table ' + table.name + '? This cannot be undone.', 'drop', function () {
+            send('/api/hbase/table/delete', { table: table.name })
+              .then(function () {
+                toast('Table dropped');
+                current = null;
+                viewEl.innerHTML = '';
+                viewEl.appendChild(
+                  element('div', { class: 'k8s-muted', text: 'Pick a table to browse its rows.' })
+                );
+                loadTables(null);
+              })
+              .catch(function (error) {
+                toast(error.message || String(error));
+              });
+          });
+        })
+      ]);
+    }
+
+    /* ------------------------------------------------------- table browser */
+
+    function openTable(table) {
+      current = table;
+      var search = textInput('', 'row key, or prefix with *');
+      var filter = textInput('', "filter e.g. SingleColumnValueFilter('cf','q',=,'binary:v')");
+      var columns = textInput('', 'columns: cf or cf:qual, comma separated');
+      var pageSize = numberInput(50);
+      var results = element('div', { class: 'k8s-result-scroll' });
+      var pager = element('div', { class: 'k8s-pager' });
+
+      // Cursor pagination: each page remembers where it started, and the next
+      // one begins just after the last row key shown (a forward-only scan has
+      // no cheap offset). A stack of page starts lets Prev walk back.
+      var pageStack = [];
+      var page = { start: '', inclusive: true };
+      var activePrefix = '';
+
+      function newScan() {
+        var query = search.value.trim();
+        activePrefix = '';
+        var start = query;
+        if (query.charAt(query.length - 1) === '*') {
+          activePrefix = query.slice(0, -1);
+          start = activePrefix;
+        }
+        page = { start: start, inclusive: true };
+        pageStack = [];
+        load();
+      }
+
+      function load() {
+        var size = parseInt(pageSize.value, 10) || 50;
+        var params = new URLSearchParams();
+        params.set('table', table.name);
+        if (page.start) {
+          params.set('start', page.start);
+          params.set('startInclusive', page.inclusive ? 'true' : 'false');
+        }
+        if (activePrefix) {
+          params.set('prefix', activePrefix);
+        }
+        // Ask for one extra row: getting it back means there is a next page.
+        params.set('limit', size + 1);
+        if (columns.value.trim()) {
+          params.set('columns', columns.value.trim());
+        }
+        if (filter.value.trim()) {
+          params.set('filter', filter.value.trim());
+        }
+        results.innerHTML = '<div class="k8s-muted">Scanning…</div>';
+        pager.innerHTML = '';
+        request('/api/hbase/scan?' + params.toString())
+          .then(function (rows) {
+            var hasNext = rows.length > size;
+            var pageRows = hasNext ? rows.slice(0, size) : rows;
+            renderRows(table.name, results, pageRows);
+            renderPager(pageRows, hasNext);
+          })
+          .catch(function (error) {
+            showError(results, error);
+          });
+      }
+
+      function renderPager(pageRows, hasNext) {
+        pager.innerHTML = '';
+        pager.appendChild(
+          button('‹ Prev', 'k8s-pager-button' + (pageStack.length ? '' : ' k8s-disabled'), function () {
+            if (!pageStack.length) {
+              return;
+            }
+            page = pageStack.pop();
+            load();
+          })
+        );
+        pager.appendChild(
+          button(
+            'Next ›',
+            'k8s-pager-button' + (hasNext && pageRows.length ? '' : ' k8s-disabled'),
+            function () {
+              if (!hasNext || !pageRows.length) {
+                return;
+              }
+              pageStack.push(page);
+              page = { start: pageRows[pageRows.length - 1].rowKey, inclusive: false };
+              load();
+            }
+          )
+        );
+        pager.appendChild(
+          element('span', {
+            class: 'k8s-muted',
+            text:
+              'page ' +
+              (pageStack.length + 1) +
+              ' · ' +
+              pageRows.length +
+              ' row' +
+              (pageRows.length === 1 ? '' : 's') +
+              (hasNext ? ', more' : '')
+          })
+        );
+      }
+
+      search.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') {
+          newScan();
+        }
       });
+      filter.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') {
+          newScan();
+        }
+      });
+
+      viewEl.innerHTML = '';
+      viewEl.appendChild(
+        element('div', { class: 'k8s-table-head' }, [
+          element('h4', { class: 'card-heading simple', text: table.name }),
+          tableActions(table)
+        ])
+      );
+      viewEl.appendChild(
+        element('div', { class: 'k8s-toolbar' }, [
+          element('div', { class: 'k8s-toolbar-item k8s-grow' }, [search]),
+          element('div', { class: 'k8s-toolbar-item k8s-grow' }, [filter]),
+          element('div', { class: 'k8s-toolbar-item' }, [columns]),
+          element('div', { class: 'k8s-toolbar-item' }, [
+            element('label', { text: 'Page' }),
+            pageSize
+          ]),
+          button('Scan', 'btn btn-small btn-primary', newScan)
+        ])
+      );
+      viewEl.appendChild(results);
+      viewEl.appendChild(pager);
+      newScan();
+    }
+
+    function renderRows(tableName, host, rows) {
+      host.innerHTML = '';
+      if (!rows.length) {
+        host.appendChild(element('div', { class: 'k8s-muted', text: 'No rows matched.' }));
+        return;
+      }
+      var columns = [];
+      rows.forEach(function (row) {
+        row.cells.forEach(function (cell) {
+          if (columns.indexOf(cell.column) === -1) {
+            columns.push(cell.column);
+          }
+        });
+      });
+      columns.sort();
+      // A very wide row could carry thousands of qualifiers; rendering them all
+      // would freeze the page, so cap the visible columns and say so.
+      if (columns.length > MAX_HBASE_COLUMNS) {
+        host.appendChild(
+          element('div', {
+            class: 'k8s-muted',
+            text: 'Showing first ' + MAX_HBASE_COLUMNS + ' of ' + columns.length + ' columns.'
+          })
+        );
+        columns = columns.slice(0, MAX_HBASE_COLUMNS);
+      }
+
+      var header = ['Row key'].concat(columns).concat(['']);
+      var table = buildTable(header, rows, function (row) {
+        var byColumn = {};
+        row.cells.forEach(function (cell) {
+          byColumn[cell.column] = cell;
+        });
+        var cells = [element('span', { class: 'k8s-rowkey', text: row.rowKey })];
+        columns.forEach(function (column) {
+          var cell = byColumn[column];
+          if (!cell) {
+            cells.push(text(''));
+            return;
+          }
+          var view = element('span', { class: 'k8s-cell', title: 'Click to edit' }, [
+            cell.binary
+              ? element('em', { class: 'k8s-muted', text: '⬡ binary' })
+              : text(cell.value.length > 140 ? cell.value.substring(0, 140) + '…' : cell.value)
+          ]);
+          view.addEventListener('click', function () {
+            openCell(tableName, row.rowKey, cell);
+          });
+          cells.push(view);
+        });
+        cells.push(
+          element('span', { class: 'k8s-row-actions' }, [
+            button('edit', 'k8s-link', function () {
+              openRowEditor(tableName, row);
+            }),
+            button('delete', 'k8s-link k8s-link-danger', function () {
+              confirmDestructive('Delete row ' + row.rowKey + '?', 'delete', function () {
+                send('/api/hbase/row/delete', { table: tableName, row: row.rowKey })
+                  .then(function () {
+                    toast('Row deleted');
+                    openTable(current);
+                  })
+                  .catch(function (error) {
+                    toast(error.message || String(error));
+                  });
+              });
+            })
+          ])
+        );
+        return cells;
+      });
+      host.appendChild(table);
+    }
+
+    /* --------------------------------------------------------- cell editor */
+
+    function openCell(tableName, rowKey, cell) {
+      var value = element('textarea', { class: 'k8s-input k8s-textarea' });
+      value.value = cell.value;
+      if (cell.binary) {
+        value.disabled = true;
+      }
+      var meta = element('div', { class: 'k8s-muted' }, [
+        text(rowKey + '  ·  ' + cell.column + '  ·  ' + formatDate(cell.timestamp))
+      ]);
+      var versions = element('div', {});
+      var upload = element('input', { type: 'file' });
+
+      var body = element('div', {}, [
+        meta,
+        cell.binary
+          ? element('div', { class: 'k8s-muted', text: 'Binary value shown Base64, read-only.' })
+          : null,
+        field('Value', value),
+        field('Replace with file (binary)', upload),
+        element('div', { class: 'k8s-subhead' }, [
+          button('Load versions', 'k8s-link', function () {
+            request(
+              '/api/hbase/cell/versions?table=' +
+                encodeURIComponent(tableName) +
+                '&row=' +
+                encodeURIComponent(rowKey) +
+                '&column=' +
+                encodeURIComponent(cell.column) +
+                '&versions=20'
+            )
+              .then(function (list) {
+                versions.innerHTML = '';
+                versions.appendChild(
+                  buildTable(['When', 'Value'], list, function (version) {
+                    return [
+                      formatDate(version.timestamp),
+                      version.binary ? '⬡ binary' : version.value
+                    ];
+                  })
+                );
+              })
+              .catch(function (error) {
+                showError(versions, error);
+              });
+          })
+        ]),
+        versions
+      ]);
+
+      openModal('Cell', body, [
+        {
+          label: 'Delete cell',
+          class: 'btn btn-small btn-danger',
+          action: function (handle) {
+            send('/api/hbase/cell/delete', {
+              table: tableName,
+              row: rowKey,
+              columns: [cell.column]
+            })
+              .then(function () {
+                handle.close();
+                toast('Cell deleted');
+                openTable(current);
+              })
+              .catch(function (error) {
+                toast(error.message || String(error));
+              });
+          }
+        },
+        {
+          label: 'Save',
+          class: 'btn btn-small btn-primary',
+          action: function (handle) {
+            var done = function () {
+              handle.close();
+              toast('Cell saved');
+              openTable(current);
+            };
+            if (upload.files && upload.files.length) {
+              var form = new FormData();
+              form.append('file', upload.files[0]);
+              request(
+                '/api/hbase/cell/upload?table=' +
+                  encodeURIComponent(tableName) +
+                  '&row=' +
+                  encodeURIComponent(rowKey) +
+                  '&column=' +
+                  encodeURIComponent(cell.column),
+                { method: 'POST', body: form }
+              )
+                .then(done)
+                .catch(function (error) {
+                  toast(error.message || String(error));
+                });
+              return;
+            }
+            if (cell.binary) {
+              handle.close();
+              return;
+            }
+            var cells = {};
+            cells[cell.column] = value.value;
+            send('/api/hbase/row', { table: tableName, row: rowKey, cells: cells })
+              .then(done)
+              .catch(function (error) {
+                toast(error.message || String(error));
+              });
+          }
+        }
+      ]);
+    }
+
+    /* ---------------------------------------------------------- row editor */
+
+    function openRowEditor(tableName, existingRow) {
+      var rowKey = textInput(existingRow ? existingRow.rowKey : '', 'row key');
+      if (existingRow) {
+        rowKey.disabled = true;
+      }
+      var list = element('div', {});
+      var pairs = [];
+
+      function addPair(column, value) {
+        var columnInput = textInput(column, 'cf:qualifier');
+        var valueInput = textInput(value, 'value');
+        var rowNode = element('div', { class: 'k8s-field-row' }, [
+          field('Column', columnInput),
+          field('Value', valueInput),
+          button('×', 'k8s-link k8s-link-danger', function () {
+            list.removeChild(rowNode);
+            pairs = pairs.filter(function (pair) {
+              return pair.node !== rowNode;
+            });
+          })
+        ]);
+        var pair = { node: rowNode, column: columnInput, value: valueInput };
+        pairs.push(pair);
+        list.appendChild(rowNode);
+      }
+
+      if (existingRow) {
+        existingRow.cells.forEach(function (cell) {
+          if (!cell.binary) {
+            addPair(cell.column, cell.value);
+          }
+        });
+      }
+      if (!pairs.length) {
+        addPair('', '');
+      }
+
+      var body = element('div', {}, [
+        field('Row key', rowKey),
+        list,
+        button('+ Add column', 'k8s-link', function () {
+          addPair('', '');
+        })
+      ]);
+
+      openModal(existingRow ? 'Edit row' : 'New row', body, [
+        { label: 'Cancel', action: function (handle) { handle.close(); } },
+        {
+          label: 'Save',
+          class: 'btn btn-small btn-primary',
+          action: function (handle) {
+            var key = rowKey.value.trim();
+            if (!key) {
+              toast('A row key is required');
+              return;
+            }
+            var cells = {};
+            pairs.forEach(function (pair) {
+              var column = pair.column.value.trim();
+              if (column) {
+                cells[column] = pair.value.value;
+              }
+            });
+            if (!Object.keys(cells).length) {
+              toast('Add at least one column');
+              return;
+            }
+            send('/api/hbase/row', { table: tableName, row: key, cells: cells })
+              .then(function () {
+                handle.close();
+                toast('Row saved');
+                openTable(current);
+              })
+              .catch(function (error) {
+                toast(error.message || String(error));
+              });
+          }
+        }
+      ]);
+    }
+
+    /* ------------------------------------------------------ column families */
+
+    function openFamilies(tableName) {
+      var list = element('div', { class: 'k8s-muted', text: 'Loading…' });
+      var modal = openModal('Column families — ' + tableName, list, [
+        {
+          label: '+ Add family',
+          action: function () {
+            openFamilyEditor(tableName, null, function () {
+              modal.close();
+              openFamilies(tableName);
+            });
+          }
+        },
+        { label: 'Close', action: function (handle) { handle.close(); } }
+      ]);
+
+      request('/api/hbase/describe?table=' + encodeURIComponent(tableName))
+        .then(function (families) {
+          list.innerHTML = '';
+          list.className = '';
+          families.forEach(function (family) {
+            list.appendChild(
+              element('div', { class: 'k8s-family-row' }, [
+                element('div', {}, [
+                  element('strong', { text: family.name }),
+                  element('div', { class: 'k8s-muted' }, [
+                    text(
+                      'versions ' +
+                        family.maxVersions +
+                        ' · ' +
+                        family.compression +
+                        ' · bloom ' +
+                        family.bloomFilterType +
+                        ' · ttl ' +
+                        family.timeToLive
+                    )
+                  ])
+                ]),
+                element('div', {}, [
+                  button('Edit', 'k8s-link', function () {
+                    openFamilyEditor(tableName, family, function () {
+                      modal.close();
+                      openFamilies(tableName);
+                    });
+                  }),
+                  button('Delete', 'k8s-link k8s-link-danger', function () {
+                    confirmDestructive(
+                      'Delete family ' + family.name + '? Its data is lost.',
+                      'delete',
+                      function () {
+                      send('/api/hbase/family/delete', {
+                        table: tableName,
+                        family: family.name
+                      })
+                        .then(function () {
+                          toast('Family deleted');
+                          modal.close();
+                          openFamilies(tableName);
+                        })
+                        .catch(function (error) {
+                          toast(error.message || String(error));
+                        });
+                    });
+                  })
+                ])
+              ])
+            );
+          });
+        })
+        .catch(function (error) {
+          showError(list, error);
+        });
+    }
+
+    function openFamilyEditor(tableName, existing, onSaved) {
+      var form = familyForm(existing);
+      openModal(existing ? 'Edit family' : 'Add family', form.node, [
+        { label: 'Cancel', action: function (handle) { handle.close(); } },
+        {
+          label: 'Save',
+          class: 'btn btn-small btn-primary',
+          action: function (handle) {
+            var family = form.read();
+            if (!family.name) {
+              toast('A family name is required');
+              return;
+            }
+            send(existing ? '/api/hbase/family/modify' : '/api/hbase/family/add', {
+              table: tableName,
+              family: family
+            })
+              .then(function () {
+                handle.close();
+                toast('Family saved');
+                if (onSaved) {
+                  onSaved();
+                }
+              })
+              .catch(function (error) {
+                toast(error.message || String(error));
+              });
+          }
+        }
+      ]);
+    }
+
+    /* ---------------------------------------------------------- new table */
+
+    function openCreateTable() {
+      var name = textInput('', 'table name');
+      var families = element('div', {});
+      var forms = [];
+
+      function addFamily() {
+        var form = familyForm(null);
+        forms.push(form);
+        families.appendChild(element('div', { class: 'k8s-card-inset' }, [form.node]));
+      }
+      addFamily();
+
+      var body = element('div', {}, [
+        field('Table name', name),
+        element('div', { class: 'k8s-subhead', text: 'Column families' }),
+        families,
+        button('+ Add family', 'k8s-link', addFamily)
+      ]);
+
+      openModal('New table', body, [
+        { label: 'Cancel', action: function (handle) { handle.close(); } },
+        {
+          label: 'Create',
+          class: 'btn btn-small btn-primary',
+          action: function (handle) {
+            var tableName = name.value.trim();
+            if (!tableName) {
+              toast('A table name is required');
+              return;
+            }
+            var payload = forms
+              .map(function (form) {
+                return form.read();
+              })
+              .filter(function (family) {
+                return family.name;
+              });
+            if (!payload.length) {
+              toast('Add at least one column family');
+              return;
+            }
+            send('/api/hbase/table/create', { table: tableName, families: payload })
+              .then(function () {
+                handle.close();
+                toast('Table created');
+                loadTables(tableName);
+              })
+              .catch(function (error) {
+                toast(error.message || String(error));
+              });
+          }
+        }
+      ]);
+    }
+
+    /* ------------------------------------------------------------ regions */
+
+    function openRegions(tableName) {
+      var body = element('div', { class: 'k8s-muted', text: 'Loading…' });
+      openModal('Regions — ' + tableName, body, [
+        { label: 'Close', action: function (handle) { handle.close(); } }
+      ]);
+      request('/api/hbase/regions?table=' + encodeURIComponent(tableName))
+        .then(function (regions) {
+          body.innerHTML = '';
+          body.className = '';
+          if (!regions.length) {
+            body.appendChild(element('div', { class: 'k8s-muted', text: 'No regions.' }));
+            return;
+          }
+          body.appendChild(
+            buildTable(['Region', 'Start key', 'End key'], regions, function (region) {
+              return [region.name, region.startKey, region.endKey];
+            })
+          );
+        })
+        .catch(function (error) {
+          showError(body, error);
+        });
+    }
+
+    /* -------------------------------------------------------- bulk upload */
+
+    function openBulkUpload(tableName) {
+      var file = element('input', { type: 'file', accept: '.csv,text/csv' });
+      var body = element('div', {}, [
+        element('div', { class: 'k8s-muted' }, [
+          text('CSV with a header row. First column is the row key, the rest are cf:qualifier.')
+        ]),
+        field('CSV file', file)
+      ]);
+      openModal('Bulk upload — ' + tableName, body, [
+        { label: 'Cancel', action: function (handle) { handle.close(); } },
+        {
+          label: 'Upload',
+          class: 'btn btn-small btn-primary',
+          action: function (handle) {
+            if (!file.files || !file.files.length) {
+              toast('Choose a CSV file');
+              return;
+            }
+            var form = new FormData();
+            form.append('file', file.files[0]);
+            request('/api/hbase/bulk?table=' + encodeURIComponent(tableName), {
+              method: 'POST',
+              body: form
+            })
+              .then(function (count) {
+                handle.close();
+                toast(count + ' rows written');
+                openTable(current);
+              })
+              .catch(function (error) {
+                toast(error.message || String(error));
+              });
+          }
+        }
+      ]);
+    }
+
+    loadTables(null);
   }
 
   /* -------------------------------------------------------------------- jobs */
