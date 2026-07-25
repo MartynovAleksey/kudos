@@ -19,6 +19,7 @@ package com.k8spark.ui.service;
 import com.k8spark.ui.config.ClusterProperties;
 import java.io.File;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -27,6 +28,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.permission.FsPermission;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -60,6 +62,74 @@ public class OzoneService {
             return new String(stream.readNBytes(maxBytes), StandardCharsets.UTF_8);
           }
         });
+  }
+
+  // ------------------------------------------------------------- write ops
+
+  public void mkdirs(String path) throws Exception {
+    withFileSystem(
+        fileSystem -> {
+          fileSystem.mkdirs(new Path(path));
+          return null;
+        });
+  }
+
+  public void delete(String path, boolean recursive) throws Exception {
+    withFileSystem(
+        fileSystem -> {
+          fileSystem.delete(new Path(path), recursive);
+          return null;
+        });
+  }
+
+  public void rename(String path, String destination) throws Exception {
+    withFileSystem(
+        fileSystem -> {
+          if (!fileSystem.rename(new Path(path), new Path(destination))) {
+            throw new IllegalStateException("Rename failed");
+          }
+          return null;
+        });
+  }
+
+  public void setPermission(String path, String permission) throws Exception {
+    withFileSystem(
+        fileSystem -> {
+          fileSystem.setPermission(new Path(path), new FsPermission(Short.parseShort(permission, 8)));
+          return null;
+        });
+  }
+
+  public void setOwner(String path, String owner, String group) throws Exception {
+    withFileSystem(
+        fileSystem -> {
+          fileSystem.setOwner(new Path(path), blankToNull(owner), blankToNull(group));
+          return null;
+        });
+  }
+
+  public void upload(String path, byte[] data) throws Exception {
+    withFileSystem(
+        fileSystem -> {
+          try (OutputStream out = fileSystem.create(new Path(path), true)) {
+            out.write(data);
+          }
+          return null;
+        });
+  }
+
+  public void download(String path, OutputStream out) throws Exception {
+    withFileSystem(
+        fileSystem -> {
+          try (InputStream in = fileSystem.open(new Path(path))) {
+            in.transferTo(out);
+          }
+          return null;
+        });
+  }
+
+  private static String blankToNull(String value) {
+    return value == null || value.isBlank() ? null : value;
   }
 
   private <T> T withFileSystem(FileSystemAction<T> action) throws Exception {

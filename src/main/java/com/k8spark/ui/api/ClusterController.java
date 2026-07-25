@@ -301,6 +301,43 @@ public class ClusterController {
     return ozone.preview(path, PREVIEW_BYTES);
   }
 
+  @PostMapping("/ozone/mkdir")
+  void ozoneMkdir(@Valid @RequestBody PathRequest request) throws Exception {
+    ozone.mkdirs(request.path());
+  }
+
+  @PostMapping("/ozone/delete")
+  void ozoneDelete(@Valid @RequestBody DeleteRequest request) throws Exception {
+    ozone.delete(request.path(), request.recursive());
+  }
+
+  @PostMapping("/ozone/rename")
+  void ozoneRename(@Valid @RequestBody RenameRequest request) throws Exception {
+    ozone.rename(request.path(), request.destination());
+  }
+
+  @PostMapping("/ozone/chmod")
+  void ozoneChmod(@Valid @RequestBody ChmodRequest request) throws Exception {
+    ozone.setPermission(request.path(), request.permission());
+  }
+
+  @PostMapping("/ozone/chown")
+  void ozoneChown(@Valid @RequestBody ChownRequest request) throws Exception {
+    ozone.setOwner(request.path(), request.owner(), request.group());
+  }
+
+  @PostMapping("/ozone/upload")
+  void ozoneUpload(@RequestParam String path, @RequestPart MultipartFile file) throws Exception {
+    ozone.upload(join(path, file.getOriginalFilename()), file.getBytes());
+  }
+
+  @GetMapping("/ozone/download")
+  void ozoneDownload(@RequestParam String path, HttpServletResponse response) throws Exception {
+    response.setContentType("application/octet-stream");
+    response.setHeader("Content-Disposition", "attachment; filename=\"" + fileName(path) + "\"");
+    ozone.download(path, response.getOutputStream());
+  }
+
   private static String join(String dir, String name) {
     String base = dir.endsWith("/") ? dir : dir + "/";
     return base + name;
