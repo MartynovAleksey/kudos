@@ -90,6 +90,12 @@ k8spark:
   audit:
     kafka-enabled: false
     kafka-topic: k8spark-audit
+
+  # Login brute-force guard: lock a username after this many consecutive failed
+  # attempts, for this many minutes.
+  security:
+    max-login-attempts: 5
+    lockout-minutes: 15
 # spring:
 #   kafka:
 #     bootstrap-servers: kafka.test.local:9092

@@ -25,7 +25,9 @@ import org.springframework.core.annotation.Order;
 import org.springframework.ldap.core.support.BaseLdapPathContextSource;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.LockedException;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.ldap.LdapBindAuthenticationManagerFactory;
@@ -49,25 +51,37 @@ public class LdapSecurityConfig {
   AuthenticationManager ldapAuthenticationManager(
       BaseLdapPathContextSource source,
       @Value("${spring.ldap.user-dn-pattern}") String userDnPattern,
-      KerberosTicketService tickets) {
+      KerberosTicketService tickets,
+      LoginAttemptService attempts) {
     var factory = new LdapBindAuthenticationManagerFactory(source);
     factory.setUserDnPatterns(userDnPattern);
     AuthenticationManager ldap = factory.createAuthenticationManager();
 
     return authentication -> {
-      Authentication bound = ldap.authenticate(authentication);
-      Object presented = authentication.getCredentials();
-      if (presented == null) {
-        throw new BadCredentialsException("No password to obtain a Kerberos ticket with");
+      String username = authentication.getName();
+      // A locked account is refused before any credential is checked, so the
+      // password cannot keep being tried while the cooldown runs.
+      if (attempts.isBlocked(username)) {
+        throw new LockedException("Too many failed attempts; the account is temporarily locked");
       }
       try {
+        Authentication bound = ldap.authenticate(authentication);
+        Object presented = authentication.getCredentials();
+        if (presented == null) {
+          throw new BadCredentialsException("No password to obtain a Kerberos ticket with");
+        }
         KerberosTicketService.IssuedTicket ticket =
             tickets.login(bound.getName(), presented.toString());
+        attempts.loginSucceeded(username);
         return new KerberosAuthentication(
             bound.getName(), ticket.subject(), ticket.expiresAt(), bound.getAuthorities());
       } catch (LoginException failure) {
+        attempts.loginFailed(username);
         throw new BadCredentialsException(
             "LDAP accepted the password but the KDC refused it", failure);
+      } catch (AuthenticationException failure) {
+        attempts.loginFailed(username);
+        throw failure;
       }
     };
   }
@@ -121,7 +135,10 @@ public class LdapSecurityConfig {
   @Bean
   @Order(2)
   SecurityFilterChain uiSecurity(
-      HttpSecurity http, AuthenticationManager ldapAuthenticationManager) throws Exception {
+      HttpSecurity http,
+      AuthenticationManager ldapAuthenticationManager,
+      LoginAttemptService attempts)
+      throws Exception {
     return http
         .authenticationManager(ldapAuthenticationManager)
         .authorizeHttpRequests(
@@ -149,7 +166,23 @@ public class LdapSecurityConfig {
                     .loginPage("/login")
                     .loginProcessingUrl("/login")
                     .defaultSuccessUrl("/editor", true)
-                    .failureUrl("/login?error")
+                    // Tell the login page how many tries remain, or how long the
+                    // account is locked, so the user is not left guessing.
+                    .failureHandler(
+                        (request, response, exception) -> {
+                          String username = request.getParameter("username");
+                          if (attempts.isBlocked(username)) {
+                            response.sendRedirect(
+                                request.getContextPath()
+                                    + "/login?locked&seconds="
+                                    + attempts.lockSecondsRemaining(username));
+                          } else {
+                            response.sendRedirect(
+                                request.getContextPath()
+                                    + "/login?error&remaining="
+                                    + attempts.remaining(username));
+                          }
+                        })
                     .permitAll())
         // The job detail screen embeds the proxied Spark UI in an iframe from
         // this same origin, which the default DENY would block.
