@@ -132,7 +132,14 @@ public class LdapSecurityConfig {
                     // here and answered with a login redirect instead.
                     .dispatcherTypeMatchers(DispatcherType.ERROR)
                     .permitAll()
-                    .requestMatchers("/actuator/health", "/login", "/static/**", "/error")
+                    .requestMatchers(
+                        "/actuator/health",
+                        "/login",
+                        "/static/**",
+                        "/error",
+                        "/swagger-ui.html",
+                        "/swagger-ui/**",
+                        "/v3/api-docs/**")
                     .permitAll()
                     .anyRequest()
                     .authenticated())

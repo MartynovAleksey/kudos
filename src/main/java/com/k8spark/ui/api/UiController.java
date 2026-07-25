@@ -71,6 +71,12 @@ public class UiController {
     return "jobs";
   }
 
+  @GetMapping("/docs")
+  String docs(Model model) {
+    model.addAttribute("app", "docs");
+    return "docs";
+  }
+
   @GetMapping("/jobs/{applicationId}")
   String job(@PathVariable String applicationId, Model model) {
     model.addAttribute("app", "jobs");

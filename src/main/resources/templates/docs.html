@@ -1,0 +1,95 @@
+<!--
+  Copyright 2026 Aleksey Martynov and contributors
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{layout :: page('docs', 'Docs', ~{:: #content})}">
+<body>
+<div id="content">
+  <nav class="navbar hue-title-bar nokids">
+    <div class="navbar-inner">
+      <div class="container-fluid">
+        <ul class="nav editor-nav">
+          <li class="app-header"><i class="fa fa-fw fa-book"></i> Documentation</li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <div class="card card-small">
+    <div class="card-body k8s-docs">
+      <h3>API reference</h3>
+      <p>
+        The REST API is described by an OpenAPI document and an interactive Swagger UI:
+      </p>
+      <ul>
+        <li><a th:href="@{/swagger-ui.html}" target="_blank">Swagger UI</a> — try each endpoint</li>
+        <li><a th:href="@{/v3/api-docs}" target="_blank">OpenAPI JSON</a> — the raw spec</li>
+      </ul>
+      <p class="k8s-muted">
+        Every <code>/api/**</code> call runs as the signed-in user's own Kerberos identity.
+        Authenticate with HTTP Basic (LDAP credentials) or the browser session from the login
+        form. Authorization is applied by each service (HDFS, Ozone, HBase, Kyuubi).
+      </p>
+
+      <h3>Screens</h3>
+      <table class="table table-condensed">
+        <thead><tr><th>Screen</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td>Editor</td><td>Run Spark SQL through Kyuubi; export results to Excel.</td></tr>
+          <tr><td>Files</td><td>Browse HDFS: navigate directories, preview files, refresh.</td></tr>
+          <tr><td>Ozone</td><td>Browse the Ozone <code>ofs://</code> filesystem.</td></tr>
+          <tr><td>HBase</td><td>Full table browser: create/alter/drop tables and families, scan with
+            filters and pagination, edit rows and cells, bulk upload.</td></tr>
+          <tr><td>Jobs</td><td>Spark applications from the History Server, with the proxied Spark UI.</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Configuration</h3>
+      <p>
+        Settings live in an external file mounted at <code>/etc/k8spark-ui/application.yml</code>
+        (loaded via <code>spring.config.additional-location</code>) and can be edited without a
+        rebuild — restart the app service to apply.
+      </p>
+      <table class="table table-condensed">
+        <thead><tr><th>Key</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><code>k8spark.cluster.webhdfs-url</code></td><td>WebHDFS endpoint for the file browser.</td></tr>
+          <tr><td><code>k8spark.cluster.kyuubi-url</code></td><td>Kyuubi HiveServer2 JDBC URL.</td></tr>
+          <tr><td><code>k8spark.cluster.hbase-quorum</code></td><td>ZooKeeper quorum for HBase.</td></tr>
+          <tr><td><code>k8spark.cluster.ozone-ofs-uri</code></td><td>Root of the Ozone filesystem.</td></tr>
+          <tr><td><code>k8spark.cluster.ozone-conf-dir</code></td><td>Directory with the Ozone client config.</td></tr>
+          <tr><td><code>k8spark.cluster.spark-history-url</code></td><td>Spark History Server base URL.</td></tr>
+          <tr><td><code>k8spark.cluster.kerberos-principal</code></td><td>User principal template, e.g. <code>{user}@REALM</code>.</td></tr>
+          <tr><td><code>k8spark.ui.banner-html</code></td><td>Optional trusted HTML shown as a top banner.</td></tr>
+          <tr><td><code>server.ssl.*</code></td><td>TLS keystore for HTTPS (port 8443).</td></tr>
+          <tr><td><code>spring.ldap.*</code></td><td>LDAP URL, base DN and user DN pattern for login.</td></tr>
+          <tr><td><code>logging.*</code></td><td>Log levels and file output (see below).</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Logging</h3>
+      <p>
+        Application logs are written to standard output and to a rolling file under
+        <code>logs/</code>. Adjust levels with <code>logging.level.&lt;package&gt;</code> and the
+        file location with <code>logging.file.name</code>. User actions are recorded to a separate
+        audit log and, when configured, published to Kafka.
+      </p>
+    </div>
+  </div>
+</div>
+</body>
+</html>

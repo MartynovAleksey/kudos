@@ -681,3 +681,18 @@
   color: #5f4b1b;
   font-size: 13px;
 }
+
+/* Documentation screen. */
+.k8s-docs h3 {
+  margin: 18px 0 8px;
+  font-size: 16px;
+  font-weight: 500;
+}
+.k8s-docs h3:first-child { margin-top: 0; }
+.k8s-docs p { margin: 6px 0; }
+.k8s-docs code {
+  background-color: #f5f5f5;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 12px;
+}

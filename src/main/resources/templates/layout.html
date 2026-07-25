@@ -78,6 +78,13 @@
         </a>
       </div>
       <div class="sidebar-sidebar-spacer"></div>
+      <div class="sidebar-accordion-item"
+           th:classappend="${app == 'docs'} ? ' sidebar-active'">
+        <a class="sidebar-sidebar-item" th:href="@{/docs}" title="Docs" aria-label="Docs">
+          <div class="sidebar-sidebar-item-icon"><i class="fa fa-fw fa-book"></i></div>
+          <span>Docs</span>
+        </a>
+      </div>
     </nav>
     <div class="sidebar-footer">
       <div class="sidebar-accordion-item">
