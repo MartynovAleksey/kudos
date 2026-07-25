@@ -26,6 +26,7 @@ import com.k8spark.ui.service.HbaseService;
 import com.k8spark.ui.service.HbaseTableInfo;
 import com.k8spark.ui.service.HdfsService;
 import com.k8spark.ui.service.KyuubiService;
+import com.k8spark.ui.service.KyuubiSessionInfo;
 import com.k8spark.ui.service.OzoneService;
 import com.k8spark.ui.service.QueryResult;
 import com.k8spark.ui.service.SparkApplication;
@@ -147,6 +148,32 @@ public class ClusterController {
   @PostMapping("/sql/execute")
   QueryResult sqlExecute(@Valid @RequestBody SqlRequest request) throws Exception {
     return kyuubi.execute(request.sql(), MAX_RESULT_ROWS);
+  }
+
+  @GetMapping("/sessions")
+  List<KyuubiSessionInfo> sessions() {
+    return kyuubi.sessions();
+  }
+
+  @PostMapping("/sessions/start")
+  KyuubiSessionInfo startSession(@Valid @RequestBody SessionStartRequest request) throws Exception {
+    return kyuubi.start(request.name(), request.sparkParams());
+  }
+
+  @PostMapping("/sessions/stop")
+  void stopSession(@Valid @RequestBody SessionRequest request) {
+    kyuubi.stop(request.id());
+  }
+
+  @PostMapping("/sessions/restart")
+  KyuubiSessionInfo restartSession(@Valid @RequestBody SessionRestartRequest request)
+      throws Exception {
+    return kyuubi.restart(request.id(), request.sparkParams());
+  }
+
+  @PostMapping("/sessions/activate")
+  void activateSession(@Valid @RequestBody SessionRequest request) {
+    kyuubi.activate(request.id());
   }
 
   @PostMapping("/sql/export")
@@ -349,6 +376,12 @@ public class ClusterController {
   }
 
   record SqlRequest(@NotBlank String sql) {}
+
+  record SessionStartRequest(String name, String sparkParams) {}
+
+  record SessionRequest(@NotBlank String id) {}
+
+  record SessionRestartRequest(@NotBlank String id, String sparkParams) {}
 
   record PathRequest(@NotBlank String path) {}
 

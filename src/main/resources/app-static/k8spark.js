@@ -349,6 +349,110 @@
         execute();
       }
     });
+
+    /* -------------------------------------------------------- sessions */
+
+    var sessionsPanel = el('sessionsPanel');
+    var newSessionBtn = el('newSession');
+
+    function loadSessions() {
+      request('/api/sessions')
+        .then(renderSessions)
+        .catch(function (error) { showError(sessionsPanel, error); });
+    }
+
+    function act(url, body, message) {
+      send(url, body)
+        .then(function () { toast(message); loadSessions(); })
+        .catch(function (error) { toast(error.message || String(error)); });
+    }
+
+    function renderSessions(sessions) {
+      sessionsPanel.innerHTML = '';
+      if (!sessions.length) {
+        sessionsPanel.appendChild(
+          element('div', {
+            class: 'k8s-muted',
+            text: 'No sessions — queries run on the default engine.'
+          })
+        );
+        return;
+      }
+      sessions.forEach(function (session) {
+        var params = session.sparkParams
+          ? session.sparkParams.replace(/\r?\n/g, ', ')
+          : 'cluster defaults';
+        var row = element(
+          'div',
+          { class: 'k8s-session-row' + (session.active ? ' k8s-session-active' : '') },
+          [
+            element('span', { class: 'k8s-session-name' }, [
+              element('i', {
+                class: session.active ? 'fa fa-check-circle' : 'fa fa-circle-o'
+              }),
+              text(' ' + session.name)
+            ]),
+            element('span', { class: 'k8s-muted', title: params }, [
+              text(params.length > 70 ? params.substring(0, 70) + '…' : params)
+            ]),
+            element('span', { class: 'k8s-row-actions' }, [
+              session.active
+                ? null
+                : button('activate', 'k8s-link', function () {
+                    act('/api/sessions/activate', { id: session.id }, 'Session activated');
+                  }),
+              button('restart', 'k8s-link', function () { restartSession(session); }),
+              button('stop', 'k8s-link k8s-link-danger', function () {
+                act('/api/sessions/stop', { id: session.id }, 'Session stopped');
+              })
+            ])
+          ]
+        );
+        sessionsPanel.appendChild(row);
+      });
+    }
+
+    function sessionForm(session, title, url) {
+      var name = textInput(session ? session.name : '', 'session name');
+      if (session) {
+        name.disabled = true;
+      }
+      var params = element('textarea', {
+        class: 'k8s-input k8s-textarea',
+        placeholder: 'One per line, e.g.\nspark.executor.memory=2g\nspark.executor.cores=2'
+      });
+      params.value = session ? session.sparkParams || '' : '';
+      var body = element('div', {}, [field('Name', name), field('Spark parameters', params)]);
+      openModal(title, body, [
+        { label: 'Cancel', action: function (h) { h.close(); } },
+        {
+          label: 'Start',
+          class: 'btn btn-small btn-primary',
+          action: function (h) {
+            h.close();
+            toast('Starting session (launching engine)…');
+            var payload = session
+              ? { id: session.id, sparkParams: params.value }
+              : { name: name.value, sparkParams: params.value };
+            send(url, payload)
+              .then(function () { toast('Session ready'); loadSessions(); })
+              .catch(function (error) { toast(error.message || String(error)); loadSessions(); });
+          }
+        }
+      ]);
+    }
+
+    function restartSession(session) {
+      sessionForm(session, 'Restart session', '/api/sessions/restart');
+    }
+
+    if (newSessionBtn) {
+      newSessionBtn.addEventListener('click', function () {
+        sessionForm(null, 'New session', '/api/sessions/start');
+      });
+    }
+
+    loadSessions();
   }
 
   /* ------------------------------------------------------- storage browsers */

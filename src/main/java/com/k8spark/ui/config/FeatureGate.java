@@ -45,7 +45,9 @@ public class FeatureGate implements HandlerInterceptor {
 
   /** The module gating a path, or {@code null} when the path is not module-specific. */
   private Boolean enabledFor(String path) {
-    if (path.equals("/editor") || path.startsWith("/api/sql")) {
+    if (path.equals("/editor")
+        || path.startsWith("/api/sql")
+        || path.startsWith("/api/sessions")) {
       return features.editor();
     }
     if (path.equals("/filebrowser") || path.startsWith("/api/hdfs")) {

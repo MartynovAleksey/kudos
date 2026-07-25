@@ -31,6 +31,20 @@
 
   <div class="card card-small">
     <div class="card-body">
+      <div class="k8s-table-head">
+        <h4 class="card-heading simple">Sessions</h4>
+        <button id="newSession" class="btn btn-small btn-primary" type="button">
+          <i class="fa fa-plus"></i> New session
+        </button>
+      </div>
+      <div id="sessionsPanel">
+        <div class="k8s-muted">No sessions — queries run on the default engine.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card card-small">
+    <div class="card-body">
       <textarea id="queryField" class="k8s-editor-area" tabindex="1"
                 spellcheck="false"
                 placeholder="Example: SELECT 40 + 2 AS result"></textarea>

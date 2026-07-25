@@ -696,3 +696,23 @@
   border-radius: 3px;
   font-size: 12px;
 }
+
+/* Kyuubi sessions panel on the editor. */
+.k8s-session-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 8px;
+  border-bottom: 1px solid #eee;
+}
+.k8s-session-row.k8s-session-active {
+  background-color: #eef7fb;
+}
+.k8s-session-name {
+  font-weight: 500;
+  white-space: nowrap;
+}
+.k8s-session-active .k8s-session-name .fa {
+  color: #3fae2a;
+}
