@@ -16,18 +16,33 @@
 
 package com.k8spark.ui.config;
 
+import com.k8spark.ui.audit.AuditInterceptor;
+import com.k8spark.ui.audit.AuditService;
 import java.time.Duration;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.CacheControl;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
  * Serves the vendored Hue stylesheets and fonts under the same paths Hue itself
- * uses, so the upstream CSS resolves its relative font references unchanged.
+ * uses, so the upstream CSS resolves its relative font references unchanged, and
+ * audits every API request.
  */
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
+
+  private final AuditService audit;
+
+  public WebConfig(AuditService audit) {
+    this.audit = audit;
+  }
+
+  @Override
+  public void addInterceptors(InterceptorRegistry registry) {
+    registry.addInterceptor(new AuditInterceptor(audit)).addPathPatterns("/api/**");
+  }
 
   @Override
   public void addResourceHandlers(ResourceHandlerRegistry registry) {
