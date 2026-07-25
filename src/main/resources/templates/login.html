@@ -20,6 +20,8 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>k8spark-ui - Sign in</title>
+  <link rel="icon" type="image/png" sizes="64x64" th:href="@{/static/app/brand/favicon-64.png}"/>
+  <link rel="icon" type="image/png" sizes="32x32" th:href="@{/static/app/brand/favicon-32.png}"/>
   <link rel="stylesheet" th:href="@{/static/desktop/css/roboto.css}"/>
   <link rel="stylesheet" th:href="@{/static/desktop/ext/css/font-awesome.min.css}"/>
   <link rel="stylesheet" th:href="@{/static/desktop/ext/css/cui/cui.css}"/>
@@ -34,9 +36,7 @@
   <div class="login-container">
     <form method="POST" th:action="@{/login}" autocomplete="off">
       <div class="logo">
-        <span style="color: #fff; font-size: 34px; font-weight: 300; letter-spacing: 2px;">
-          k8spark-ui
-        </span>
+        <img class="login-logo" th:src="@{/static/app/brand/logo-name.png}" alt="KUDOS"/>
       </div>
       <h3>Query. Explore. Repeat.</h3>
 

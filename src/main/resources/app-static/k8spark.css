@@ -50,10 +50,11 @@
 
 .sidebar-header {
   height: 56px;
-  padding: 0 0 0 11px;
+  padding: 0;
   background-color: #0b7fad;
   display: flex;
   align-items: center;
+  justify-content: center;
 }
 
 .sidebar-header a,
@@ -63,6 +64,14 @@
   font-weight: 500;
   letter-spacing: 0.5px;
   text-decoration: none;
+  display: flex;
+  align-items: center;
+}
+
+.sidebar-logo {
+  height: 36px;
+  width: auto;
+  display: block;
 }
 
 .sidebar-body {
@@ -373,4 +382,15 @@
 .k8s-ticket-timer.k8s-ticket-expired .fa,
 .k8s-ticket-timer.k8s-ticket-expired .k8s-ticket-remaining {
   color: #ff8a80;
+}
+
+/* KUDOS wordmark on the login form, replacing the old text logotype. Sized by
+   height to sit inside the vendored .logo box (70px tall); width follows the
+   ~2.8:1 aspect and stays well within the form column. */
+.login-logo {
+  display: block;
+  height: 64px;
+  width: auto;
+  max-width: 100%;
+  margin: 0 auto;
 }

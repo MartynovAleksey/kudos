@@ -22,6 +22,8 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title th:text="'k8spark-ui - ' + ${title}">k8spark-ui</title>
+  <link rel="icon" type="image/png" sizes="64x64" th:href="@{/static/app/brand/favicon-64.png}"/>
+  <link rel="icon" type="image/png" sizes="32x32" th:href="@{/static/app/brand/favicon-32.png}"/>
   <link rel="stylesheet" th:href="@{/static/desktop/css/roboto.css}"/>
   <link rel="stylesheet" th:href="@{/static/desktop/ext/css/font-awesome.min.css}"/>
   <link rel="stylesheet" th:href="@{/static/desktop/ext/css/cui/cui.css}"/>
@@ -35,7 +37,9 @@
 <div class="hue-page">
   <div class="sidebar sidebar-collapsed">
     <div class="sidebar-header">
-      <a th:href="@{/editor}">k8s</a>
+      <a th:href="@{/editor}" aria-label="KUDOS">
+        <img class="sidebar-logo" th:src="@{/static/app/brand/logo-mark.png}" alt="KUDOS"/>
+      </a>
     </div>
     <nav class="sidebar-body">
       <div class="sidebar-accordion-item"
