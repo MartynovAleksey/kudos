@@ -165,7 +165,9 @@ public class LdapSecurityConfig {
                 login
                     .loginPage("/login")
                     .loginProcessingUrl("/login")
-                    .defaultSuccessUrl("/editor", true)
+                    // "/" resolves to the first enabled screen, so login works
+                    // even when the editor module is disabled.
+                    .defaultSuccessUrl("/", true)
                     // Tell the login page how many tries remain, or how long the
                     // account is locked, so the user is not left guessing.
                     .failureHandler(

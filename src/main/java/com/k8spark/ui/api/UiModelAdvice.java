@@ -16,25 +16,34 @@
 
 package com.k8spark.ui.api;
 
+import com.k8spark.ui.config.FeaturesProperties;
 import com.k8spark.ui.config.UiProperties;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ModelAttribute;
 
 /**
- * Puts UI-wide configuration — currently the optional top banner — on every
- * rendered screen so the layout can show it without each controller passing it.
+ * Puts UI-wide configuration on every rendered screen — the optional top banner
+ * and the enabled feature modules — so the layout can show or hide chrome
+ * without each controller passing it.
  */
 @ControllerAdvice(assignableTypes = UiController.class)
 public class UiModelAdvice {
 
   private final UiProperties ui;
+  private final FeaturesProperties features;
 
-  public UiModelAdvice(UiProperties ui) {
+  public UiModelAdvice(UiProperties ui, FeaturesProperties features) {
     this.ui = ui;
+    this.features = features;
   }
 
   @ModelAttribute("bannerHtml")
   String bannerHtml() {
     return ui.bannerHtml();
+  }
+
+  @ModelAttribute("features")
+  FeaturesProperties features() {
+    return features;
   }
 }

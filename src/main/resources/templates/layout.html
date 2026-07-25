@@ -42,35 +42,35 @@
       </a>
     </div>
     <nav class="sidebar-body">
-      <div class="sidebar-accordion-item"
+      <div class="sidebar-accordion-item" th:if="${features.editor}"
            th:classappend="${app == 'editor'} ? ' sidebar-active'">
         <a class="sidebar-sidebar-item" th:href="@{/editor}" title="Editor" aria-label="Editor">
           <div class="sidebar-sidebar-item-icon"><i class="fa fa-fw fa-code"></i></div>
           <span>Editor</span>
         </a>
       </div>
-      <div class="sidebar-accordion-item"
+      <div class="sidebar-accordion-item" th:if="${features.files}"
            th:classappend="${app == 'filebrowser'} ? ' sidebar-active'">
         <a class="sidebar-sidebar-item" th:href="@{/filebrowser}" title="Files" aria-label="Files">
           <div class="sidebar-sidebar-item-icon"><i class="fa fa-fw fa-files-o"></i></div>
           <span>Files</span>
         </a>
       </div>
-      <div class="sidebar-accordion-item"
+      <div class="sidebar-accordion-item" th:if="${features.ozone}"
            th:classappend="${app == 'ozone'} ? ' sidebar-active'">
         <a class="sidebar-sidebar-item" th:href="@{/ozone}" title="Ozone" aria-label="Ozone">
           <div class="sidebar-sidebar-item-icon"><i class="fa fa-fw fa-cloud"></i></div>
           <span>Ozone</span>
         </a>
       </div>
-      <div class="sidebar-accordion-item"
+      <div class="sidebar-accordion-item" th:if="${features.hbase}"
            th:classappend="${app == 'hbase'} ? ' sidebar-active'">
         <a class="sidebar-sidebar-item" th:href="@{/hbase}" title="HBase" aria-label="HBase">
           <div class="sidebar-sidebar-item-icon"><i class="fa fa-fw fa-database"></i></div>
           <span>HBase</span>
         </a>
       </div>
-      <div class="sidebar-accordion-item"
+      <div class="sidebar-accordion-item" th:if="${features.jobs}"
            th:classappend="${app == 'jobs'} ? ' sidebar-active'">
         <a class="sidebar-sidebar-item" th:href="@{/jobs}" title="Jobs" aria-label="Jobs">
           <div class="sidebar-sidebar-item-icon"><i class="fa fa-fw fa-tasks"></i></div>

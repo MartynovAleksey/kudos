@@ -16,6 +16,7 @@
 
 package com.k8spark.ui.api;
 
+import com.k8spark.ui.config.FeaturesProperties;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,11 +24,17 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 
 /**
- * Renders the four application screens. Each one is a thin shell: the data is
- * fetched by the browser from {@link ClusterController} under the same session.
+ * Renders the application screens. Each one is a thin shell: the data is fetched
+ * by the browser from {@link ClusterController} under the same session.
  */
 @Controller
 public class UiController {
+
+  private final FeaturesProperties features;
+
+  public UiController(FeaturesProperties features) {
+    this.features = features;
+  }
 
   @GetMapping("/login")
   String login() {
@@ -36,7 +43,23 @@ public class UiController {
 
   @GetMapping("/")
   String index() {
-    return "redirect:/editor";
+    // Land on the first enabled screen, so a disabled editor is not a dead end.
+    if (features.editor()) {
+      return "redirect:/editor";
+    }
+    if (features.files()) {
+      return "redirect:/filebrowser";
+    }
+    if (features.ozone()) {
+      return "redirect:/ozone";
+    }
+    if (features.hbase()) {
+      return "redirect:/hbase";
+    }
+    if (features.jobs()) {
+      return "redirect:/jobs";
+    }
+    return "redirect:/docs";
   }
 
   @GetMapping("/editor")

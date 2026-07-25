@@ -257,6 +257,9 @@ services:
       - app-logs:/var/log/k8spark-ui
     environment:
       SPRING_CONFIG_ADDITIONAL_LOCATION: file:/etc/k8spark-ui/
+      # Log directory for the container (the app-logs volume above). Kept out of
+      # the shared config file so local runs default to ./logs instead.
+      K8SPARK_LOGGING_DIR: /var/log/k8spark-ui
       JAVA_TOOL_OPTIONS: >-
         -Djava.security.krb5.conf=/run/secrets-k8spark/krb5.conf
         --add-exports=java.security.jgss/sun.security.krb5=ALL-UNNAMED

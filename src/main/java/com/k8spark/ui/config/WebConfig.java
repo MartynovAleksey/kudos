@@ -34,13 +34,17 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 public class WebConfig implements WebMvcConfigurer {
 
   private final AuditService audit;
+  private final FeaturesProperties features;
 
-  public WebConfig(AuditService audit) {
+  public WebConfig(AuditService audit, FeaturesProperties features) {
     this.audit = audit;
+    this.features = features;
   }
 
   @Override
   public void addInterceptors(InterceptorRegistry registry) {
+    // Gate disabled modules before anything else, then audit what runs.
+    registry.addInterceptor(new FeatureGate(features));
     registry.addInterceptor(new AuditInterceptor(audit)).addPathPatterns("/api/**");
   }
 

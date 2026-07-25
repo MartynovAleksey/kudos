@@ -75,6 +75,9 @@
           <tr><td><code>k8spark.cluster.spark-history-url</code></td><td>Spark History Server base URL.</td></tr>
           <tr><td><code>k8spark.cluster.kerberos-principal</code></td><td>User principal template, e.g. <code>{user}@REALM</code>.</td></tr>
           <tr><td><code>k8spark.ui.banner-html</code></td><td>Optional trusted HTML shown as a top banner.</td></tr>
+          <tr><td><code>k8spark.features.*</code></td><td>Enable/disable modules (editor, files, ozone, hbase, jobs). A disabled module is hidden and its API answers 404.</td></tr>
+          <tr><td><code>k8spark.security.*</code></td><td>Login brute-force limit and lockout duration.</td></tr>
+          <tr><td><code>k8spark.audit.*</code></td><td>Audit log; optional Kafka publishing.</td></tr>
           <tr><td><code>server.ssl.*</code></td><td>TLS keystore for HTTPS (port 8443).</td></tr>
           <tr><td><code>spring.ldap.*</code></td><td>LDAP URL, base DN and user DN pattern for login.</td></tr>
           <tr><td><code>logging.*</code></td><td>Log levels and file output (see below).</td></tr>
