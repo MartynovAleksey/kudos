@@ -16,6 +16,7 @@
 
 package com.k8spark.ui.api;
 
+import com.k8spark.ui.service.ExcelResults;
 import com.k8spark.ui.service.FileEntry;
 import com.k8spark.ui.service.HbaseCell;
 import com.k8spark.ui.service.HbaseColumnFamily;
@@ -29,6 +30,7 @@ import com.k8spark.ui.service.OzoneService;
 import com.k8spark.ui.service.QueryResult;
 import com.k8spark.ui.service.SparkApplication;
 import com.k8spark.ui.service.SparkHistoryService;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -53,6 +55,9 @@ public class ClusterController {
 
   /** Caps a result set so the editor grid stays responsive. */
   private static final int MAX_RESULT_ROWS = 1000;
+
+  /** A larger cap for the Excel export, which does not render in the browser. */
+  private static final int EXPORT_MAX_ROWS = 100_000;
 
   private final HdfsService hdfs;
   private final KyuubiService kyuubi;
@@ -104,6 +109,16 @@ public class ClusterController {
   @PostMapping("/sql/execute")
   QueryResult sqlExecute(@Valid @RequestBody SqlRequest request) throws Exception {
     return kyuubi.execute(request.sql(), MAX_RESULT_ROWS);
+  }
+
+  @PostMapping("/sql/export")
+  void sqlExport(@Valid @RequestBody SqlRequest request, HttpServletResponse response)
+      throws Exception {
+    QueryResult result = kyuubi.execute(request.sql(), EXPORT_MAX_ROWS);
+    response.setContentType(
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    response.setHeader("Content-Disposition", "attachment; filename=\"query-results.xlsx\"");
+    ExcelResults.write(result, response.getOutputStream());
   }
 
   @GetMapping("/hbase/tables")

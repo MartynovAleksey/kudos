@@ -302,7 +302,48 @@
         });
     }
 
+    var exportBtn = el('exportExcel');
+
+    function exportExcel() {
+      var sql = query.value.trim();
+      if (!sql) {
+        return;
+      }
+      exportBtn.disabled = true;
+      fetch('/api/sql/export', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sql: sql })
+      })
+        .then(function (response) {
+          if (!response.ok) {
+            return response.text().then(function (body) {
+              throw new Error(body || 'HTTP ' + response.status);
+            });
+          }
+          return response.blob();
+        })
+        .then(function (blob) {
+          var url = URL.createObjectURL(blob);
+          var link = document.createElement('a');
+          link.href = url;
+          link.download = 'query-results.xlsx';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+        })
+        .catch(function (error) {
+          showError(results, error);
+        })
+        .then(function () {
+          exportBtn.disabled = false;
+        });
+    }
+
     run.addEventListener('click', execute);
+    exportBtn.addEventListener('click', exportExcel);
     query.addEventListener('keydown', function (event) {
       if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
         execute();
