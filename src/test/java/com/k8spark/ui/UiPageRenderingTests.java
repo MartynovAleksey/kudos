@@ -18,6 +18,7 @@ package com.k8spark.ui;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import org.junit.jupiter.api.Test;
@@ -34,8 +35,7 @@ import org.springframework.test.web.servlet.MockMvc;
  */
 @SpringBootTest(
     properties = {
-      "k8spark.cluster.kerberos-principal=test@EXAMPLE.COM",
-      "k8spark.cluster.kerberos-keytab=/tmp/test.keytab"
+      "k8spark.cluster.kerberos-principal={user}@EXAMPLE.COM"
     })
 @AutoConfigureMockMvc
 class UiPageRenderingTests {
@@ -53,6 +53,16 @@ class UiPageRenderingTests {
   @Test
   void anonymousUserIsSentToTheLoginPage() throws Exception {
     mockMvc.perform(get("/editor")).andExpect(status().is3xxRedirection());
+  }
+
+  @Test
+  void anonymousApiCallGetsABasicChallengeNotARedirect() throws Exception {
+    // Scripted clients rely on /api answering with a 401 Basic challenge; a
+    // redirect to the login page would break them.
+    mockMvc
+        .perform(get("/api/hbase/tables"))
+        .andExpect(status().isUnauthorized())
+        .andExpect(header().string("WWW-Authenticate", org.hamcrest.Matchers.startsWith("Basic")));
   }
 
   @Test

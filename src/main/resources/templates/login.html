@@ -46,6 +46,9 @@
       <div class="alert alert-info center" th:if="${param.logout}">
         You have been signed out.
       </div>
+      <div class="alert alert-info center" th:if="${param.expired}">
+        Your Kerberos ticket expired. Please sign in again.
+      </div>
 
       <div class="text-input">
         <input type="text" name="username" placeholder="Username" autocapitalize="off"

@@ -24,5 +24,5 @@ RUN echo 'Compiling k8spark-ui...' && \
 FROM eclipse-temurin:21-jre
 WORKDIR /app
 COPY --from=build /workspace/target/k8spark-ui-0.1.0.jar app.jar
-EXPOSE 8080
+EXPOSE 8443
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

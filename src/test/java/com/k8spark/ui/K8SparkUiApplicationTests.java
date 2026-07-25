@@ -25,8 +25,7 @@ import org.springframework.context.ApplicationContext;
 
 @SpringBootTest(
     properties = {
-      "k8spark.cluster.kerberos-principal=test@EXAMPLE.COM",
-      "k8spark.cluster.kerberos-keytab=/tmp/test.keytab"
+      "k8spark.cluster.kerberos-principal={user}@EXAMPLE.COM"
     })
 class K8SparkUiApplicationTests {
 

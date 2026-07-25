@@ -643,7 +643,66 @@
     load();
   }
 
+  function pad(value) {
+    return (value < 10 ? '0' : '') + value;
+  }
+
+  // Counts the Kerberos ticket down and signs the user out when it runs out.
+  // The deadline is anchored to page load plus the seconds the server had left,
+  // so the browser's own clock offset never shifts it.
+  function initTicketTimer() {
+    var timer = el('k8s-ticket-timer');
+    if (!timer) {
+      return;
+    }
+    var remaining = parseInt(timer.getAttribute('data-remaining'), 10);
+    if (isNaN(remaining)) {
+      return;
+    }
+    var output = el('k8s-ticket-remaining');
+    var logoutUrl = timer.getAttribute('data-logout');
+    var deadline = Date.now() + remaining * 1000;
+    var signedOut = false;
+
+    function tick() {
+      var left = Math.round((deadline - Date.now()) / 1000);
+      if (left <= 0) {
+        output.textContent = '00:00:00';
+        timer.classList.add('k8s-ticket-expired');
+        if (!signedOut) {
+          signedOut = true;
+          // The session is already worthless; sign out so the ticket is wiped
+          // and the login page explains why.
+          window.location.href = logoutUrl;
+        }
+        return;
+      }
+      // Warn in the last five minutes.
+      timer.classList.toggle('k8s-ticket-warning', left <= 300);
+      var hours = Math.floor(left / 3600);
+      var minutes = Math.floor((left % 3600) / 60);
+      var seconds = left % 60;
+      output.textContent = pad(hours) + ':' + pad(minutes) + ':' + pad(seconds);
+    }
+
+    tick();
+    timer.dataset.intervalId = String(setInterval(tick, 1000));
+  }
+
+  // A page restored from the back/forward cache keeps its old JavaScript state,
+  // so the ticket countdown would go on running from the deadline it had before
+  // the user signed out and back in. Safari caches pages this way even when they
+  // are marked no-store, so re-fetch from the server on a cached restore: that
+  // re-seeds the timer with the new ticket, or bounces a signed-out user to the
+  // login page. A normal load is not persisted and is left alone.
+  window.addEventListener('pageshow', function (event) {
+    if (event.persisted) {
+      window.location.reload();
+    }
+  });
+
   document.addEventListener('DOMContentLoaded', function () {
+    initTicketTimer();
     var app = document.body.getAttribute('data-app');
     if (app === 'editor') {
       initEditor();

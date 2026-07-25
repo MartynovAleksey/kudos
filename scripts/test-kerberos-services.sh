@@ -49,6 +49,15 @@ container_id() {
 
 freeipa_id="$(container_id freeipa)"
 hdfs_id="$(container_id hdfs)"
+# The application is served over TLS by a certificate this realm's CA issued.
+# Verifying against that CA, rather than passing --insecure, is what makes the
+# checks below evidence that TLS is actually configured correctly.
+app_ca="$(mktemp)"
+trap 'rm -f "$app_ca"' EXIT
+run_docker exec "$freeipa_id" cat /shared/ca.crt >"$app_ca"
+app_base="https://app.test.local:8443"
+# The certificate names app.test.local; published ports are on the loopback.
+app_resolve=(--resolve "app.test.local:8443:127.0.0.1" --cacert "$app_ca")
 kyuubi_id="$(container_id kyuubi)"
 ozone_id="$(container_id ozone)"
 hbase_id="$(container_id hbase)"
@@ -145,7 +154,7 @@ echo "PASS HBase Kerberos RPC put/get"
 # macOS resolver, which under heavy container load can block far longer than
 # curl's --max-time and stall an otherwise bounded check.
 app_health="$(curl --fail --silent --connect-timeout 5 --max-time 15 \
-  http://127.0.0.1:8081/actuator/health)"
+  "${app_resolve[@]}" "$app_base/actuator/health")"
 grep -q '"status"[[:space:]]*:[[:space:]]*"UP"' <<<"$app_health"
 hue_page="$(curl --fail --silent --location --connect-timeout 5 --max-time 30 \
   http://127.0.0.1:8082/)"
@@ -157,23 +166,23 @@ echo "PASS Spring health + Docker Hub Hue reference"
 # here: the container CLIs carry their own copies and stay green.
 app_api() {
   curl --fail --silent --connect-timeout 5 --max-time 60 \
-    -u "admin:$admin_password" "$@"
+    "${app_resolve[@]}" -u "admin:$admin_password" "$@"
 }
 
-app_api --get --data-urlencode 'path=/' http://127.0.0.1:8081/api/hdfs/list \
+app_api --get --data-urlencode 'path=/' $app_base/api/hdfs/list \
   | grep -q '\['
 echo "PASS Spring API HDFS listing"
 
-app_api --get --data-urlencode 'path=/' http://127.0.0.1:8081/api/ozone/list \
+app_api --get --data-urlencode 'path=/' $app_base/api/ozone/list \
   | grep -q '\['
 echo "PASS Spring API Ozone listing"
 
-app_api http://127.0.0.1:8081/api/hbase/tables | grep -q '\['
+app_api $app_base/api/hbase/tables | grep -q '\['
 echo "PASS Spring API HBase tables"
 
 app_api -H 'Content-Type: application/json' \
   -d '{"sql":"SELECT 40 + 2 AS result"}' \
-  http://127.0.0.1:8081/api/sql/execute \
+  $app_base/api/sql/execute \
   | grep -q '42'
 echo "PASS Spring API Kyuubi SQL"
 
@@ -201,7 +210,7 @@ echo "PASS Spark event log written to Ozone"
 deadline=$((SECONDS + 180))
 spark_jobs_ok=0
 while (( SECONDS < deadline )); do
-  if app_api 'http://127.0.0.1:8081/api/spark/applications?limit=10' \
+  if app_api "$app_base/api/spark/applications?limit=10" \
       | grep -q '"id"'; then
     spark_jobs_ok=1
     break
@@ -215,7 +224,7 @@ fi
 echo "PASS Spring API Spark History applications"
 
 # The jobs screen drills into a run through this application's proxy, so the
-# Spark UI and its assets have to come back from port 8081, not 18080.
+# Spark UI and its assets have to come back from the application, not 18080.
 #
 # Only a completed application is usable: the history server serves a run's
 # pages after it has replayed the event log, and the engine this script just
@@ -227,21 +236,22 @@ proxy_status=""
 deadline=$((SECONDS + 300))
 while (( SECONDS < deadline )); do
   spark_app_id="$(
-    app_api 'http://127.0.0.1:8081/api/spark/applications?limit=20' \
+    app_api "$app_base/api/spark/applications?limit=20" \
       | tr '}' '\n' \
       | grep '"completed":true' \
       | sed -n 's/.*"id":"\([^"]*\)".*/\1/p' \
       | tail -1
   )"
   if [[ -n "$spark_app_id" ]]; then
-    proxy_url="http://127.0.0.1:8081/spark-ui/history/$spark_app_id/jobs/"
+    proxy_url="$app_base/spark-ui/history/$spark_app_id/jobs/"
     # The first request for a run makes the history server replay its event
     # log, which takes far longer than serving the page afterwards.
     proxy_status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
-      --connect-timeout 5 --max-time 120 -u "admin:$admin_password" "$proxy_url")"
+      --connect-timeout 5 --max-time 120 "${app_resolve[@]}" \
+      -u "admin:$admin_password" "$proxy_url")"
     if [[ "$proxy_status" == "200" ]]; then
       proxied_page="$(curl --fail --silent --connect-timeout 5 --max-time 120 \
-        -u "admin:$admin_password" "$proxy_url")"
+        "${app_resolve[@]}" -u "admin:$admin_password" "$proxy_url")"
       [[ -n "$proxied_page" ]] && break
     fi
   fi
@@ -264,20 +274,58 @@ echo "PASS Spark UI proxied through the app"
 # match its declared length shows up here and nowhere else.
 while read -r asset; do
   [[ -z "$asset" ]] && continue
-  app_api --output /dev/null "http://127.0.0.1:8081$asset"
+  app_api --output /dev/null "$app_base$asset"
 done < <(grep -oE '(href|src)="/spark-ui/static/[^"]*"' <<<"$proxied_page" \
   | sed 's/.*="//;s/"$//' | sort -u)
 echo "PASS Spark UI assets proxied through the app"
 
 logs_headers="$(app_api --output /dev/null --dump-header - \
-  "http://127.0.0.1:8081/spark-ui/api/v1/applications/$spark_app_id/logs")"
+  "$app_base/spark-ui/api/v1/applications/$spark_app_id/logs")"
 grep -qi 'content-disposition:.*attachment' <<<"$logs_headers"
 echo "PASS Spark event log download through the app"
 
 # The UI shell has to render for a signed-in browser session as well.
-curl --fail --silent --connect-timeout 5 --max-time 15 http://127.0.0.1:8081/login \
+curl --fail --silent --connect-timeout 5 --max-time 15 \
+  "${app_resolve[@]}" "$app_base/login" \
   | grep -q 'Sign In'
 echo "PASS Spring UI login page"
+
+# A browser signs in once with the form and then reaches /api on the session
+# cookie alone. A regression here re-challenges with Basic, and the browser
+# pops a second, native login box on the first data fetch.
+session_jar="$(mktemp)"
+trap 'rm -f "$app_ca" "$session_jar"' EXIT
+login_csrf="$(curl --fail --silent "${app_resolve[@]}" -c "$session_jar" "$app_base/login" \
+  | grep -oE 'name="_csrf" value="[^"]*"' | sed 's/.*value="//;s/"$//')"
+curl --fail --silent --output /dev/null "${app_resolve[@]}" -b "$session_jar" -c "$session_jar" \
+  --data-urlencode "username=admin" \
+  --data-urlencode "password=$admin_password" \
+  --data-urlencode "_csrf=$login_csrf" \
+  "$app_base/login"
+session_headers="$(curl --silent --output /dev/null --dump-header - \
+  "${app_resolve[@]}" -b "$session_jar" "$app_base/api/hdfs/list?path=/")"
+if ! grep -qE '^HTTP/[0-9.]+ 200' <<<"$session_headers" \
+  || grep -qi '^www-authenticate:' <<<"$session_headers"; then
+  echo "A form-login session did not authenticate /api without a Basic challenge" >&2
+  printf '%s\n' "$session_headers" >&2
+  exit 1
+fi
+echo "PASS API served on the form-login session, no second Basic prompt"
+
+# The signed-in page carries the ticket countdown, and signing out (a plain GET,
+# as the sidebar link and the countdown both use) ends the session.
+curl --fail --silent "${app_resolve[@]}" -b "$session_jar" "$app_base/editor" \
+  | grep -q 'id="k8s-ticket-timer"'
+logout_status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+  "${app_resolve[@]}" -b "$session_jar" -c "$session_jar" \
+  -H 'Accept: text/html' "$app_base/logout")"
+after_logout="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+  "${app_resolve[@]}" -b "$session_jar" "$app_base/editor")"
+if [[ "$logout_status" != "302" || "$after_logout" != "302" ]]; then
+  echo "Sign out did not end the session (logout=$logout_status, after=$after_logout)" >&2
+  exit 1
+fi
+echo "PASS ticket countdown shown and sign out ends the session"
 
 # Kyuubi serves its web UI under /ui and redirects the root there.
 curl --fail --silent --location --output /dev/null \

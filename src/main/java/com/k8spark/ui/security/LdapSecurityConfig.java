@@ -16,43 +16,123 @@
 
 package com.k8spark.ui.security;
 
+import jakarta.servlet.DispatcherType;
+import javax.security.auth.login.LoginException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.ldap.core.support.BaseLdapPathContextSource;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.ldap.LdapBindAuthenticationManagerFactory;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
+import org.springframework.security.web.authentication.logout.SecurityContextLogoutHandler;
 import org.springframework.security.web.authentication.www.BasicAuthenticationEntryPoint;
-import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.context.SecurityContextHolderFilter;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 
 @Configuration
 public class LdapSecurityConfig {
 
+  /**
+   * Authenticates against LDAP and then, with the same password, obtains the
+   * user's Kerberos ticket. Both have to succeed: without a ticket the session
+   * could not reach a single one of the cluster services, so an authenticated
+   * user with no credentials to use would be a worse outcome than a refusal.
+   */
   @Bean
   AuthenticationManager ldapAuthenticationManager(
       BaseLdapPathContextSource source,
-      @Value("${spring.ldap.user-dn-pattern}") String userDnPattern) {
+      @Value("${spring.ldap.user-dn-pattern}") String userDnPattern,
+      KerberosTicketService tickets) {
     var factory = new LdapBindAuthenticationManagerFactory(source);
     factory.setUserDnPatterns(userDnPattern);
-    return factory.createAuthenticationManager();
+    AuthenticationManager ldap = factory.createAuthenticationManager();
+
+    return authentication -> {
+      Authentication bound = ldap.authenticate(authentication);
+      Object presented = authentication.getCredentials();
+      if (presented == null) {
+        throw new BadCredentialsException("No password to obtain a Kerberos ticket with");
+      }
+      try {
+        KerberosTicketService.IssuedTicket ticket =
+            tickets.login(bound.getName(), presented.toString());
+        return new KerberosAuthentication(
+            bound.getName(), ticket.subject(), ticket.expiresAt(), bound.getAuthorities());
+      } catch (LoginException failure) {
+        throw new BadCredentialsException(
+            "LDAP accepted the password but the KDC refused it", failure);
+      }
+    };
+  }
+
+  /**
+   * The scripted clients documented in the README call {@code /api} with HTTP
+   * Basic and expect a 401 challenge, not a redirect to a login page. Giving
+   * {@code /api} its own chain keeps that contract exact: a single chain has to
+   * choose one entry point from the request, and the browser's Accept header
+   * made it pick the wrong one for token-free API calls.
+   *
+   * <p>The chain reuses the session created at form login rather than being
+   * stateless. The UI fetches {@code /api} from the browser with its session
+   * cookie; a stateless chain ignored that cookie, answered 401 Basic, and the
+   * browser popped a second, native login box. Honouring the existing session
+   * lets a signed-in browser through with no challenge, while a script that
+   * arrives with neither session nor credentials still gets the 401 (it never
+   * creates a session of its own — {@code NEVER}, not {@code IF_REQUIRED}).
+   */
+  @Bean
+  @Order(1)
+  SecurityFilterChain apiSecurity(
+      HttpSecurity http, AuthenticationManager ldapAuthenticationManager) throws Exception {
+    return http
+        .securityMatcher("/api/**")
+        // Token-free so curl and scripts stay simple: a call carries Basic, or a
+        // browser carries the session cookie from its form login.
+        .csrf(csrf -> csrf.disable())
+        .authenticationManager(ldapAuthenticationManager)
+        .authorizeHttpRequests(authorization -> authorization.anyRequest().authenticated())
+        .httpBasic(basic -> basic.authenticationEntryPoint(basicAuthenticationEntryPoint()))
+        // Pin the challenge to Basic explicitly. Without this a missing
+        // credential is handled by the default entry point, which saves the
+        // request and redirects to the login page instead of answering 401.
+        .exceptionHandling(
+            handling -> handling.authenticationEntryPoint(basicAuthenticationEntryPoint()))
+        .requestCache(cache -> cache.disable())
+        // Use the form-login session if the browser already has one, but never
+        // start one for a script: an anonymous curl still gets a clean 401.
+        .sessionManagement(
+            session ->
+                session.sessionCreationPolicy(
+                    org.springframework.security.config.http.SessionCreationPolicy.NEVER))
+        // A browser call carrying a session whose ticket has expired is refused
+        // and the session dropped, rather than served from a ticket the cluster
+        // would no longer honour.
+        .addFilterAfter(new TicketExpiryFilter(), SecurityContextHolderFilter.class)
+        .build();
   }
 
   @Bean
-  SecurityFilterChain security(
+  @Order(2)
+  SecurityFilterChain uiSecurity(
       HttpSecurity http, AuthenticationManager ldapAuthenticationManager) throws Exception {
     return http
-        // The UI posts forms with a token; /api stays token-free so the scripted
-        // Basic-auth clients documented in the README keep working unchanged.
-        .csrf(csrf -> csrf.ignoringRequestMatchers("/api/**"))
         .authenticationManager(ldapAuthenticationManager)
         .authorizeHttpRequests(
             authorization ->
                 authorization
-                    .requestMatchers("/actuator/health", "/login", "/static/**")
+                    // A 401 from the API chain becomes a container ERROR
+                    // dispatch to /error; without this it would be re-secured
+                    // here and answered with a login redirect instead.
+                    .dispatcherTypeMatchers(DispatcherType.ERROR)
+                    .permitAll()
+                    .requestMatchers("/actuator/health", "/login", "/static/**", "/error")
                     .permitAll()
                     .anyRequest()
                     .authenticated())
@@ -67,20 +147,28 @@ public class LdapSecurityConfig {
         // The job detail screen embeds the proxied Spark UI in an iframe from
         // this same origin, which the default DENY would block.
         .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()))
-        .logout(logout -> logout.logoutSuccessUrl("/login?logout").permitAll())
-        // Retained so the same endpoints stay usable from curl and scripts.
+        .logout(
+            logout ->
+                logout
+                    // The sidebar signs out with a plain link and the countdown
+                    // signs out by navigating, so accept GET, not only POST.
+                    .logoutRequestMatcher(new AntPathRequestMatcher("/logout"))
+                    // Wipe the ticket's key material as the session goes.
+                    .addLogoutHandler(new KerberosTicketCleanup())
+                    .addLogoutHandler(new SecurityContextLogoutHandler())
+                    .logoutSuccessUrl("/login?logout")
+                    .permitAll())
+        // The browser uses the session, but keeping Basic here lets a script
+        // reach the proxied Spark UI the same way it reaches /api. An
+        // unauthenticated page request still lands on the login form, since
+        // that is the entry point below.
         .httpBasic(Customizer.withDefaults())
-        // Pin both challenges by path. Left to its defaults Spring Security picks
-        // between them from the Accept header, so a page request without an
-        // explicit text/html preference would get a Basic challenge instead of
-        // the login form.
         .exceptionHandling(
             handling ->
-                handling
-                    .defaultAuthenticationEntryPointFor(
-                        basicAuthenticationEntryPoint(),
-                        PathPatternRequestMatcher.withDefaults().matcher("/api/**"))
-                    .authenticationEntryPoint(new LoginUrlAuthenticationEntryPoint("/login")))
+                handling.authenticationEntryPoint(new LoginUrlAuthenticationEntryPoint("/login")))
+        // Expired tickets end the session here too, so no screen renders for a
+        // user the cluster would already turn away.
+        .addFilterAfter(new TicketExpiryFilter(), SecurityContextHolderFilter.class)
         .build();
   }
 

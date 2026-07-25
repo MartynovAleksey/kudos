@@ -102,5 +102,14 @@
     </div>
   </div>
 </div>
+<!-- Kerberos ticket countdown. Seeded with the seconds the server had left, so
+     it stays correct regardless of any offset in the browser's own clock. At
+     zero the script signs the user out. -->
+<div id="k8s-ticket-timer" class="k8s-ticket-timer" th:if="${ticketRemainingSeconds != null}"
+     th:attr="data-remaining=${ticketRemainingSeconds}, data-logout=@{/logout}">
+  <i class="fa fa-clock-o"></i>
+  <span class="k8s-ticket-label">Kerberos ticket</span>
+  <span class="k8s-ticket-remaining" id="k8s-ticket-remaining">--:--:--</span>
+</div>
 </body>
 </html>

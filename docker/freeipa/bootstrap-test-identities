@@ -140,4 +140,52 @@ TEST.LOCAL = {
 .test.local = TEST.LOCAL
 test.local = TEST.LOCAL
 EOF
+
+# TLS material for the application, issued by this realm's own CA so the
+# certificate chains to something the stand can verify rather than being a
+# self-signed one nothing trusts.
+app_host=app.test.local
+if ! test -s /shared/app-tls.p12; then
+  ipa host-add "$app_host" --force || true
+  ipa service-add "HTTP/$app_host" --force || true
+
+  work="$(mktemp -d)"
+  # ipa-getcert would need certmonger running in this container; requesting the
+  # certificate directly keeps the bootstrap to one shot.
+  # The SAN must name only principals the realm knows: FreeIPA refuses a request
+  # carrying a subjectAltName it cannot tie to a host. Clients reach the app as
+  # app.test.local (the test scripts map the loopback to it), so that one name
+  # is enough.
+  openssl req -newkey rsa:2048 -nodes \
+    -keyout "$work/app.key" \
+    -out "$work/app.csr" \
+    -subj "/O=TEST.LOCAL/CN=$app_host" \
+    -addext "subjectAltName=DNS:$app_host"
+  ipa cert-request "$work/app.csr" \
+    --principal "HTTP/$app_host" \
+    --certificate-out "$work/app.crt"
+
+  openssl pkcs12 -export \
+    -inkey "$work/app.key" \
+    -in "$work/app.crt" \
+    -certfile /etc/ipa/ca.crt \
+    -name app \
+    -passout pass:changeit \
+    -out "$work/app-tls.p12"
+  install -m 0644 "$work/app-tls.p12" /shared/app-tls.p12
+  # Clients verify the application against this, not against a pinned cert.
+  install -m 0644 /etc/ipa/ca.crt /shared/ca.crt
+  rm -rf "$work"
+fi
+
 chmod 0644 /shared/*.keytab /shared/krb5.conf
+
+# The application holds no keytab, so it must not even be able to see the
+# cluster's service keytabs. Publish only what it needs — its TLS material and
+# krb5.conf — on a separate volume that the app container mounts instead of the
+# shared keytab volume.
+if test -d /app-secrets; then
+  install -m 0644 /shared/app-tls.p12 /app-secrets/app-tls.p12
+  install -m 0644 /shared/ca.crt /app-secrets/ca.crt
+  install -m 0644 /shared/krb5.conf /app-secrets/krb5.conf
+fi

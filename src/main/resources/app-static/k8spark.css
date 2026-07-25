@@ -320,3 +320,57 @@
   background-color: #f5f5f5;
   font-weight: 500;
 }
+
+/* Kerberos ticket countdown, pinned bottom-right above the page content. */
+.k8s-ticket-timer {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 16px;
+  background-color: #132329;
+  color: #adb2b6;
+  font-size: 12px;
+  line-height: 1;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  opacity: 0.9;
+}
+
+.k8s-ticket-timer .fa {
+  color: #29a7de;
+}
+
+.k8s-ticket-label {
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-size: 10px;
+}
+
+.k8s-ticket-remaining {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+/* Last five minutes: amber. Expired: red. */
+.k8s-ticket-timer.k8s-ticket-warning {
+  background-color: #7a5a12;
+}
+
+.k8s-ticket-timer.k8s-ticket-warning .fa,
+.k8s-ticket-timer.k8s-ticket-warning .k8s-ticket-remaining {
+  color: #ffcf6b;
+}
+
+.k8s-ticket-timer.k8s-ticket-expired {
+  background-color: #7a1712;
+}
+
+.k8s-ticket-timer.k8s-ticket-expired .fa,
+.k8s-ticket-timer.k8s-ticket-expired .k8s-ticket-remaining {
+  color: #ff8a80;
+}

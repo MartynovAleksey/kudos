@@ -38,6 +38,8 @@ services:
     volumes:
       - freeipa-data:/data
       - kerberos-shared:/shared
+      # Holds only the application's TLS material and krb5.conf, never a keytab.
+      - app-secrets:/app-secrets
       - freeipa-run:/run
       - freeipa-tmp:/tmp
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
@@ -58,6 +60,7 @@ services:
         - >-
           systemctl is-active --quiet bootstrap-test-identities.service
           && test -f /shared/HTTP-sparkhistory.test.local.keytab
+          && test -s /shared/app-tls.p12
           && kinit -kt /shared/admin.keytab admin@TEST.LOCAL
       interval: 10s
       timeout: 5s
@@ -238,7 +241,11 @@ services:
       spark-history:
         condition: service_healthy
     volumes:
-      - kerberos-shared:/run/keytabs:ro
+      # Only krb5.conf, the TLS keystore and the CA — deliberately not the
+      # shared keytab volume. The application has no keytab to read: it works
+      # from the ticket obtained at user login, and a compromised app process
+      # cannot reach a service keytab that was never mounted.
+      - app-secrets:/run/secrets-k8spark:ro
       # The ofs:// client needs the cluster's own service principals and
       # addresses; reuse the service configuration instead of restating it.
       - ./docker/ozone:/etc/ozone/conf:ro
@@ -249,17 +256,18 @@ services:
     environment:
       SPRING_CONFIG_ADDITIONAL_LOCATION: file:/etc/k8spark-ui/
       JAVA_TOOL_OPTIONS: >-
-        -Djava.security.krb5.conf=/run/keytabs/krb5.conf
+        -Djava.security.krb5.conf=/run/secrets-k8spark/krb5.conf
         --add-exports=java.security.jgss/sun.security.krb5=ALL-UNNAMED
-    # Java integration API. Port 8080 is reserved for the Hue UI below.
+    # The API and UI are served over TLS only.
     ports:
-      - "8081:8080"
+      - "8443:8443"
     healthcheck:
       test:
         - CMD-SHELL
         - >-
           curl --fail --silent --max-time 5
-          http://127.0.0.1:8080/actuator/health
+          --cacert /run/secrets-k8spark/ca.crt
+          https://app.test.local:8443/actuator/health
           | grep -q '"status":"UP"'
       interval: 5s
       timeout: 10s
@@ -320,6 +328,7 @@ services:
 volumes:
   freeipa-data:
   kerberos-shared:
+  app-secrets:
   freeipa-run:
   freeipa-tmp:
   hdfs-data:

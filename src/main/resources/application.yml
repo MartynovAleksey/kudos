@@ -31,6 +31,6 @@ k8spark.cluster:
   ozone-conf-dir: ${OZONE_CONF_DIR:/etc/ozone/conf}
   # Spark History Server, read over SPNEGO by the jobs screen.
   spark-history-url: ${SPARK_HISTORY_URL:http://localhost:18080}
-  # Keytabs are mounted per user; this preserves each LDAP user's Kerberos identity.
+  # The ticket is obtained from the password presented at login, so each request
+  # carries the Kerberos identity of the user who made it.
   kerberos-principal: ${KERBEROS_PRINCIPAL_TEMPLATE:{user}@EXAMPLE.COM}
-  kerberos-keytab: ${KERBEROS_KEYTAB_TEMPLATE:/run/keytabs/{user}.keytab}

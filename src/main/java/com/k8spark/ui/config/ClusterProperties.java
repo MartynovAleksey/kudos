@@ -26,5 +26,5 @@ public record ClusterProperties(
     String ozoneOfsUri,
     String ozoneConfDir,
     String sparkHistoryUrl,
-    String kerberosPrincipal,
-    String kerberosKeytab) {}
+    /** Template for the user's own principal; no service keytab is ever used. */
+    String kerberosPrincipal) {}

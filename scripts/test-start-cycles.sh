@@ -110,6 +110,22 @@ dump_endpoint_diagnostics() {
   fi
 }
 
+# The application speaks TLS with a certificate issued by the realm's CA, so
+# every probe verifies against that CA instead of skipping the check.
+app_ca="$(mktemp)"
+app_resolve=()
+trap 'rm -f "$app_ca"' EXIT
+
+refresh_app_ca() {
+  local freeipa
+  freeipa="$(run_compose ps -q freeipa)"
+  if [[ -n "$freeipa" ]] && run_docker exec "$freeipa" cat /shared/ca.crt >"$app_ca" 2>/dev/null; then
+    app_resolve=(--resolve "app.test.local:8443:127.0.0.1" --cacert "$app_ca")
+    return 0
+  fi
+  return 1
+}
+
 verify_endpoints() {
   # All ports are exercised from the host to catch published-port and DNS regressions.
   local deadline=$((SECONDS + 180))
@@ -120,7 +136,8 @@ verify_endpoints() {
 
   while (( SECONDS < deadline )); do
     if (( ! app_ok )) \
-        && app_health="$(probe_http 10 http://127.0.0.1:8081/actuator/health 2>/dev/null)" \
+        && app_health="$(probe_http 10 "${app_resolve[@]}" \
+              https://app.test.local:8443/actuator/health 2>/dev/null)" \
         && grep -q '"status"' <<<"$app_health"; then
       app_ok=1
       log "Spring API answered /actuator/health"
@@ -144,7 +161,7 @@ verify_endpoints() {
     dump_endpoint_diagnostics hue-reference
     return 1
   fi
-  for port in 10009 10099 9870 9090 9862 18080; do
+  for port in 8443 10009 10099 9870 9090 9862 18080; do
     if ! bash -c ": >/dev/tcp/127.0.0.1/$port" 2>/dev/null; then
       log "Published port $port is not reachable from the host" >&2
       return 1
@@ -160,6 +177,12 @@ for cycle in $(seq 1 "$cycles"); do
     wait_healthy "$service"
     log "$service is ready"
   done
+  # FreeIPA republishes the CA on every start, so refresh it each cycle rather
+  # than trusting a copy taken before the realm came back up.
+  if ! refresh_app_ca; then
+    log "Could not read the realm CA needed to verify the application's TLS" >&2
+    exit 1
+  fi
   verify_endpoints
   DOCKER_COMPOSE_BIN="$compose_bin" "$script_dir/test-kerberos-services.sh"
   log "=== restart verification $cycle/$cycles passed ==="

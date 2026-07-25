@@ -25,6 +25,18 @@
 # variables outrank an external config file in Spring Boot, and a leftover
 # variable would silently win over an edit made here.
 
+server:
+  # TLS for the application itself. The keystore is issued by this realm's CA
+  # during the FreeIPA bootstrap and published on the shared volume, so the
+  # certificate chains to /shared/ca.crt rather than being self-signed.
+  port: 8443
+  ssl:
+    enabled: true
+    key-store: file:/run/secrets-k8spark/app-tls.p12
+    key-store-type: PKCS12
+    key-store-password: changeit
+    key-alias: app
+
 spring:
   ldap:
     urls: ldap://freeipa.test.local:389
@@ -55,6 +67,6 @@ k8spark:
     spark-history-url: http://sparkhistory.test.local:18080
 
     # Every request runs as the logged-in LDAP user: {user} is substituted with
-    # their login, giving each user their own Kerberos identity.
+    # their login. The ticket comes from the password presented at sign-in, so
+    # the application stores no keytab and holds no identity of its own.
     kerberos-principal: "{user}@TEST.LOCAL"
-    kerberos-keytab: /run/keytabs/{user}.keytab

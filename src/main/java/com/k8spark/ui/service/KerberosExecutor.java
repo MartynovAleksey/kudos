@@ -16,35 +16,44 @@
 
 package com.k8spark.ui.service;
 
-import com.k8spark.ui.config.ClusterProperties;
+import com.k8spark.ui.security.KerberosAuthentication;
 import java.security.PrivilegedExceptionAction;
+import javax.security.auth.Subject;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.security.UserGroupInformation;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
+/**
+ * Runs a cluster call as the signed-in user, using the Kerberos ticket obtained
+ * for them at login.
+ *
+ * <p>The application holds no credentials of its own, so it cannot reach a
+ * service except on behalf of a user who has authenticated. Each service then
+ * applies its own authorization to the identity in that ticket, which is why
+ * there is no authorization layer here to keep in step with them.
+ */
 @Service
 public class KerberosExecutor {
 
-  private final ClusterProperties properties;
-
-  public KerberosExecutor(ClusterProperties properties) {
-    this.properties = properties;
-  }
-
   public <T> T asLoggedInUser(PrivilegedExceptionAction<T> action) throws Exception {
-    String login = SecurityContextHolder.getContext().getAuthentication().getName();
-    String principal = properties.kerberosPrincipal().replace("{user}", login);
-    String keytab = properties.kerberosKeytab().replace("{user}", login);
-    if (principal == null || keytab == null) {
-      throw new IllegalStateException("Kerberos principal/keytab must be configured");
+    Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+    if (!(authentication instanceof KerberosAuthentication kerberos)) {
+      throw new IllegalStateException(
+          "This session holds no Kerberos ticket; sign in again to obtain one");
+    }
+    Subject subject = kerberos.subject();
+    if (subject == null) {
+      // Reachable only if the session outlived the process that created it: the
+      // ticket is deliberately not carried across a restart.
+      throw new IllegalStateException(
+          "The Kerberos ticket for this session is gone; sign in again");
     }
 
     Configuration configuration = new Configuration();
     configuration.set("hadoop.security.authentication", "kerberos");
     UserGroupInformation.setConfiguration(configuration);
-    UserGroupInformation user =
-        UserGroupInformation.loginUserFromKeytabAndReturnUGI(principal, keytab);
-    return user.doAs(action);
+    return UserGroupInformation.getUGIFromSubject(subject).doAs(action);
   }
 }
