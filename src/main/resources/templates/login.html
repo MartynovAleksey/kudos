@@ -43,13 +43,6 @@
 
       <div class="alert alert-error center" th:if="${param.error}">
         Invalid username or password.
-        <span th:if="${param.remaining != null}"
-              th:text="'Attempts remaining: ' + ${param.remaining[0]} + '.'">Attempts remaining.</span>
-      </div>
-      <div class="alert alert-error center" th:if="${param.locked}">
-        Too many failed attempts. Account temporarily locked.
-        <span th:if="${param.seconds != null}"
-              th:text="'Try again in ' + ${param.seconds[0]} + ' s.'"></span>
       </div>
       <div class="alert alert-info center" th:if="${param.logout}">
         You have been signed out.

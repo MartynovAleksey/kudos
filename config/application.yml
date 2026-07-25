@@ -79,10 +79,10 @@ k8spark:
     # banner-html: '<strong>TEST</strong> environment — data is not production.'
     banner-html: ""
 
-  # The log directory (k8spark.logging.dir) is set for the container via the
-  # K8SPARK_LOGGING_DIR environment variable in compose.yaml, not here: this file
-  # is also auto-loaded when running locally from the project root, and an
-  # absolute container path would then break local runs. It defaults to ./logs.
+  # Where the rolling application and audit logs are written (see
+  # logback-spring.xml). Mounted as a volume below so logs survive a restart.
+  logging:
+    dir: /var/log/k8spark-ui
 
   # Audit of user actions. Always written to ${k8spark.logging.dir}/audit.log.
   # To also publish each event to Kafka, set kafka-enabled: true and provide a
@@ -90,12 +90,6 @@ k8spark:
   audit:
     kafka-enabled: false
     kafka-topic: k8spark-audit
-
-  # Login brute-force guard: lock a username after this many consecutive failed
-  # attempts, for this many minutes.
-  security:
-    max-login-attempts: 5
-    lockout-minutes: 15
 # spring:
 #   kafka:
 #     bootstrap-servers: kafka.test.local:9092
