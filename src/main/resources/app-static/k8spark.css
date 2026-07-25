@@ -51,7 +51,9 @@
 .sidebar-header {
   height: 56px;
   padding: 0;
-  background-color: #0b7fad;
+  background-color: #424242;
+  /* A thin brand strip sets the logo apart from the sidebar body below. */
+  border-bottom: 3px solid #0b7fad;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -392,12 +394,49 @@
   color: #ff8a80;
 }
 
+/* The login card is dark, so the vendored light alert boxes read poorly. Drop
+   the box and colour the text: a sign-out/expiry notice in a soft light, an
+   invalid-credentials error in red. */
+.login-container .alert {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  text-shadow: none;
+  padding: 6px 0;
+  margin-bottom: 12px;
+}
+
+.login-container .alert-info {
+  color: #dfe6ea;
+}
+
+.login-container .alert-error {
+  color: #ff6b6b;
+  font-weight: 500;
+}
+
+/* Lead line above the tagline on the login form. */
+.login-container .login-lead {
+  text-align: center;
+  color: #cfd8dc;
+  font-size: 15px;
+  font-weight: 300;
+  letter-spacing: 0.5px;
+  margin: 0 0 6px;
+}
+
 /* KUDOS wordmark on the login form, replacing the old text logotype. Sized by
    height to sit inside the vendored .logo box (70px tall); width follows the
    ~2.8:1 aspect and stays well within the form column. */
+/* The vendored .logo box is a fixed 70px; let it grow so the wordmark can be
+   30% larger (64px -> 84px) without being clipped. */
+.login-container .logo {
+  height: auto;
+}
+
 .login-logo {
   display: block;
-  height: 64px;
+  height: 84px;
   width: auto;
   max-width: 100%;
   margin: 0 auto;
