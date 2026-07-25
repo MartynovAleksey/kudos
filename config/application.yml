@@ -70,3 +70,11 @@ k8spark:
     # their login. The ticket comes from the password presented at sign-in, so
     # the application stores no keytab and holds no identity of its own.
     kerberos-principal: "{user}@TEST.LOCAL"
+
+  # UI-level settings.
+  ui:
+    # Optional HTML shown as a banner across the top of every screen (like Hue's
+    # banner_top_html). Trusted operator config, rendered as-is. Leave unset for
+    # no banner. Example:
+    # banner-html: '<strong>TEST</strong> environment — data is not production.'
+    banner-html: ""

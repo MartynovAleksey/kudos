@@ -672,3 +672,12 @@
   z-index: 2100;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
+
+/* Operator banner (k8spark.ui.banner-html), a strip across the top of content. */
+.k8s-banner {
+  padding: 8px 16px;
+  background-color: #fff8e1;
+  border-bottom: 1px solid #ffe082;
+  color: #5f4b1b;
+  font-size: 13px;
+}

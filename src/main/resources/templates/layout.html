@@ -91,6 +91,10 @@
   </div>
 
   <div class="main-page">
+    <!-- Optional operator banner from k8spark.ui.banner-html; trusted config,
+         rendered as-is. Absent when the property is empty. -->
+    <div class="k8s-banner" th:if="${bannerHtml != null and !bannerHtml.isEmpty()}"
+         th:utext="${bannerHtml}"></div>
     <nav class="navbar navbar-default">
       <div class="navbar-inner top-nav">
         <div class="top-nav-left"></div>

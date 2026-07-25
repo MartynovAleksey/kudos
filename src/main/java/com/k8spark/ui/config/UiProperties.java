@@ -16,9 +16,15 @@
 
 package com.k8spark.ui.config;
 
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 
-@Configuration
-@EnableConfigurationProperties({ClusterProperties.class, UiProperties.class})
-public class AppConfig {}
+/**
+ * UI-level configuration, separate from the cluster service addresses.
+ *
+ * @param bannerHtml optional HTML shown as a banner across the top of every
+ *     screen, the way Hue's {@code banner_top_html} works. It is rendered
+ *     unescaped and comes only from this trusted configuration file, never from
+ *     a user.
+ */
+@ConfigurationProperties(prefix = "k8spark.ui")
+public record UiProperties(String bannerHtml) {}
