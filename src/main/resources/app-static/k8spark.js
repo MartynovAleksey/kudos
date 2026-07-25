@@ -358,8 +358,140 @@
     var breadcrumbs = el('breadcrumbs');
     var preview = el('preview');
     var refresh = el('refreshBrowser');
+    var newFolderBtn = el('newFolder');
+    var uploadInput = el('uploadFile');
     var base = '/api/' + kind;
     var currentPath = '/';
+
+    function joinPath(dir, name) {
+      return (dir.charAt(dir.length - 1) === '/' ? dir : dir + '/') + name;
+    }
+
+    function rowActions(entry) {
+      var actions = element('span', { class: 'k8s-row-actions' }, []);
+      if (!entry.directory) {
+        actions.appendChild(
+          element(
+            'a',
+            {
+              class: 'k8s-link',
+              href: base + '/download?path=' + encodeURIComponent(entry.path),
+              title: 'Download'
+            },
+            [text('download')]
+          )
+        );
+      }
+      actions.appendChild(button('rename', 'k8s-link', function () { renameEntry(entry); }));
+      actions.appendChild(button('chmod', 'k8s-link', function () { chmodEntry(entry); }));
+      actions.appendChild(button('chown', 'k8s-link', function () { chownEntry(entry); }));
+      actions.appendChild(
+        button('delete', 'k8s-link k8s-link-danger', function () { deleteEntry(entry); })
+      );
+      return actions;
+    }
+
+    function renameEntry(entry) {
+      var dest = textInput(entry.path, 'new full path');
+      openModal('Rename / move', field('Destination path', dest), [
+        { label: 'Cancel', action: function (h) { h.close(); } },
+        {
+          label: 'Save',
+          class: 'btn btn-small btn-primary',
+          action: function (h) {
+            send(base + '/rename', { path: entry.path, destination: dest.value.trim() })
+              .then(function () { h.close(); toast('Renamed'); navigate(currentPath); })
+              .catch(function (e) { toast(e.message || String(e)); });
+          }
+        }
+      ]);
+    }
+
+    function chmodEntry(entry) {
+      var perm = textInput(entry.permission, 'e.g. 755');
+      openModal('Change permissions', field('Permission (octal)', perm), [
+        { label: 'Cancel', action: function (h) { h.close(); } },
+        {
+          label: 'Save',
+          class: 'btn btn-small btn-primary',
+          action: function (h) {
+            send(base + '/chmod', { path: entry.path, permission: perm.value.trim() })
+              .then(function () { h.close(); toast('Permissions changed'); navigate(currentPath); })
+              .catch(function (e) { toast(e.message || String(e)); });
+          }
+        }
+      ]);
+    }
+
+    function chownEntry(entry) {
+      var owner = textInput(entry.owner, 'owner');
+      var group = textInput(entry.group, 'group');
+      openModal('Change owner', element('div', {}, [field('Owner', owner), field('Group', group)]), [
+        { label: 'Cancel', action: function (h) { h.close(); } },
+        {
+          label: 'Save',
+          class: 'btn btn-small btn-primary',
+          action: function (h) {
+            send(base + '/chown', {
+              path: entry.path,
+              owner: owner.value.trim(),
+              group: group.value.trim()
+            })
+              .then(function () { h.close(); toast('Owner changed'); navigate(currentPath); })
+              .catch(function (e) { toast(e.message || String(e)); });
+          }
+        }
+      ]);
+    }
+
+    function deleteEntry(entry) {
+      confirmDestructive(
+        'Delete ' + entry.name + (entry.directory ? '? (recursive)' : '?'),
+        'delete',
+        function () {
+          send(base + '/delete', { path: entry.path, recursive: entry.directory })
+            .then(function () { toast('Deleted'); navigate(currentPath); })
+            .catch(function (e) { toast(e.message || String(e)); });
+        }
+      );
+    }
+
+    if (newFolderBtn) {
+      newFolderBtn.addEventListener('click', function () {
+        var name = textInput('', 'folder name');
+        openModal('New folder', field('Name', name), [
+          { label: 'Cancel', action: function (h) { h.close(); } },
+          {
+            label: 'Create',
+            class: 'btn btn-small btn-primary',
+            action: function (h) {
+              if (!name.value.trim()) {
+                toast('A name is required');
+                return;
+              }
+              send(base + '/mkdir', { path: joinPath(currentPath, name.value.trim()) })
+                .then(function () { h.close(); toast('Folder created'); navigate(currentPath); })
+                .catch(function (e) { toast(e.message || String(e)); });
+            }
+          }
+        ]);
+      });
+    }
+    if (uploadInput) {
+      uploadInput.addEventListener('change', function () {
+        if (!uploadInput.files || !uploadInput.files.length) {
+          return;
+        }
+        var form = new FormData();
+        form.append('file', uploadInput.files[0]);
+        request(base + '/upload?path=' + encodeURIComponent(currentPath), {
+          method: 'POST',
+          body: form
+        })
+          .then(function () { toast('Uploaded'); uploadInput.value = ''; navigate(currentPath); })
+          .catch(function (e) { toast(e.message || String(e)); uploadInput.value = ''; });
+      });
+    }
 
     function navigate(path) {
       currentPath = path;
@@ -379,7 +511,7 @@
           }
           listing.appendChild(
             buildTable(
-              ['', 'Name', 'Size', 'User', 'Group', 'Permissions', 'Date'],
+              ['', 'Name', 'Size', 'User', 'Group', 'Permissions', 'Date', 'Actions'],
               entries,
               function (entry) {
                 var icon = document.createElement('i');
@@ -402,7 +534,8 @@
                   entry.owner,
                   entry.group,
                   entry.permission,
-                  formatDate(entry.modificationTime)
+                  formatDate(entry.modificationTime),
+                  rowActions(entry)
                 ];
               }
             )

@@ -101,6 +101,44 @@ public class ClusterController {
     return hdfs.preview(path, PREVIEW_BYTES);
   }
 
+  @PostMapping("/hdfs/mkdir")
+  void hdfsMkdir(@Valid @RequestBody PathRequest request) throws Exception {
+    hdfs.mkdirs(request.path());
+  }
+
+  @PostMapping("/hdfs/delete")
+  void hdfsDelete(@Valid @RequestBody DeleteRequest request) throws Exception {
+    hdfs.delete(request.path(), request.recursive());
+  }
+
+  @PostMapping("/hdfs/rename")
+  void hdfsRename(@Valid @RequestBody RenameRequest request) throws Exception {
+    hdfs.rename(request.path(), request.destination());
+  }
+
+  @PostMapping("/hdfs/chmod")
+  void hdfsChmod(@Valid @RequestBody ChmodRequest request) throws Exception {
+    hdfs.setPermission(request.path(), request.permission());
+  }
+
+  @PostMapping("/hdfs/chown")
+  void hdfsChown(@Valid @RequestBody ChownRequest request) throws Exception {
+    hdfs.setOwner(request.path(), request.owner(), request.group());
+  }
+
+  @PostMapping("/hdfs/upload")
+  void hdfsUpload(@RequestParam String path, @RequestPart MultipartFile file) throws Exception {
+    hdfs.upload(join(path, file.getOriginalFilename()), file.getBytes());
+  }
+
+  @GetMapping("/hdfs/download")
+  void hdfsDownload(@RequestParam String path, HttpServletResponse response) throws Exception {
+    response.setContentType("application/octet-stream");
+    response.setHeader(
+        "Content-Disposition", "attachment; filename=\"" + fileName(path) + "\"");
+    hdfs.download(path, response.getOutputStream());
+  }
+
   @PostMapping("/sql")
   List<Map<String, Object>> sql(@Valid @RequestBody SqlRequest request) throws Exception {
     return kyuubi.query(request.sql());
@@ -263,7 +301,27 @@ public class ClusterController {
     return ozone.preview(path, PREVIEW_BYTES);
   }
 
+  private static String join(String dir, String name) {
+    String base = dir.endsWith("/") ? dir : dir + "/";
+    return base + name;
+  }
+
+  private static String fileName(String path) {
+    int slash = path.lastIndexOf('/');
+    return slash < 0 ? path : path.substring(slash + 1);
+  }
+
   record SqlRequest(@NotBlank String sql) {}
+
+  record PathRequest(@NotBlank String path) {}
+
+  record DeleteRequest(@NotBlank String path, boolean recursive) {}
+
+  record RenameRequest(@NotBlank String path, @NotBlank String destination) {}
+
+  record ChmodRequest(@NotBlank String path, @NotBlank String permission) {}
+
+  record ChownRequest(@NotBlank String path, String owner, String group) {}
 
   record CreateTableRequest(
       @NotBlank String table, @NotEmpty List<HbaseColumnFamily> families) {}
