@@ -25,17 +25,12 @@
 # variables outrank an external config file in Spring Boot, and a leftover
 # variable would silently win over an edit made here.
 
-server:
-  # TLS for the application itself. The keystore is issued by this realm's CA
-  # during the FreeIPA bootstrap and published on the shared volume, so the
-  # certificate chains to /shared/ca.crt rather than being self-signed.
-  port: 8443
-  ssl:
-    enabled: true
-    key-store: file:/run/secrets-k8spark/app-tls.p12
-    key-store-type: PKCS12
-    key-store-password: changeit
-    key-alias: app
+# TLS is configured by the `vault` Spring profile (packaged
+# application-vault.yml): the certificate is issued from HashiCorp Vault's PKI
+# engine and delivered as PEM by a Vault Agent sidecar at /vault/secrets. The
+# profile is activated with SPRING_PROFILES_ACTIVE=vault in the container (see
+# compose.yaml and docs/DEPLOY-HELM.md); leaving it off keeps local runs on
+# plain HTTP so they need no certificate.
 
 spring:
   ldap:

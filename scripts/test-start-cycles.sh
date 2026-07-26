@@ -117,9 +117,9 @@ app_resolve=()
 trap 'rm -f "$app_ca"' EXIT
 
 refresh_app_ca() {
-  local freeipa
-  freeipa="$(run_compose ps -q freeipa)"
-  if [[ -n "$freeipa" ]] && run_docker exec "$freeipa" cat /shared/ca.crt >"$app_ca" 2>/dev/null; then
+  local agent
+  agent="$(run_compose ps -q vault-agent)"
+  if [[ -n "$agent" ]] && run_docker exec "$agent" cat /vault/secrets/ca.crt >"$app_ca" 2>/dev/null; then
     app_resolve=(--resolve "app.test.local:8443:127.0.0.1" --cacert "$app_ca")
     return 0
   fi

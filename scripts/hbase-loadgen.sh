@@ -58,10 +58,10 @@ run_compose() {
     "$compose_bin" -f "$project_root/compose.yaml" "$@"
 }
 
-freeipa_id="$(run_compose ps -q freeipa)"
+vault_agent_id="$(run_compose ps -q vault-agent)"
 app_ca="$(mktemp)"
 trap 'rm -f "$app_ca"' EXIT
-run_docker exec "$freeipa_id" cat /shared/ca.crt >"$app_ca"
+run_docker exec "$vault_agent_id" cat /vault/secrets/ca.crt >"$app_ca"
 base="https://app.test.local:8443"
 auth=(--resolve app.test.local:8443:127.0.0.1 --cacert "$app_ca" -u "admin:$admin_password" -s)
 

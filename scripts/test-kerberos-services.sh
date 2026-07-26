@@ -49,12 +49,14 @@ container_id() {
 
 freeipa_id="$(container_id freeipa)"
 hdfs_id="$(container_id hdfs)"
-# The application is served over TLS by a certificate this realm's CA issued.
-# Verifying against that CA, rather than passing --insecure, is what makes the
-# checks below evidence that TLS is actually configured correctly.
+# The application is served over TLS by a certificate Vault's PKI engine issued
+# and the vault-agent sidecar published. Verifying against Vault's CA, rather
+# than passing --insecure, is what makes the checks below evidence that TLS is
+# actually configured correctly.
+vault_agent_id="$(container_id vault-agent)"
 app_ca="$(mktemp)"
 trap 'rm -f "$app_ca"' EXIT
-run_docker exec "$freeipa_id" cat /shared/ca.crt >"$app_ca"
+run_docker exec "$vault_agent_id" cat /vault/secrets/ca.crt >"$app_ca"
 app_base="https://app.test.local:8443"
 # The certificate names app.test.local; published ports are on the loopback.
 app_resolve=(--resolve "app.test.local:8443:127.0.0.1" --cacert "$app_ca")

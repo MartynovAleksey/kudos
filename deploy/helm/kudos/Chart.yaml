@@ -1,0 +1,10 @@
+apiVersion: v2
+name: kudos
+description: >-
+  kudos — a stateless Spring Boot UI/API over a Kerberized data cluster
+  (HDFS, Kyuubi/Spark SQL, HBase, Ozone). Serves HTTPS with a certificate issued
+  by HashiCorp Vault PKI and delivered by a Vault Agent sidecar. Cluster config
+  and secrets are supplied via external ConfigMaps/Secrets.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
