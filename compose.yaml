@@ -29,10 +29,10 @@ services:
       IPA_SERVER_HOSTNAME: freeipa.test.local
       IPA_SERVER_INSTALL_OPTS: >-
         -U --realm=TEST.LOCAL --domain=test.local --hostname=freeipa.test.local
-        --no-ntp -p DirectoryManager1 -a K8SparkAdmin2026Secure!
+        --no-ntp -p DirectoryManager1 -a KudosAdmin2026Secure!
       IPA_DM_PASSWORD: DirectoryManager1
-      IPA_ADMIN_INITIAL_PASSWORD: K8SparkAdmin2026Secure!
-      IPA_TEST_PASSWORD: K8SparkAdmin2026Secure!
+      IPA_ADMIN_INITIAL_PASSWORD: KudosAdmin2026Secure!
+      IPA_TEST_PASSWORD: KudosAdmin2026Secure!
     # Docker Desktop tmpfs lacks POSIX ACL support, while 389 Directory Server
     # uses setfacl under /run. Docker-managed ext4 volumes provide it.
     volumes:
@@ -335,7 +335,7 @@ services:
       # The application has no keytab to read: it works from the ticket obtained
       # at user login, and a compromised app process cannot reach a service
       # keytab that was never mounted. TLS now comes from Vault (below), not here.
-      - app-secrets:/run/secrets-k8spark:ro
+      - app-secrets:/run/secrets-kudos:ro
       # TLS material issued by Vault (tls.crt/tls.key/ca.crt), written by the
       # vault-agent sidecar. The `vault` profile points Spring Boot's SSL bundle
       # at /vault/secrets.
@@ -343,11 +343,11 @@ services:
       # The ofs:// client needs the cluster's own service principals and
       # addresses; reuse the service configuration instead of restating it.
       - ./docker/ozone:/etc/ozone/conf:ro
-      # Every k8spark.cluster setting lives here and is editable without a
+      # Every kudos.cluster setting lives here and is editable without a
       # rebuild. See config/application.yml for why none of them are set as
       # environment variables below.
       - ./config:/etc/kudos:ro
-      # Durable application and audit logs (k8spark.logging.dir).
+      # Durable application and audit logs (kudos.logging.dir).
       - app-logs:/var/log/kudos
     environment:
       SPRING_CONFIG_ADDITIONAL_LOCATION: file:/etc/kudos/
@@ -355,9 +355,9 @@ services:
       SPRING_PROFILES_ACTIVE: vault
       # Log directory for the container (the app-logs volume above). Kept out of
       # the shared config file so local runs default to ./logs instead.
-      K8SPARK_LOGGING_DIR: /var/log/kudos
+      KUDOS_LOGGING_DIR: /var/log/kudos
       JAVA_TOOL_OPTIONS: >-
-        -Djava.security.krb5.conf=/run/secrets-k8spark/krb5.conf
+        -Djava.security.krb5.conf=/run/secrets-kudos/krb5.conf
         --add-exports=java.security.jgss/sun.security.krb5=ALL-UNNAMED
     # The API and UI are served over TLS only.
     ports:

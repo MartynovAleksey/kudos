@@ -64,7 +64,7 @@ hostAliases: []
 # the operator manages; this chart does not template cluster config or secrets).
 # ---------------------------------------------------------------------------
 externalConfig:
-  # ConfigMap holding application.yml (k8spark.cluster.*, LDAP, features, banner,
+  # ConfigMap holding application.yml (kudos.cluster.*, LDAP, features, banner,
   # audit, security). Mounted read-only at /etc/kudos and loaded via
   # SPRING_CONFIG_ADDITIONAL_LOCATION. REQUIRED.
   appConfigMap: "kudos-config"

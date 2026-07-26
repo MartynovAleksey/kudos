@@ -3,7 +3,7 @@
 Deploy the **built** application outside test mode with the Helm chart in
 `deploy/helm/kudos`. The test environment (FreeIPA, HDFS, Kyuubi, HBase, and
 Ozone in Docker Compose) and image build are **not** part of the chart; see
-[README.md](../README.md) и [docs/BUILD.md](BUILD.md).
+[README.md](README.md) and [BUILD.md](BUILD.md).
 
 - **Exposure:** only a `ClusterIP` `Service`; configure ingress or port
   forwarding outside the chart for external access.
@@ -99,7 +99,7 @@ spring:
     username: cn=Directory Manager
 ```yaml
     user-dn-pattern: uid={0},cn=users,cn=accounts
-k8spark:
+kudos:
   cluster:
     webhdfs-url: http://namenode.example.com:9870
     kyuubi-url: "jdbc:hive2://kyuubi.example.com:10009/default;principal=kyuubi/kyuubi.example.com@EXAMPLE.COM"
@@ -168,13 +168,13 @@ kubectl -n kudos rollout status deploy/kudos
 
 ```bash
 scripts/hybrid-up.sh            # build → docker up → k8s prereqs → helm install → port-forward
-# UI: https://localhost:8443/   (admin / K8SparkAdmin2026Secure!)
+# UI: https://localhost:8443/   (admin / KudosAdmin2026Secure!)
 scripts/hybrid-down.sh          # снести (добавить --purge, чтобы удалить namespace и volume'ы)
 ```
 
 You can exercise production mode locally: run the **cluster and Vault in Docker
 
-**Оговорка — HBase.** Порты ZK/master/regionserver (2181/16000/16020) опубликованы и TCP-достижимы из пода, но нативный HBase-RPC c SASL/Kerberos не проходит через двойной NAT (docker-publish → под): клиент доходит до master, но RPC-хендшейк рвётся/таймаутит. Это ограничение именно гибридной локальной топологии, а не чарта/приложения — в реальном кластере, где под и HBase в одной сети, этого нет. Для локального HBase используйте полностью docker-режим (см. [README](../README.md)).
+**Оговорка — HBase.** Порты ZK/master/regionserver (2181/16000/16020) опубликованы и TCP-достижимы из пода, но нативный HBase-RPC c SASL/Kerberos не проходит через двойной NAT (docker-publish → под): клиент доходит до master, но RPC-хендшейк рвётся/таймаутит. Это ограничение именно гибридной локальной топологии, а не чарта/приложения — в реальном кластере, где под и HBase в одной сети, этого нет. Для локального HBase используйте полностью docker-режим (см. [README](README.md)).
 
 match.
 

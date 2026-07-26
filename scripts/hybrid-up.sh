@@ -108,7 +108,7 @@ spring:
     username: cn=Directory Manager
     password: DirectoryManager1
     user-dn-pattern: uid={0},cn=users,cn=accounts
-k8spark:
+kudos:
   cluster:
     webhdfs-url: http://hdfs.test.local:9870
     kyuubi-url: "jdbc:hive2://kyuubi.test.local:10009/default;principal=kyuubi/kyuubi.test.local@TEST.LOCAL"
@@ -125,7 +125,7 @@ k8spark:
     jobs: true
 logging:
   level:
-    com.k8spark.ui: INFO
+    com.kudos.ui: INFO
 YAML
 
 # --- 4. Create the k8s prerequisites the chart references ---------------------
@@ -173,7 +173,7 @@ kubectl -n "$NS" rollout status deploy/kudos --timeout=180s
 step "Ready. Forwarding https://localhost:8443  (Ctrl-C to stop)"
 cat <<EOF
 
-  UI:     https://localhost:8443/    (login: admin / K8SparkAdmin2026Secure!)
+  UI:     https://localhost:8443/    (login: admin / KudosAdmin2026Secure!)
   Note:   the certificate is issued by Vault's test CA, so the browser will warn
           about an untrusted issuer — accept and continue.
 

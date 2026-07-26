@@ -58,7 +58,7 @@ spec:
               value: {{ .Values.springProfiles | quote }}
             - name: SPRING_CONFIG_ADDITIONAL_LOCATION
               value: "file:/etc/kudos/"
-            - name: K8SPARK_LOGGING_DIR
+            - name: KUDOS_LOGGING_DIR
               value: {{ .Values.logging.dir | quote }}
             - name: JAVA_TOOL_OPTIONS
               value: >-

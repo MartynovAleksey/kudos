@@ -2,7 +2,7 @@
 
 Сборка приложения выполняется **в Docker** через multi-stage `docker/app/Dockerfile`.
 Тестовый стенд (compose) и прод-запуск (Helm) — отдельные части, см.
-[README.md](../README.md) и [docs/DEPLOY-HELM.md](DEPLOY-HELM.md).
+[README.md](README.md) и [docs/DEPLOY-HELM.md](DEPLOY-HELM.md).
 
 ## Build outputs
 
@@ -17,7 +17,7 @@
 образ:
 
 ```bash
-docker build -f docker/app/Dockerfile -t kudos:0.1.0 .
+DOCKER_BUILDKIT=1 docker build -f docker/app/Dockerfile -t kudos:0.1.0 .
 ```
 
 Тот же образ собирает и тестовый compose (`docker compose build app`).

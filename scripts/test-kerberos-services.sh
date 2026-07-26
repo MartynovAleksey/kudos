@@ -21,7 +21,7 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd -- "$script_dir/.." && pwd)"
 docker_bin="$(command -v docker)"
 compose_bin="${DOCKER_COMPOSE_BIN:-$HOME/.docker/cli-plugins/docker-compose}"
-admin_password="${TEST_ADMIN_PASSWORD:-K8SparkAdmin2026Secure!}"
+admin_password="${TEST_ADMIN_PASSWORD:-KudosAdmin2026Secure!}"
 
 run_docker() {
   env DOCKER_CONFIG="$project_root/docker/.docker-config" PATH="/usr/bin:/bin" "$docker_bin" "$@"
@@ -79,16 +79,16 @@ hdfs_output="$(run_docker exec "$hdfs_id" bash -lc '
   export KRB5_CONFIG=/shared/krb5.conf
   kdestroy 2>/dev/null || true
   kinit -kt /shared/admin.keytab admin@TEST.LOCAL
-  printf "hdfs-kerberos-ok\n" >/tmp/k8spark-hdfs-in
+  printf "hdfs-kerberos-ok\n" >/tmp/kudos-hdfs-in
   base=http://hdfs.test.local:9870/webhdfs/v1
   curl --fail --silent --negotiate -u : -X PUT "$base/user/admin?op=MKDIRS" >/dev/null
   curl --fail --silent --location-trusted --negotiate -u : -X PUT \
-    --upload-file /tmp/k8spark-hdfs-in \
-    "$base/user/admin/k8spark-hdfs-test?op=CREATE&overwrite=true" >/dev/null
+    --upload-file /tmp/kudos-hdfs-in \
+    "$base/user/admin/kudos-hdfs-test?op=CREATE&overwrite=true" >/dev/null
   curl --fail --silent --location-trusted --negotiate -u : \
-    "$base/user/admin/k8spark-hdfs-test?op=OPEN"
+    "$base/user/admin/kudos-hdfs-test?op=OPEN"
   curl --fail --silent --negotiate -u : -X DELETE \
-    "$base/user/admin/k8spark-hdfs-test?op=DELETE" >/dev/null
+    "$base/user/admin/kudos-hdfs-test?op=DELETE" >/dev/null
 ')"
 grep -q '^hdfs-kerberos-ok$' <<<"$hdfs_output"
 echo "PASS HDFS WebHDFS SPNEGO put/get"
@@ -118,15 +118,15 @@ ozone_output="$(run_docker exec "$ozone_id" bash -lc '
   export OZONE_OPTS="-Djava.security.krb5.conf=/shared/krb5.conf"
   kdestroy 2>/dev/null || true
   kinit -kt /shared/admin.keytab admin@TEST.LOCAL
-  ozone sh volume create /k8sparktest --user=admin 2>/dev/null || true
-  ozone sh bucket create /k8sparktest/files 2>/dev/null || true
-  printf "ozone-kerberos-ok\n" >/tmp/k8spark-ozone-in
-  rm -f /tmp/k8spark-ozone-out
-  ozone sh key put /k8sparktest/files/test-key /tmp/k8spark-ozone-in
-  ozone sh key get /k8sparktest/files/test-key /tmp/k8spark-ozone-out
-  cmp /tmp/k8spark-ozone-in /tmp/k8spark-ozone-out
-  cat /tmp/k8spark-ozone-out
-  ozone sh key delete /k8sparktest/files/test-key
+  ozone sh volume create /kudostest --user=admin 2>/dev/null || true
+  ozone sh bucket create /kudostest/files 2>/dev/null || true
+  printf "ozone-kerberos-ok\n" >/tmp/kudos-ozone-in
+  rm -f /tmp/kudos-ozone-out
+  ozone sh key put /kudostest/files/test-key /tmp/kudos-ozone-in
+  ozone sh key get /kudostest/files/test-key /tmp/kudos-ozone-out
+  cmp /tmp/kudos-ozone-in /tmp/kudos-ozone-out
+  cat /tmp/kudos-ozone-out
+  ozone sh key delete /kudostest/files/test-key
 ')"
 grep -q '^ozone-kerberos-ok$' <<<"$ozone_output"
 echo "PASS Ozone Kerberos put/get"
@@ -139,14 +139,14 @@ hbase_output="$(run_docker exec "$hbase_id" bash -lc '
   export HBASE_OPTS="-Djava.security.krb5.conf=/shared/krb5.conf"
   kdestroy 2>/dev/null || true
   kinit -kt /shared/admin.keytab admin@TEST.LOCAL
-  printf "disable '\''k8spark_test'\''\ndrop '\''k8spark_test'\''\n" \
+  printf "disable '\''kudos_test'\''\ndrop '\''kudos_test'\''\n" \
     | /opt/hbase/bin/hbase shell -n >/dev/null 2>&1 || true
   {
-    printf "create \047k8spark_test\047, \047d\047\n"
-    printf "put \047k8spark_test\047, \047row1\047, \047d:value\047, \047hbase-kerberos-ok\047\n"
-    printf "get \047k8spark_test\047, \047row1\047\n"
-    printf "disable \047k8spark_test\047\n"
-    printf "drop \047k8spark_test\047\n"
+    printf "create \047kudos_test\047, \047d\047\n"
+    printf "put \047kudos_test\047, \047row1\047, \047d:value\047, \047hbase-kerberos-ok\047\n"
+    printf "get \047kudos_test\047, \047row1\047\n"
+    printf "disable \047kudos_test\047\n"
+    printf "drop \047kudos_test\047\n"
   } | /opt/hbase/bin/hbase shell -n
 ')"
 grep -q 'value=hbase-kerberos-ok' <<<"$hbase_output"

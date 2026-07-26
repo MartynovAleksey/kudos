@@ -42,7 +42,7 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd -- "$script_dir/.." && pwd)"
 docker_bin="$(command -v docker)"
 compose_bin="${DOCKER_COMPOSE_BIN:-$HOME/.docker/cli-plugins/docker-compose}"
-admin_password="${TEST_ADMIN_PASSWORD:-K8SparkAdmin2026Secure!}"
+admin_password="${TEST_ADMIN_PASSWORD:-KudosAdmin2026Secure!}"
 
 : "${MANY_TABLES:=200}"
 : "${ROW_SIZES:=1 10 100 1000 10000 100000}"
