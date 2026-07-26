@@ -1,0 +1,41 @@
+# Copyright 2026 Aleksey Martynov and contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# TLS profile: serve HTTPS with a certificate issued by HashiCorp Vault's PKI
+# engine and delivered as PEM by a Vault Agent sidecar into /vault/secrets.
+#
+# Activated with SPRING_PROFILES_ACTIVE=vault in the container (compose.yaml and
+# the Helm deployment). Kept out of the default config on purpose: a Spring Boot
+# SSL bundle loads its PEM material eagerly at startup, so binding it only under
+# this profile keeps local runs and the test build (which never activate it) from
+# needing a certificate on disk.
+#
+# reload-on-update makes the app re-read the files when Vault Agent rotates them,
+# so a renewed certificate is picked up without a restart. Paths are overridable
+# for environments that mount the material elsewhere.
+server:
+  port: 8443
+  ssl:
+    enabled: true
+    bundle: vault
+
+spring:
+  ssl:
+    bundle:
+      pem:
+        vault:
+          reload-on-update: true
+          keystore:
+            certificate: ${KUDOS_TLS_CERT:/vault/secrets/tls.crt}
+            private-key: ${KUDOS_TLS_KEY:/vault/secrets/tls.key}

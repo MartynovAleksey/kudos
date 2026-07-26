@@ -25,10 +25,10 @@
     <artifactId>spring-boot-starter-parent</artifactId>
     <version>3.5.8</version>
   </parent>
-  <groupId>com.k8spark</groupId>
-  <artifactId>k8spark-ui</artifactId>
+  <groupId>com.kudos</groupId>
+  <artifactId>kudos</artifactId>
   <version>0.1.0</version>
-  <name>k8spark-ui</name>
+  <name>kudos</name>
   <properties>
     <java.version>21</java.version>
     <hadoop.version>3.4.2</hadoop.version>
@@ -133,4 +133,119 @@
       </plugin>
     </plugins>
   </build>
+
+  <!--
+    Optional security-scanning stages. Neither runs during a normal build; each
+    is activated by its profile and bound to the `verify` phase (after the jar is
+    packaged), writing a numbered Markdown table to the project root.
+
+      mvn -Ptrivy verify -DskipTests   # -> trivy.md   (needs `trivy` + python3)
+      mvn -Powasp verify -DskipTests   # -> owasp.md   (needs python3; uses NVD API)
+  -->
+  <profiles>
+    <!-- Trivy: scans the built fat-jar (sees bundled/shaded deps) via a script. -->
+    <profile>
+      <id>trivy</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>exec-maven-plugin</artifactId>
+            <version>3.5.0</version>
+            <executions>
+              <execution>
+                <id>trivy-scan</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>exec</goal>
+                </goals>
+                <configuration>
+                  <executable>bash</executable>
+                  <arguments>
+                    <argument>${project.basedir}/scripts/scan-trivy.sh</argument>
+                  </arguments>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+
+    <!-- OWASP dependency-check: NVD-backed scan, then rendered to owasp.md. -->
+    <profile>
+      <id>owasp</id>
+      <properties>
+        <!--
+          NVD API key. Kept OUT of source control: scripts/scan-owasp.sh reads it
+          from a file (~/OWASP-API.key by default) and passes it as
+          -Dnvd.api.key. Left empty here so a bare `mvn -Powasp` still runs
+          (unkeyed, slower). Override ad hoc with:  -Dnvd.api.key=<key>
+        -->
+        <nvd.api.key></nvd.api.key>
+      </properties>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.owasp</groupId>
+            <artifactId>dependency-check-maven</artifactId>
+            <version>12.1.0</version>
+            <configuration>
+              <formats>
+                <format>JSON</format>
+                <format>HTML</format>
+              </formats>
+              <outputDirectory>${project.build.directory}</outputDirectory>
+              <nvdApiKey>${nvd.api.key}</nvdApiKey>
+              <!-- Report only; never break the build from this optional stage. -->
+              <failBuildOnCVSS>11</failBuildOnCVSS>
+              <!--
+                NVD is the source of truth here. The Sonatype OSS Index analyzer
+                needs credentials (anonymous access now returns 401) and would
+                otherwise abort the scan, so disable it. Retire (delete) findings
+                is left on; other analyzers stay at their defaults.
+              -->
+              <ossindexAnalyzerEnabled>false</ossindexAnalyzerEnabled>
+              <!-- Pure-Java project: skip the .NET assembly analyzer so it does
+                   not log errors about a missing dotnet runtime. -->
+              <assemblyAnalyzerEnabled>false</assemblyAnalyzerEnabled>
+            </configuration>
+            <executions>
+              <execution>
+                <id>owasp-check</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>check</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+          <!-- Runs after dependency-check (same phase, declared later). -->
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>exec-maven-plugin</artifactId>
+            <version>3.5.0</version>
+            <executions>
+              <execution>
+                <id>owasp-render</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>exec</goal>
+                </goals>
+                <configuration>
+                  <executable>python3</executable>
+                  <arguments>
+                    <argument>${project.basedir}/scripts/scan_report_md.py</argument>
+                    <argument>owasp</argument>
+                    <argument>${project.build.directory}/dependency-check-report.json</argument>
+                    <argument>${project.basedir}/owasp.md</argument>
+                  </arguments>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

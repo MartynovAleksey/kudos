@@ -1,0 +1,114 @@
+# Default values for the kudos chart.
+# Production run of the already-built image. The test cluster (FreeIPA, HDFS,
+# Kyuubi, HBase, Ozone) and the image build are NOT part of this chart — see
+# compose.yaml and docs/BUILD.md.
+
+replicaCount: 1
+
+image:
+  repository: kudos
+  # Defaults to the chart's appVersion when empty.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# Exposure: ClusterIP only. External access (Ingress/port-forward) is arranged
+# outside this chart.
+service:
+  type: ClusterIP
+  port: 8443
+
+# The app serves HTTPS on 8443 using the Vault-issued PEM under the `vault`
+# Spring profile. Leave this on.
+springProfiles: "vault"
+
+podAnnotations: {}
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop: ["ALL"]
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 768Mi
+  limits:
+    memory: 2Gi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Static /etc/hosts entries for the pod. Useful when the cluster hostnames the
+# Kerberos principals are tied to (e.g. *.test.local) are not in cluster DNS.
+#   hostAliases:
+#     - ip: "10.0.0.5"
+#       hostnames: ["kyuubi.example.com", "namenode.example.com"]
+hostAliases: []
+
+# ---------------------------------------------------------------------------
+# External configuration (decision: reference existing ConfigMaps/Secrets that
+# the operator manages; this chart does not template cluster config or secrets).
+# ---------------------------------------------------------------------------
+externalConfig:
+  # ConfigMap holding application.yml (kudos.cluster.*, LDAP, features, banner,
+  # audit, security). Mounted read-only at /etc/kudos and loaded via
+  # SPRING_CONFIG_ADDITIONAL_LOCATION. REQUIRED.
+  appConfigMap: "kudos-config"
+  # ConfigMap holding krb5.conf (key: krb5.conf). Mounted at /etc/krb5.conf.
+  krb5ConfigMap: "kudos-krb5"
+  # ConfigMap holding the Ozone client config core-site.xml and ozone-site.xml.
+  # Mounted at /etc/ozone/conf. REQUIRED for the Ozone browser.
+  clusterConfigMap: "kudos-cluster-conf"
+  # Optional Secret exposed to the container as environment variables (e.g. an
+  # LDAP manager password referenced from application.yml as ${LDAP_MANAGER_PASSWORD}).
+  envFromSecret: ""
+
+logging:
+  dir: "/var/log/kudos"
+
+# ---------------------------------------------------------------------------
+# Vault — TLS certificate issuance via PKI + AppRole, delivered by a Vault Agent
+# sidecar (an init container issues it before the app starts; the sidecar renews
+# it in place). No Vault Agent Injector required.
+# ---------------------------------------------------------------------------
+vault:
+  image: "hashicorp/vault:1.18"
+  # Vault API address reachable from the pod.
+  address: "https://vault.vault.svc:8200"
+  # AppRole auth mount and role.
+  authPath: "approle"
+  role: "kudos"
+  # PKI mount and issuing role.
+  pkiPath: "pki"
+  pkiRole: "kudos"
+  # Certificate identity requested from PKI. Must be allowed by the PKI role.
+  commonName: "kudos.default.svc.cluster.local"
+  altNames: ""
+  ipSans: ""
+  ttl: "24h"
+  # External Secret holding the AppRole credentials with keys `role_id` and
+  # `secret_id`. Mounted read-only at /vault/approle. REQUIRED.
+  appRoleSecret: "kudos-vault-approle"
+  # Optional ConfigMap with a CA bundle (key: ca.crt) used to trust Vault's own
+  # API TLS. Leave empty if Vault's CA is already in the system trust store.
+  caConfigMap: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 128Mi

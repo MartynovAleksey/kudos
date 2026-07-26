@@ -13,7 +13,7 @@
 # limitations under the License.
 
 spring:
-  application.name: k8spark-ui
+  application.name: kudos
   ldap:
     urls: ${LDAP_URL:ldap://localhost:389}
     base: ${LDAP_BASE:dc=example,dc=org}
@@ -26,7 +26,7 @@ spring.servlet.multipart:
   # default would reject a modest bulk load.
   max-file-size: 256MB
   max-request-size: 256MB
-k8spark.cluster:
+kudos.cluster:
   webhdfs-url: ${WEBHDFS_URL:http://localhost:9870}
   kyuubi-url: ${KYUUBI_JDBC_URL:jdbc:hive2://localhost:10009/default;auth=KERBEROS;principal=kyuubi/_HOST@EXAMPLE.COM}
   hbase-quorum: ${HBASE_ZK_QUORUM:localhost}

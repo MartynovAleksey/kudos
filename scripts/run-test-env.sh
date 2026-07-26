@@ -59,8 +59,8 @@ fi
 
 # FreeIPA and app run natively; Kyuubi's Spark image is amd64-only.
 # Remove only stale project images created for a different CPU before the next build.
-for image in k8spark-ui-test-freeipa k8spark-ui-test-hbase k8spark-ui-test-app \
-  k8spark-ui-test-spark-history; do
+for image in kudos-test-freeipa kudos-test-hbase kudos-test-app \
+  kudos-test-spark-history; do
   architecture="$(run_docker image inspect "$image" --format '{{.Architecture}}' 2>/dev/null || true)"
   if [[ -n "$architecture" && "$architecture" != "$native_architecture" ]]; then
     echo "Removing stale $architecture image: $image"
