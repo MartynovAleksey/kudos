@@ -30,8 +30,8 @@
   <link rel="stylesheet" th:href="@{/static/desktop/ext/css/cui/bootstrap2.css}"/>
   <link rel="stylesheet" th:href="@{/static/desktop/ext/css/cui/bootstrap-responsive2.css}"/>
   <link rel="stylesheet" th:href="@{/static/desktop/css/hue.css}"/>
-  <link rel="stylesheet" th:href="@{/static/app/kudos.css}"/>
-  <script th:src="@{/static/app/kudos.js}" defer="defer"></script>
+  <link rel="stylesheet" th:href="@{/static/app/k8spark.css}"/>
+  <script th:src="@{/static/app/k8spark.js}" defer="defer"></script>
 </head>
 <body th:attr="data-app=${app}">
 <div class="hue-page">
@@ -98,7 +98,7 @@
   </div>
 
   <div class="main-page">
-    <!-- Optional operator banner from kudos.ui.banner-html; trusted config,
+    <!-- Optional operator banner from k8spark.ui.banner-html; trusted config,
          rendered as-is. Absent when the property is empty. -->
     <div class="k8s-banner" th:if="${bannerHtml != null and !bannerHtml.isEmpty()}"
          th:utext="${bannerHtml}"></div>

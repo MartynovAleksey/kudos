@@ -22,9 +22,9 @@ Before=multi-user.target
 Type=oneshot
 # systemd does not propagate Docker service environment to units. These are
 # deliberately non-secret credentials for this disposable test realm only.
-Environment="IPA_ADMIN_INITIAL_PASSWORD=KudosAdmin2026Secure!"
+Environment="IPA_ADMIN_INITIAL_PASSWORD=K8SparkAdmin2026Secure!"
 Environment="IPA_DM_PASSWORD=DirectoryManager1"
-Environment="IPA_TEST_PASSWORD=KudosAdmin2026Secure!"
+Environment="IPA_TEST_PASSWORD=K8SparkAdmin2026Secure!"
 ExecStart=/usr/local/sbin/bootstrap-test-identities
 RemainAfterExit=yes
 

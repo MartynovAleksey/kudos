@@ -19,14 +19,14 @@
   Application logging. The console appender keeps container logs (docker logs);
   the rolling file appender writes a durable log under ${logDir}. Both use Spring
   Boot's default patterns. Levels are still tunable with logging.level.* and the
-  directory with kudos.logging.dir (default ./logs). The audit logger is
+  directory with k8spark.logging.dir (default ./logs). The audit logger is
   configured separately (see AuditService / audit appenders).
 -->
 <configuration>
   <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
   <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
 
-  <springProperty scope="context" name="logDir" source="kudos.logging.dir" defaultValue="logs"/>
+  <springProperty scope="context" name="logDir" source="k8spark.logging.dir" defaultValue="logs"/>
 
   <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
     <file>${logDir}/kudos.log</file>

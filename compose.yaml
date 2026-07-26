@@ -29,10 +29,10 @@ services:
       IPA_SERVER_HOSTNAME: freeipa.test.local
       IPA_SERVER_INSTALL_OPTS: >-
         -U --realm=TEST.LOCAL --domain=test.local --hostname=freeipa.test.local
-        --no-ntp -p DirectoryManager1 -a KudosAdmin2026Secure!
+        --no-ntp -p DirectoryManager1 -a K8SparkAdmin2026Secure!
       IPA_DM_PASSWORD: DirectoryManager1
-      IPA_ADMIN_INITIAL_PASSWORD: KudosAdmin2026Secure!
-      IPA_TEST_PASSWORD: KudosAdmin2026Secure!
+      IPA_ADMIN_INITIAL_PASSWORD: K8SparkAdmin2026Secure!
+      IPA_TEST_PASSWORD: K8SparkAdmin2026Secure!
     # Docker Desktop tmpfs lacks POSIX ACL support, while 389 Directory Server
     # uses setfacl under /run. Docker-managed ext4 volumes provide it.
     volumes:
@@ -114,11 +114,6 @@ services:
       - hdfs-data:/data
     ports:
       - "9870:9870"
-      # DataNode data-transfer and HTTP ports, so WebHDFS OPEN/CREATE redirects
-      # (which point at dfs.datanode.http.address=hdfs.test.local:1006) are
-      # reachable from a client outside the compose network (e.g. the k8s pod).
-      - "1004:1004"
-      - "1006:1006"
     networks:
       default:
         aliases:
@@ -147,12 +142,6 @@ services:
     ports:
       - "9090:9090"
       - "16010:16010"
-      # ZooKeeper, Master and RegionServer RPC — the HBase client discovers the
-      # cluster via ZK and then RPCs the master/regionserver (advertised as
-      # hbase.test.local), so all three must be reachable from outside compose.
-      - "2181:2181"
-      - "16000:16000"
-      - "16020:16020"
     networks:
       default:
         aliases:
@@ -182,12 +171,6 @@ services:
     ports:
       - "9862:9862"
       - "9874:9874"
-      # SCM client port and the DataNode client I/O ports (standalone gRPC + Ratis)
-      # so an ofs:// client outside compose can read/write blocks. The datanode is
-      # advertised as ozone.test.local.
-      - "9860:9860"
-      - "9859:9859"
-      - "9858:9858"
     networks:
       default:
         aliases:
@@ -239,76 +222,6 @@ services:
       timeout: 5s
       retries: 30
 
-  # HashiCorp Vault (dev mode) — issues the application's TLS certificate from
-  # its PKI engine. Ephemeral and auto-unsealed; reconfigured on every up by
-  # vault-bootstrap. This mirrors production, where the certificate is issued by
-  # Vault and delivered by a Vault Agent sidecar (deploy/helm, docs/DEPLOY-HELM.md).
-  vault:
-    image: hashicorp/vault:1.18
-    hostname: vault.test.local
-    cap_add:
-      - IPC_LOCK
-    environment:
-      VAULT_DEV_ROOT_TOKEN_ID: root
-      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
-      VAULT_ADDR: http://127.0.0.1:8200
-    command: server -dev
-    ports:
-      - "8200:8200"
-    healthcheck:
-      test: ["CMD", "vault", "status"]
-      interval: 5s
-      timeout: 5s
-      retries: 24
-      start_period: 5s
-
-  # One-shot: configures the PKI engine (root CA + issuing role) and an AppRole,
-  # then writes role_id/secret_id to the shared volume the agent authenticates with.
-  vault-bootstrap:
-    image: hashicorp/vault:1.18
-    depends_on:
-      vault:
-        condition: service_healthy
-    environment:
-      VAULT_ADDR: http://vault:8200
-      VAULT_TOKEN: root
-    entrypoint: ["sh", "/vault/bootstrap.sh"]
-    volumes:
-      - ./docker/vault/bootstrap.sh:/vault/bootstrap.sh:ro
-      - vault-approle:/vault/approle
-    restart: "no"
-
-  # Vault Agent sidecar: logs in with the AppRole and issues the app's TLS
-  # certificate from PKI as PEM into the shared app-tls volume, renewing it in
-  # place. The app reads /vault/secrets/tls.{crt,key} through its `vault` profile.
-  vault-agent:
-    image: hashicorp/vault:1.18
-    depends_on:
-      vault:
-        condition: service_healthy
-      vault-bootstrap:
-        condition: service_completed_successfully
-    environment:
-      VAULT_ADDR: http://vault:8200
-    # Run as root so the agent can read the root-owned AppRole files and write
-    # the shared named volume. In Kubernetes this is unnecessary — the Helm chart
-    # relies on a Secret mount and an fsGroup-owned emptyDir instead.
-    user: "0:0"
-    entrypoint: ["vault"]
-    command: ["agent", "-config=/vault/agent.hcl"]
-    volumes:
-      - ./docker/vault/agent.hcl:/vault/agent.hcl:ro
-      - vault-approle:/vault/approle:ro
-      - app-tls:/vault/secrets
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - test -s /vault/secrets/tls.crt && test -s /vault/secrets/tls.key
-      interval: 5s
-      timeout: 5s
-      retries: 24
-      start_period: 5s
-
   app:
     build:
       context: .
@@ -327,37 +240,28 @@ services:
         condition: service_healthy
       spark-history:
         condition: service_healthy
-      # Wait until the Vault Agent has issued the TLS certificate the app serves.
-      vault-agent:
-        condition: service_healthy
     volumes:
-      # Only krb5.conf and the CA — deliberately not the shared keytab volume.
-      # The application has no keytab to read: it works from the ticket obtained
-      # at user login, and a compromised app process cannot reach a service
-      # keytab that was never mounted. TLS now comes from Vault (below), not here.
-      - app-secrets:/run/secrets-kudos:ro
-      # TLS material issued by Vault (tls.crt/tls.key/ca.crt), written by the
-      # vault-agent sidecar. The `vault` profile points Spring Boot's SSL bundle
-      # at /vault/secrets.
-      - app-tls:/vault/secrets:ro
+      # Only krb5.conf, the TLS keystore and the CA — deliberately not the
+      # shared keytab volume. The application has no keytab to read: it works
+      # from the ticket obtained at user login, and a compromised app process
+      # cannot reach a service keytab that was never mounted.
+      - app-secrets:/run/secrets-k8spark:ro
       # The ofs:// client needs the cluster's own service principals and
       # addresses; reuse the service configuration instead of restating it.
       - ./docker/ozone:/etc/ozone/conf:ro
-      # Every kudos.cluster setting lives here and is editable without a
+      # Every k8spark.cluster setting lives here and is editable without a
       # rebuild. See config/application.yml for why none of them are set as
       # environment variables below.
       - ./config:/etc/kudos:ro
-      # Durable application and audit logs (kudos.logging.dir).
+      # Durable application and audit logs (k8spark.logging.dir).
       - app-logs:/var/log/kudos
     environment:
       SPRING_CONFIG_ADDITIONAL_LOCATION: file:/etc/kudos/
-      # Serve HTTPS with the Vault-issued PEM certificate (application-vault.yml).
-      SPRING_PROFILES_ACTIVE: vault
       # Log directory for the container (the app-logs volume above). Kept out of
       # the shared config file so local runs default to ./logs instead.
-      KUDOS_LOGGING_DIR: /var/log/kudos
+      K8SPARK_LOGGING_DIR: /var/log/kudos
       JAVA_TOOL_OPTIONS: >-
-        -Djava.security.krb5.conf=/run/secrets-kudos/krb5.conf
+        -Djava.security.krb5.conf=/run/secrets-k8spark/krb5.conf
         --add-exports=java.security.jgss/sun.security.krb5=ALL-UNNAMED
     # The API and UI are served over TLS only.
     ports:
@@ -367,7 +271,7 @@ services:
         - CMD-SHELL
         - >-
           curl --fail --silent --max-time 5
-          --cacert /vault/secrets/ca.crt
+          --cacert /run/secrets-k8spark/ca.crt
           https://app.test.local:8443/actuator/health
           | grep -q '"status":"UP"'
       interval: 5s
@@ -401,7 +305,3 @@ volumes:
   hdfs-data:
   hbase-data:
   ozone-data:
-  # AppRole role_id/secret_id written by vault-bootstrap, read by vault-agent.
-  vault-approle:
-  # Vault-issued TLS PEM (tls.crt/tls.key/ca.crt) shared from vault-agent to app.
-  app-tls:

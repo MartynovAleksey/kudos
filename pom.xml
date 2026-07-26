@@ -25,7 +25,7 @@
     <artifactId>spring-boot-starter-parent</artifactId>
     <version>3.5.8</version>
   </parent>
-  <groupId>com.kudos</groupId>
+  <groupId>com.k8spark</groupId>
   <artifactId>kudos</artifactId>
   <version>0.1.0</version>
   <name>kudos</name>

@@ -25,12 +25,17 @@
 # variables outrank an external config file in Spring Boot, and a leftover
 # variable would silently win over an edit made here.
 
-# TLS is configured by the `vault` Spring profile (packaged
-# application-vault.yml): the certificate is issued from HashiCorp Vault's PKI
-# engine and delivered as PEM by a Vault Agent sidecar at /vault/secrets. The
-# profile is activated with SPRING_PROFILES_ACTIVE=vault in the container (see
-# compose.yaml and docs/DEPLOY-HELM.md); leaving it off keeps local runs on
-# plain HTTP so they need no certificate.
+server:
+  # TLS for the application itself. The keystore is issued by this realm's CA
+  # during the FreeIPA bootstrap and published on the shared volume, so the
+  # certificate chains to /shared/ca.crt rather than being self-signed.
+  port: 8443
+  ssl:
+    enabled: true
+    key-store: file:/run/secrets-k8spark/app-tls.p12
+    key-store-type: PKCS12
+    key-store-password: changeit
+    key-alias: app
 
 spring:
   ldap:
@@ -40,7 +45,7 @@ spring:
     password: DirectoryManager1
     user-dn-pattern: uid={0},cn=users,cn=accounts
 
-kudos:
+k8spark:
   cluster:
     # WebHDFS endpoint used by the file browser, over SPNEGO.
     webhdfs-url: http://hdfs.test.local:9870
@@ -74,17 +79,17 @@ kudos:
     # banner-html: '<strong>TEST</strong> environment — data is not production.'
     banner-html: ""
 
-  # The log directory (kudos.logging.dir) is set for the container via the
-  # KUDOS_LOGGING_DIR environment variable in compose.yaml, not here: this file
+  # The log directory (k8spark.logging.dir) is set for the container via the
+  # K8SPARK_LOGGING_DIR environment variable in compose.yaml, not here: this file
   # is also auto-loaded when running locally from the project root, and an
   # absolute container path would then break local runs. It defaults to ./logs.
 
-  # Audit of user actions. Always written to ${kudos.logging.dir}/audit.log.
+  # Audit of user actions. Always written to ${k8spark.logging.dir}/audit.log.
   # To also publish each event to Kafka, set kafka-enabled: true and provide a
   # broker via spring.kafka.bootstrap-servers.
   audit:
     kafka-enabled: false
-    kafka-topic: kudos-audit
+    kafka-topic: k8spark-audit
 
   # Login brute-force guard: lock a username after this many consecutive failed
   # attempts, for this many minutes.
@@ -107,4 +112,4 @@ kudos:
 # Standard Spring log levels; tune per package as needed.
 logging:
   level:
-    com.kudos.ui: INFO
+    com.k8spark.ui: INFO
