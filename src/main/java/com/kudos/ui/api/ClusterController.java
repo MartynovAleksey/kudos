@@ -27,6 +27,7 @@ import com.kudos.ui.service.HbaseTableInfo;
 import com.kudos.ui.service.HdfsService;
 import com.kudos.ui.service.KyuubiService;
 import com.kudos.ui.service.KyuubiSessionInfo;
+import com.kudos.ui.service.KyuubiSessionMonitor;
 import com.kudos.ui.service.OzoneService;
 import com.kudos.ui.service.QueryResult;
 import com.kudos.ui.service.SparkApplication;
@@ -40,6 +41,7 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -57,7 +59,7 @@ public class ClusterController {
   /** Caps a result set so the editor grid stays responsive. */
   private static final int MAX_RESULT_ROWS = 1000;
 
-  /** A larger cap for the Excel export, which does not render in the browser. */
+  /** A larger cap for direct API exports, which do not render in the browser. */
   private static final int EXPORT_MAX_ROWS = 100_000;
 
   private final HdfsService hdfs;
@@ -155,6 +157,11 @@ public class ClusterController {
     return kyuubi.sessions();
   }
 
+  @GetMapping("/sessions/{id}/monitor")
+  KyuubiSessionMonitor sessionMonitor(@PathVariable String id) {
+    return kyuubi.monitor(id);
+  }
+
   @PostMapping("/sessions/start")
   KyuubiSessionInfo startSession(@Valid @RequestBody SessionStartRequest request) throws Exception {
     return kyuubi.start(request.name(), request.sparkParams());
@@ -179,7 +186,17 @@ public class ClusterController {
   @PostMapping("/sql/export")
   void sqlExport(@Valid @RequestBody SqlRequest request, HttpServletResponse response)
       throws Exception {
-    QueryResult result = kyuubi.execute(request.sql(), EXPORT_MAX_ROWS);
+    writeExcel(kyuubi.execute(request.sql(), EXPORT_MAX_ROWS), response);
+  }
+
+  @PostMapping("/sql/export/results")
+  void sqlExportResults(@RequestBody QueryResult result, HttpServletResponse response)
+      throws Exception {
+    writeExcel(result, response);
+  }
+
+  private static void writeExcel(QueryResult result, HttpServletResponse response)
+      throws Exception {
     response.setContentType(
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     response.setHeader("Content-Disposition", "attachment; filename=\"query-results.xlsx\"");

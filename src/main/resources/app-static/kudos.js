@@ -267,56 +267,161 @@
     var run = el('executeQuery');
     var query = el('queryField');
     var results = el('queryResults');
+    var clearResultsBtn = el('clearResults');
+    var activeSessionId = 'default';
+    var resultsBySession = Object.create(null);
+    var queryKeyPrefix = 'kudos.sql.' + query.getAttribute('data-query-owner') + '.';
+    var resultsTab = el('resultsTab');
+    var logsTab = el('logsTab');
+    var resultsTabItem = el('resultsTabItem');
+    var logsTabItem = el('logsTabItem');
+    var resultsPane = el('resultsPane');
+    var logsPane = el('logsPane');
+
+    function showOutputTab(name) {
+      var showResults = name === 'results';
+      resultsTabItem.classList.toggle('active', showResults);
+      logsTabItem.classList.toggle('active', !showResults);
+      resultsPane.classList.toggle('active', showResults);
+      logsPane.classList.toggle('active', !showResults);
+      resultsPane.hidden = !showResults;
+      logsPane.hidden = showResults;
+      resultsTab.setAttribute('aria-selected', String(showResults));
+      logsTab.setAttribute('aria-selected', String(!showResults));
+      resultsPane.setAttribute('aria-hidden', String(!showResults));
+      logsPane.setAttribute('aria-hidden', String(showResults));
+    }
+
+    resultsTab.addEventListener('click', function (event) {
+      event.preventDefault();
+      showOutputTab('results');
+    });
+    logsTab.addEventListener('click', function (event) {
+      event.preventDefault();
+      showOutputTab('logs');
+    });
+    showOutputTab('results');
+
+    function storedQuery(sessionId) {
+      try {
+        return localStorage.getItem(queryKeyPrefix + sessionId) || '';
+      } catch (ignored) {
+        return '';
+      }
+    }
+
+    function saveQuery() {
+      try {
+        localStorage.setItem(queryKeyPrefix + activeSessionId, query.value);
+      } catch (ignored) {
+        // The editor still works when storage is disabled by browser policy.
+      }
+    }
+
+    function forgetQuery(sessionId) {
+      try {
+        localStorage.removeItem(queryKeyPrefix + sessionId);
+      } catch (ignored) {
+        // Nothing to remove when storage is unavailable.
+      }
+    }
+
+    function renderEmptyResult() {
+      results.innerHTML = '<div class="k8s-muted">Run a query to see its results.</div>';
+    }
+
+    function renderResult(result) {
+      results.innerHTML = '';
+      if (!result.rows.length) {
+        results.appendChild(element('div', { class: 'k8s-muted', text: 'The query returned no rows.' }));
+        return;
+      }
+      var scroll = element('div', { class: 'k8s-result-scroll' });
+      scroll.appendChild(buildTable(result.columns, result.rows));
+      results.appendChild(scroll);
+    }
+
+    function restoreResult() {
+      var result = resultsBySession[activeSessionId];
+      if (result) {
+        renderResult(result);
+      } else {
+        renderEmptyResult();
+      }
+    }
+
+    function clearResults() {
+      delete resultsBySession[activeSessionId];
+      renderEmptyResult();
+    }
+
+    function useSession(sessionId) {
+      if (activeSessionId === sessionId) {
+        return;
+      }
+      saveQuery();
+      activeSessionId = sessionId;
+      query.value = storedQuery(sessionId);
+      restoreResult();
+    }
+
+    query.value = storedQuery(activeSessionId);
 
     function execute() {
       var sql = query.value.trim();
       if (!sql) {
-        return;
+        return Promise.resolve(null);
       }
+      var executionSessionId = activeSessionId;
+      delete resultsBySession[executionSessionId];
+      showOutputTab('results');
       results.innerHTML = '<div class="k8s-muted">Executing…</div>';
       run.disabled = true;
-      request('/api/sql/execute', {
+      return request('/api/sql/execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sql: sql })
       })
         .then(function (result) {
-          results.innerHTML = '';
-          if (!result.rows.length) {
-            var empty = document.createElement('div');
-            empty.className = 'k8s-muted';
-            empty.appendChild(text('The query returned no rows.'));
-            results.appendChild(empty);
-            return;
+          resultsBySession[executionSessionId] = result;
+          if (activeSessionId === executionSessionId) {
+            renderResult(result);
           }
-          var scroll = document.createElement('div');
-          scroll.className = 'k8s-result-scroll';
-          scroll.appendChild(buildTable(result.columns, result.rows));
-          results.appendChild(scroll);
+          return result;
         })
         .catch(function (error) {
-          showError(results, error);
+          if (activeSessionId === executionSessionId) {
+            showError(results, error);
+          }
+          return null;
         })
-        .then(function () {
+        .then(function (result) {
           run.disabled = false;
+          return result;
         });
     }
 
     var exportBtn = el('exportExcel');
 
     function exportExcel() {
-      var sql = query.value.trim();
-      if (!sql) {
-        return;
-      }
       exportBtn.disabled = true;
-      fetch('/api/sql/export', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sql: sql })
-      })
+      var displayedResult = resultsBySession[activeSessionId];
+      (displayedResult ? Promise.resolve(displayedResult) : execute())
+        .then(function (result) {
+          if (!result) {
+            return null;
+          }
+          return fetch('/api/sql/export/results', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(result)
+          });
+        })
         .then(function (response) {
+          if (!response) {
+            return null;
+          }
           if (!response.ok) {
             return response.text().then(function (body) {
               throw new Error(body || 'HTTP ' + response.status);
@@ -325,6 +430,9 @@
           return response.blob();
         })
         .then(function (blob) {
+          if (!blob) {
+            return;
+          }
           var url = URL.createObjectURL(blob);
           var link = document.createElement('a');
           link.href = url;
@@ -344,6 +452,8 @@
 
     run.addEventListener('click', execute);
     exportBtn.addEventListener('click', exportExcel);
+    clearResultsBtn.addEventListener('click', clearResults);
+    query.addEventListener('input', saveQuery);
     query.addEventListener('keydown', function (event) {
       if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
         execute();
@@ -354,6 +464,14 @@
 
     var sessionsPanel = el('sessionsPanel');
     var newSessionBtn = el('newSession');
+    var closeAllBtn = el('closeAllSessions');
+    var noSessions = el('noSessions');
+    var sessionMonitorSummary = el('sessionMonitorSummary');
+    var sessionMonitorWarning = el('sessionMonitorWarning');
+    var sessionMonitorMetrics = el('sessionMonitorMetrics');
+    var sessionMonitorOperations = el('sessionMonitorOperations');
+    var sessionMonitorLogs = el('sessionMonitorLogs');
+    var knownSessions = [];
 
     function loadSessions() {
       request('/api/sessions')
@@ -361,54 +479,136 @@
         .catch(function (error) { showError(sessionsPanel, error); });
     }
 
-    function act(url, body, message) {
-      send(url, body)
-        .then(function () { toast(message); loadSessions(); })
+    function metric(label, value) {
+      var shown = value === null || value === undefined || value === '' ? '—' : value;
+      return element('span', { class: 'k8s-session-metric' }, [label + ': ', shown]);
+    }
+
+    function loadMonitor(session) {
+      if (!session) {
+        sessionMonitorSummary.innerHTML = '';
+        sessionMonitorSummary.appendChild(element('strong', { text: 'No active Kyuubi session.' }));
+        sessionMonitorWarning.classList.add('k8s-hidden');
+        sessionMonitorMetrics.innerHTML = '';
+        sessionMonitorOperations.innerHTML = '';
+        sessionMonitorOperations.appendChild(text('No operations yet.'));
+        sessionMonitorLogs.textContent = 'No operation logs yet.';
+        return;
+      }
+      request('/api/sessions/' + encodeURIComponent(session.id) + '/monitor')
+        .then(function (monitor) {
+          if (activeSessionId !== session.id) {
+            return;
+          }
+          sessionMonitorSummary.innerHTML = '';
+          sessionMonitorSummary.appendChild(
+            element('strong', { text: 'Session ' + monitor.state + ': ' + monitor.message })
+          );
+          sessionMonitorWarning.classList.toggle('k8s-hidden', !monitor.monitoringError);
+          sessionMonitorWarning.textContent = monitor.monitoringError
+            ? 'Monitoring update failed; showing the last known values. ' + monitor.monitoringError
+            : '';
+          sessionMonitorMetrics.innerHTML = '';
+          [
+            metric('Session ID', monitor.kyuubiSessionId),
+            metric('Engine', monitor.engineName || monitor.engineId),
+            metric('Operations', monitor.totalOperations),
+            metric('Running', monitor.runningOperations),
+            metric('Kyuubi pool', monitor.executorPoolActiveCount + '/' + monitor.executorPoolSize),
+            metric('Queue', monitor.executorPoolQueueSize)
+          ].forEach(function (item) { sessionMonitorMetrics.appendChild(item); });
+          sessionMonitorOperations.innerHTML = '';
+          if (monitor.operations && monitor.operations.length) {
+            sessionMonitorOperations.appendChild(
+              buildTable(
+                ['State', 'Statement', 'Started', 'Error'],
+                monitor.operations.map(function (operation) {
+                  return [operation.state, operation.statement, formatDate(operation.startedAtEpochMs), operation.error];
+                })
+              )
+            );
+          } else {
+            sessionMonitorOperations.appendChild(text('No operations yet.'));
+          }
+          sessionMonitorLogs.textContent = (monitor.logs || []).join('\n') || 'No operation logs yet.';
+        })
+        .catch(function (error) {
+          sessionMonitorWarning.classList.remove('k8s-hidden');
+          sessionMonitorWarning.textContent = error.message || String(error);
+        });
+    }
+
+    function activateSession(session) {
+      if (session.active) {
+        return;
+      }
+      send('/api/sessions/activate', { id: session.id })
+        .then(loadSessions)
+        .catch(function (error) { toast(error.message || String(error)); });
+    }
+
+    function closeSession(session) {
+      send('/api/sessions/stop', { id: session.id })
+        .then(function () {
+          forgetQuery(session.id);
+          delete resultsBySession[session.id];
+          loadSessions();
+        })
         .catch(function (error) { toast(error.message || String(error)); });
     }
 
     function renderSessions(sessions) {
+      knownSessions = sessions;
       sessionsPanel.innerHTML = '';
+      noSessions.classList.toggle('k8s-hidden', sessions.length > 0);
+      closeAllBtn.disabled = sessions.length === 0;
+      var active = sessions.filter(function (session) { return session.active; })[0];
+      useSession(active ? active.id : 'default');
+      run.disabled = Boolean(active && active.state !== 'READY');
+      loadMonitor(active);
       if (!sessions.length) {
-        sessionsPanel.appendChild(
-          element('div', {
-            class: 'k8s-muted',
-            text: 'No sessions — queries run on the default engine.'
-          })
-        );
         return;
       }
       sessions.forEach(function (session) {
         var params = session.sparkParams
           ? session.sparkParams.replace(/\r?\n/g, ', ')
           : 'cluster defaults';
-        var row = element(
+        var label = button(session.name, 'k8s-session-tab-label', function () {
+          activateSession(session);
+        });
+        label.setAttribute('role', 'tab');
+        label.setAttribute('aria-selected', String(session.active));
+        var restart = button('⚙', 'k8s-session-tab-action', function () {
+          restartSession(session);
+        });
+        restart.title = 'Restart session';
+        restart.setAttribute('aria-label', 'Restart session ' + session.name);
+        var close = button('×', 'k8s-session-tab-action k8s-session-tab-close', function () {
+          closeSession(session);
+        });
+        close.title = 'Close session';
+        close.setAttribute('aria-label', 'Close session ' + session.name);
+        var state = element('span', { class: 'k8s-session-state', text: session.state });
+        var sessionId = element('span', {
+          class: 'k8s-session-id',
+          title: session.kyuubiSessionId || session.message,
+          text: session.kyuubiSessionId || 'ID pending'
+        });
+        var tab = element(
           'div',
-          { class: 'k8s-session-row' + (session.active ? ' k8s-session-active' : '') },
+          {
+            class: 'k8s-session-tab' + (session.active ? ' k8s-session-active' : ''),
+            title: params
+          },
           [
-            element('span', { class: 'k8s-session-name' }, [
-              element('i', {
-                class: session.active ? 'fa fa-check-circle' : 'fa fa-circle-o'
-              }),
-              text(' ' + session.name)
-            ]),
-            element('span', { class: 'k8s-muted', title: params }, [
-              text(params.length > 70 ? params.substring(0, 70) + '…' : params)
-            ]),
-            element('span', { class: 'k8s-row-actions' }, [
-              session.active
-                ? null
-                : button('activate', 'k8s-link', function () {
-                    act('/api/sessions/activate', { id: session.id }, 'Session activated');
-                  }),
-              button('restart', 'k8s-link', function () { restartSession(session); }),
-              button('stop', 'k8s-link k8s-link-danger', function () {
-                act('/api/sessions/stop', { id: session.id }, 'Session stopped');
-              })
-            ])
+            label,
+            state,
+            sessionId,
+            restart,
+            close
           ]
         );
-        sessionsPanel.appendChild(row);
+        sessionsPanel.appendChild(tab);
       });
     }
 
@@ -435,7 +635,7 @@
               ? { id: session.id, sparkParams: params.value }
               : { name: name.value, sparkParams: params.value };
             send(url, payload)
-              .then(function () { toast('Session ready'); loadSessions(); })
+              .then(function () { toast('Session starting'); loadSessions(); })
               .catch(function (error) { toast(error.message || String(error)); loadSessions(); });
           }
         }
@@ -452,7 +652,27 @@
       });
     }
 
+    closeAllBtn.addEventListener('click', function () {
+      if (!knownSessions.length) {
+        return;
+      }
+      confirmModal('Close all Kyuubi sessions?', function () {
+        Promise.all(
+          knownSessions.map(function (session) {
+            return send('/api/sessions/stop', { id: session.id });
+          })
+        )
+          .then(function () {
+            knownSessions.forEach(function (session) { forgetQuery(session.id); });
+            knownSessions.forEach(function (session) { delete resultsBySession[session.id]; });
+            loadSessions();
+          })
+          .catch(function (error) { toast(error.message || String(error)); });
+      });
+    });
+
     loadSessions();
+    window.setInterval(loadSessions, 1000);
   }
 
   /* ------------------------------------------------------- storage browsers */

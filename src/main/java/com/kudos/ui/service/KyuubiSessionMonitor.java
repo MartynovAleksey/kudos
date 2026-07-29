@@ -16,16 +16,26 @@
 
 package com.kudos.ui.service;
 
-/**
- * A user's Kyuubi session as shown in the editor: an independent engine started
- * with its own Spark parameters. {@code active} marks the one queries run on.
- */
-public record KyuubiSessionInfo(
+import java.util.List;
+
+/** Live Kyuubi data rendered in the editor's own session console. */
+public record KyuubiSessionMonitor(
     String id,
-    String name,
-    String sparkParams,
-    boolean active,
-    long createdAtEpochMs,
-    String kyuubiSessionId,
     String state,
-    String message) {}
+    String message,
+    String kyuubiSessionId,
+    String engineId,
+    String engineName,
+    String engineUrl,
+    long openedAtEpochMs,
+    int totalOperations,
+    int pendingOperations,
+    int runningOperations,
+    int completedOperations,
+    int failedOperations,
+    int executorPoolSize,
+    int executorPoolActiveCount,
+    int executorPoolQueueSize,
+    List<KyuubiOperationInfo> operations,
+    List<String> logs,
+    String monitoringError) {}

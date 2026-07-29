@@ -29,45 +29,64 @@
     </div>
   </nav>
 
-  <div class="card card-small">
-    <div class="card-body">
-      <div class="k8s-table-head">
-        <h4 class="card-heading simple">Sessions</h4>
-        <button id="newSession" class="btn btn-small btn-primary" type="button">
-          <i class="fa fa-plus"></i> New session
-        </button>
-      </div>
-      <div id="sessionsPanel">
-        <div class="k8s-muted">No sessions — queries run on the default engine.</div>
-      </div>
-    </div>
+  <div class="k8s-session-bar">
+    <div id="sessionsPanel" class="k8s-session-tabs" role="tablist"></div>
+    <button id="newSession" class="k8s-session-add" type="button" title="New session"
+            aria-label="New session">+</button>
+    <button id="closeAllSessions" class="btn btn-small" type="button">Close all tabs</button>
   </div>
 
   <div class="card card-small">
     <div class="card-body">
+      <div id="sessionMonitor" class="k8s-session-monitor">
+        <div id="sessionMonitorSummary"></div>
+        <div id="sessionMonitorWarning" class="k8s-warning k8s-hidden"></div>
+        <div id="sessionMonitorMetrics"></div>
+        <h4>Operations</h4>
+        <div id="sessionMonitorOperations" class="k8s-muted"></div>
+      </div>
+      <div id="noSessions" class="k8s-muted k8s-session-empty">
+        No sessions — queries run on the default engine. Use + to start one.
+      </div>
       <textarea id="queryField" class="k8s-editor-area" tabindex="1"
                 spellcheck="false"
+                th:attr="data-query-owner=${#authentication.name}"
                 placeholder="Example: SELECT 40 + 2 AS result"></textarea>
-      <div class="actions" style="margin-top: 10px;">
+      <div class="actions k8s-query-actions" style="margin-top: 10px;">
         <button type="button" id="executeQuery" class="btn btn-primary" tabindex="2">Execute</button>
+        <span class="muted" style="padding-left: 10px;">Ctrl + Enter</span>
         <button type="button" id="exportExcel" class="btn" tabindex="3">
           <i class="fa fa-file-excel-o"></i> Export to Excel
         </button>
-        <span class="muted" style="padding-left: 10px;">Ctrl + Enter</span>
+        <button type="button" id="clearResults" class="btn" tabindex="4">
+          <i class="fa fa-eraser"></i> Clear results
+        </button>
       </div>
     </div>
   </div>
 
   <div class="card card-small scrollable resultsContainer">
     <div class="card-body">
-      <ul class="nav nav-tabs">
-        <li class="active"><a href="javascript:void(0)">Results</a></li>
+      <ul class="nav nav-tabs k8s-output-tabs" role="tablist">
+        <li id="resultsTabItem" class="active">
+          <a id="resultsTab" href="#resultsPane" role="tab" aria-controls="resultsPane"
+             aria-selected="true">Result</a>
+        </li>
+        <li id="logsTabItem">
+          <a id="logsTab" href="#logsPane" role="tab" aria-controls="logsPane"
+             aria-selected="false">Log</a>
+        </li>
       </ul>
-      <div class="tab-content">
-        <div class="tab-pane active">
+      <div class="tab-content k8s-output-content">
+        <div id="resultsPane" class="tab-pane active" role="tabpanel"
+             aria-labelledby="resultsTab" aria-hidden="false">
           <div id="queryResults">
             <div class="k8s-muted">Run a query to see its results.</div>
           </div>
+        </div>
+        <div id="logsPane" class="tab-pane" role="tabpanel"
+             aria-labelledby="logsTab" aria-hidden="true" hidden>
+          <pre id="sessionMonitorLogs" class="k8s-session-logs"></pre>
         </div>
       </div>
     </div>

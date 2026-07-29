@@ -697,22 +697,160 @@
   font-size: 12px;
 }
 
-/* Kyuubi sessions panel on the editor. */
-.k8s-session-row {
+/* Browser-like Kyuubi session tabs on the editor. */
+.k8s-session-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  margin: 10px 0 0;
+  border-bottom: 1px solid #c7ccd1;
+}
+.k8s-session-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  min-width: 0;
+  overflow-x: auto;
+}
+.k8s-session-tab {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 6px 8px;
-  border-bottom: 1px solid #eee;
+  max-width: 260px;
+  height: 32px;
+  padding: 0 5px 0 10px;
+  border: 1px solid #c7ccd1;
+  border-bottom: 0;
+  border-radius: 7px 7px 0 0;
+  background: #e9ecef;
+  color: #394047;
 }
-.k8s-session-row.k8s-session-active {
-  background-color: #eef7fb;
+.k8s-session-tab.k8s-session-active {
+  height: 34px;
+  background: #fff;
+  color: #111;
+  box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.05);
 }
-.k8s-session-name {
+.k8s-session-tab-label,
+.k8s-session-tab-action,
+.k8s-session-add {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.k8s-session-tab-label {
+  min-width: 45px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
   font-weight: 500;
+}
+
+.k8s-session-tab-action {
+  padding: 4px;
+  color: #6a7278;
+}
+.k8s-session-tab-action:hover {
+  color: #0b7fad;
+}
+.k8s-session-tab-close:hover {
+  color: #b94a48;
+}
+.k8s-session-add {
+  width: 32px;
+  height: 32px;
+  margin-right: auto;
+  font-size: 21px;
+  color: #394047;
+}
+.k8s-session-bar > .btn {
+  margin-bottom: 4px;
+}
+.k8s-session-empty {
+  margin-bottom: 8px;
+}
+.k8s-session-id,
+.k8s-session-state {
+  margin-left: 6px;
+  color: #6a7278;
+  font-size: 11px;
   white-space: nowrap;
 }
-.k8s-session-active .k8s-session-name .fa {
-  color: #3fae2a;
+.k8s-session-id {
+  max-width: 105px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.k8s-session-monitor {
+  padding-top: 4px;
+  margin-bottom: 12px;
+}
+.k8s-session-monitor h4 {
+  margin: 0 0 7px;
+}
+.k8s-session-monitor h4 {
+  margin-top: 12px;
+  font-size: 13px;
+}
+.k8s-session-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: 7px 0;
+}
+.k8s-session-metric {
+  color: #4b5359;
+  font-size: 12px;
+}
+.k8s-session-monitor .k8s-warning {
+  margin: 8px 0;
+  color: #8a6d3b;
+}
+.k8s-session-logs {
+  max-height: 180px;
+  overflow: auto;
+  margin: 8px 0 0;
+  padding: 8px;
+  background: #f5f5f5;
+  border: 1px solid #ddd;
+  font-size: 11px;
+  white-space: pre-wrap;
+}
+.k8s-query-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.k8s-query-actions #exportExcel {
+  margin-left: auto;
+}
+.resultsContainer .k8s-output-tabs {
+  display: flex;
+  margin: 0;
+  padding: 0 0 0 8px;
+  border-bottom: 1px solid #d6d8db;
+}
+.resultsContainer .k8s-output-tabs > li {
+  margin: 0 2px -1px 0;
+  list-style: none;
+}
+.resultsContainer .k8s-output-tabs > li > a {
+  display: block;
+  padding: 8px 16px;
+  color: #5a656d;
+  background: #f4f5f6;
+  border: 1px solid #d6d8db;
+  border-radius: 5px 5px 0 0;
+  text-decoration: none;
+}
+.resultsContainer .k8s-output-tabs > li.active > a {
+  color: #0b7fad;
+  background: #fff;
+  border-bottom-color: #fff;
+}
+.resultsContainer .k8s-output-content {
+  padding-top: 12px;
+}
+.resultsContainer .tab-pane[hidden] {
+  display: none;
 }

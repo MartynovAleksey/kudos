@@ -14,18 +14,20 @@
  * limitations under the License.
  */
 
-package com.kudos.ui.config;
+package com.kudos.ui.service;
 
-import org.springframework.boot.context.properties.ConfigurationProperties;
+import java.util.List;
+import java.util.Map;
 
-@ConfigurationProperties(prefix = "kudos.cluster")
-public record ClusterProperties(
-    String webhdfsUrl,
-    String kyuubiUrl,
-    String kyuubiRestUrl,
-    String hbaseQuorum,
-    String ozoneOfsUri,
-    String ozoneConfDir,
-    String sparkHistoryUrl,
-    /** Template for the user's own principal; no service keytab is ever used. */
-    String kerberosPrincipal) {}
+/** One Kyuubi operation belonging to a session. */
+public record KyuubiOperationInfo(
+    String id,
+    String statement,
+    String state,
+    long createdAtEpochMs,
+    long startedAtEpochMs,
+    long completedAtEpochMs,
+    String error,
+    Map<String, String> metrics,
+    List<String> progressHeaders,
+    List<List<String>> progressRows) {}

@@ -17,6 +17,9 @@
 package com.kudos.ui.service;
 
 import com.kudos.ui.config.ClusterProperties;
+import java.lang.reflect.Field;
+import java.lang.reflect.UndeclaredThrowableException;
+import java.security.PrivilegedActionException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -25,35 +28,37 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import org.apache.hive.jdbc.HiveConnection;
+import org.apache.hive.jdbc.HiveDriver;
+import org.apache.hive.jdbc.HiveStatement;
+import org.apache.hive.service.cli.HandleIdentifier;
+import org.apache.hive.service.rpc.thrift.TSessionHandle;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
-/**
- * Runs Spark SQL through Kyuubi and manages each user's sessions.
- *
- * <p>A session is a JDBC connection held open with {@code
- * kyuubi.engine.share.level=CONNECTION} and the user's own Spark parameters, so
- * it is an independent engine. A user can start several, switch the active one
- * and stop or restart them, which is how the editor offers parallel sessions
- * with different Spark configuration. Queries run on the active session, or —
- * when there is none — on a throwaway connection with the cluster defaults.
- */
+/** Runs Spark SQL through Kyuubi and manages each user's sessions. */
 @Service
 public class KyuubiService {
 
   private static final int MAX_SESSIONS_PER_USER = 5;
+  private static final int MAX_MONITORED_OPERATIONS = 20;
 
   private final ClusterProperties properties;
   private final KerberosExecutor kerberos;
+  private final KyuubiRestClient rest;
   private final Map<String, UserSessions> byUser = new ConcurrentHashMap<>();
 
-  public KyuubiService(ClusterProperties properties, KerberosExecutor kerberos) {
+  public KyuubiService(
+      ClusterProperties properties, KerberosExecutor kerberos, KyuubiRestClient rest) {
     this.properties = properties;
     this.kerberos = kerberos;
+    this.rest = rest;
   }
 
   // --------------------------------------------------------------- queries
@@ -62,7 +67,7 @@ public class KyuubiService {
     KyuubiSession session = activeSession();
     if (session != null) {
       synchronized (session) {
-        try (Statement statement = session.connection.createStatement();
+        try (Statement statement = session.requireConnection().createStatement();
             ResultSet resultSet = statement.executeQuery(sql)) {
           return toRows(resultSet);
         }
@@ -70,7 +75,7 @@ public class KyuubiService {
     }
     return kerberos.asLoggedInUser(
         () -> {
-          try (Connection connection = DriverManager.getConnection(properties.kyuubiUrl());
+          try (Connection connection = openKyuubiConnection(properties.kyuubiUrl());
               Statement statement = connection.createStatement();
               ResultSet resultSet = statement.executeQuery(sql)) {
             return toRows(resultSet);
@@ -83,15 +88,22 @@ public class KyuubiService {
     KyuubiSession session = activeSession();
     if (session != null) {
       synchronized (session) {
-        try (Statement statement = session.connection.createStatement();
-            ResultSet resultSet = statement.executeQuery(sql)) {
-          return toResult(resultSet, maxRows);
+        try (Statement statement = session.requireConnection().createStatement()) {
+          String operationId = session.beginOperation(sql);
+          try (ResultSet resultSet = statement.executeQuery(sql)) {
+            QueryResult result = toResult(resultSet, maxRows);
+            session.finishOperation(operationId, statement, null);
+            return result;
+          } catch (Exception error) {
+            session.finishOperation(operationId, statement, error);
+            throw error;
+          }
         }
       }
     }
     return kerberos.asLoggedInUser(
         () -> {
-          try (Connection connection = DriverManager.getConnection(properties.kyuubiUrl());
+          try (Connection connection = openKyuubiConnection(properties.kyuubiUrl());
               Statement statement = connection.createStatement();
               ResultSet resultSet = statement.executeQuery(sql)) {
             return toResult(resultSet, maxRows);
@@ -115,26 +127,22 @@ public class KyuubiService {
     }
   }
 
-  public KyuubiSessionInfo start(String name, String sparkParams) throws Exception {
+  /** Adds a tab immediately, then opens its Kyuubi connection in the background. */
+  public KyuubiSessionInfo start(String name, String sparkParams) {
     String username = currentUser();
+    Authentication authentication = currentAuthentication();
     UserSessions user = byUser.computeIfAbsent(username, key -> new UserSessions());
+    KyuubiSession session = new KyuubiSession(UUID.randomUUID().toString(), displayName(name), sparkParams);
     synchronized (user) {
       if (user.sessions.size() >= MAX_SESSIONS_PER_USER) {
         throw new IllegalStateException(
             "Session limit reached (" + MAX_SESSIONS_PER_USER + "); stop one first");
       }
-    }
-    // Open outside the lock: launching the engine can take tens of seconds.
-    Connection connection = open(sparkParams);
-    KyuubiSession session =
-        new KyuubiSession(UUID.randomUUID().toString(), displayName(name), sparkParams, connection);
-    synchronized (user) {
       user.sessions.put(session.id, session);
-      if (user.activeId == null) {
-        user.activeId = session.id;
-      }
-      return session.toInfo(session.id.equals(user.activeId));
+      user.activeId = session.id;
     }
+    launch(session, authentication);
+    return session.toInfo(true);
   }
 
   public void stop(String id) {
@@ -149,30 +157,30 @@ public class KyuubiService {
         user.activeId = user.sessions.keySet().stream().findFirst().orElse(null);
       }
     }
-    close(removed);
+    closeAsync(removed);
   }
 
-  public KyuubiSessionInfo restart(String id, String sparkParams) throws Exception {
+  /** Restarts the engine while keeping the browser tab and its saved query. */
+  public KyuubiSessionInfo restart(String id, String sparkParams) {
     UserSessions user = byUser.get(currentUser());
-    KyuubiSession existing;
-    if (user != null) {
-      synchronized (user) {
-        existing = user.sessions.get(id);
-      }
-    } else {
-      existing = null;
-    }
-    if (existing == null) {
+    if (user == null) {
       throw new IllegalStateException("No such session");
     }
-    String params = sparkParams == null ? existing.sparkParams : sparkParams;
-    Connection connection = open(params);
-    close(existing);
-    KyuubiSession restarted = new KyuubiSession(id, existing.name, params, connection);
+    Authentication authentication = currentAuthentication();
+    KyuubiSession restarted;
+    KyuubiSession existing;
     synchronized (user) {
+      existing = user.sessions.get(id);
+      if (existing == null) {
+        throw new IllegalStateException("No such session");
+      }
+      String params = sparkParams == null ? existing.sparkParams : sparkParams;
+      restarted = new KyuubiSession(id, existing.name, params);
       user.sessions.put(id, restarted);
-      return restarted.toInfo(id.equals(user.activeId));
     }
+    closeAsync(existing);
+    launch(restarted, authentication);
+    return restarted.toInfo(id.equals(user.activeId));
   }
 
   public void activate(String id) {
@@ -187,7 +195,61 @@ public class KyuubiService {
     }
   }
 
+  public KyuubiSessionMonitor monitor(String id) {
+    KyuubiSession session = session(id);
+    if (session == null) {
+      throw new IllegalStateException("No such session");
+    }
+    if (session.kyuubiSessionId == null) {
+      return session.monitor(null, null);
+    }
+    try {
+      KyuubiRestClient.Snapshot snapshot = rest.monitor(session.kyuubiSessionId);
+      session.lastSnapshot = snapshot;
+      return session.monitor(snapshot, null);
+    } catch (Exception error) {
+      return session.monitor(session.lastSnapshot, message(error));
+    }
+  }
+
   // ------------------------------------------------------------- internals
+
+  private void launch(KyuubiSession session, Authentication authentication) {
+    CompletableFuture.runAsync(
+        () -> {
+          var context = SecurityContextHolder.createEmptyContext();
+          context.setAuthentication(authentication);
+          SecurityContextHolder.setContext(context);
+          try {
+            open(session);
+          } finally {
+            SecurityContextHolder.clearContext();
+          }
+        });
+  }
+
+  private void open(KyuubiSession session) {
+    String engineId = UUID.randomUUID().toString();
+    try {
+      Connection connection =
+          kerberos.asLoggedInUser(
+              () -> openKyuubiConnection(sessionUrl(session.sparkParams, engineId)));
+      session.attach(connection, kyuubiSessionId(connection));
+      if (session.stopped) {
+        close(session);
+        return;
+      }
+      try (Statement statement = connection.createStatement();
+          ResultSet ignored = statement.executeQuery("SELECT 1")) {
+        ignored.next();
+        session.updateLogs(queryLogs(statement));
+        session.ready();
+      }
+    } catch (Exception error) {
+      session.failed(error);
+      close(session);
+    }
+  }
 
   private KyuubiSession activeSession() {
     UserSessions user = byUser.get(currentUser());
@@ -199,17 +261,26 @@ public class KyuubiService {
     }
   }
 
-  private Connection open(String sparkParams) throws Exception {
-    String url = sessionUrl(sparkParams);
-    return kerberos.asLoggedInUser(() -> DriverManager.getConnection(url));
+  private KyuubiSession session(String id) {
+    UserSessions user = byUser.get(currentUser());
+    if (user == null) {
+      return null;
+    }
+    synchronized (user) {
+      return user.sessions.get(id);
+    }
   }
 
-  /**
-   * Appends CONNECTION share level and the user's Spark params to the base URL.
-   * In a Hive JDBC URL the conf list after {@code ?} is semicolon-separated.
-   */
-  private String sessionUrl(String sparkParams) {
+  /** The common-pool worker does not inherit Spring Boot's class loader. */
+  private static Connection openKyuubiConnection(String url) throws Exception {
+    Class.forName(HiveDriver.class.getName());
+    return DriverManager.getConnection(url);
+  }
+
+  /** Appends CONNECTION share level and the user's Spark params to the base URL. */
+  private String sessionUrl(String sparkParams, String engineId) {
     StringBuilder confs = new StringBuilder("kyuubi.engine.share.level=CONNECTION");
+    boolean driverOptionsSet = false;
     if (sparkParams != null) {
       for (String line : sparkParams.split("\\r?\\n")) {
         String trimmed = line.trim();
@@ -225,10 +296,30 @@ public class KyuubiService {
         }
         String key = trimmed.substring(0, separator).trim();
         String value = trimmed.substring(separator + 1).trim();
+        if (key.equals("spark.driver.extraJavaOptions")) {
+          value += " -Dderby.system.home=/tmp/kudos-metastore-" + engineId;
+          driverOptionsSet = true;
+        }
         confs.append(';').append(key).append('=').append(value);
       }
     }
+    if (!driverOptionsSet) {
+      confs
+          .append(";spark.driver.extraJavaOptions=-Dderby.system.home=/tmp/kudos-metastore-")
+          .append(engineId);
+    }
     return properties.kyuubiUrl() + "?" + confs;
+  }
+
+  private static String kyuubiSessionId(Connection connection) throws Exception {
+    HiveConnection hive =
+        connection instanceof HiveConnection current
+            ? current
+            : connection.unwrap(HiveConnection.class);
+    Field field = HiveConnection.class.getDeclaredField("sessHandle");
+    field.setAccessible(true);
+    TSessionHandle handle = (TSessionHandle) field.get(hive);
+    return new HandleIdentifier(handle.getSessionId()).getPublicId().toString();
   }
 
   private static String displayName(String name) {
@@ -236,21 +327,78 @@ public class KyuubiService {
   }
 
   private static void close(KyuubiSession session) {
-    if (session != null && session.connection != null) {
+    if (session == null) {
+      return;
+    }
+    session.stopped = true;
+    session.stopping();
+    closeConnection(session);
+  }
+
+  private static void closeAsync(KyuubiSession session) {
+    if (session == null) {
+      return;
+    }
+    session.stopped = true;
+    session.stopping();
+    CompletableFuture.runAsync(() -> closeConnection(session));
+  }
+
+  private static void closeConnection(KyuubiSession session) {
+    Connection connection = session.connection;
+    if (connection != null) {
       try {
-        session.connection.close();
+        connection.close();
       } catch (Exception ignored) {
         // The engine tears itself down when the connection drops; nothing to do.
       }
     }
   }
 
-  private static String currentUser() {
+  private static Authentication currentAuthentication() {
     Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
     if (authentication == null || authentication.getName() == null) {
       throw new IllegalStateException("Not authenticated");
     }
-    return authentication.getName();
+    return authentication;
+  }
+
+  private static String currentUser() {
+    return currentAuthentication().getName();
+  }
+
+  private static String message(Exception error) {
+    Throwable cause = error;
+    while ((cause instanceof UndeclaredThrowableException || cause instanceof PrivilegedActionException)
+        && cause.getCause() != null) {
+      cause = cause.getCause();
+    }
+    return cause.getMessage() == null ? cause.getClass().getSimpleName() : cause.getMessage();
+  }
+
+  private static int count(List<KyuubiOperationInfo> operations, String... states) {
+    int result = 0;
+    for (KyuubiOperationInfo operation : operations) {
+      String current = operation.state().toUpperCase(Locale.ROOT).replace("_STATE", "");
+      for (String state : states) {
+        if (current.equals(state)) {
+          result++;
+          break;
+        }
+      }
+    }
+    return result;
+  }
+
+  private static List<String> queryLogs(Statement statement) {
+    if (!(statement instanceof HiveStatement hive)) {
+      return List.of();
+    }
+    try {
+      return List.copyOf(hive.getQueryLog(false, 200));
+    } catch (Exception ignored) {
+      return List.of();
+    }
   }
 
   private static List<Map<String, Object>> toRows(ResultSet resultSet) throws Exception {
@@ -293,19 +441,150 @@ public class KyuubiService {
     private final String id;
     private final String name;
     private final String sparkParams;
-    private final long createdAt;
-    private final Connection connection;
+    private final long createdAt = System.currentTimeMillis();
+    private volatile String kyuubiSessionId;
+    private volatile Connection connection;
+    private volatile State state = State.STARTING;
+    private volatile String message = "Waiting to open a Kyuubi session";
+    private volatile boolean stopped;
+    private volatile KyuubiRestClient.Snapshot lastSnapshot;
+    private volatile List<KyuubiOperationInfo> operations = List.of();
+    private volatile List<String> logs = List.of();
 
-    private KyuubiSession(String id, String name, String sparkParams, Connection connection) {
+    private KyuubiSession(String id, String name, String sparkParams) {
       this.id = id;
       this.name = name;
       this.sparkParams = sparkParams;
+    }
+
+    private void attach(Connection connection, String kyuubiSessionId) {
       this.connection = connection;
-      this.createdAt = System.currentTimeMillis();
+      this.kyuubiSessionId = kyuubiSessionId;
+      this.state = State.ENGINE_STARTING;
+      this.message = "Kyuubi session opened; starting Spark engine";
+    }
+
+    private void ready() {
+      if (!stopped) {
+        state = State.READY;
+        message = "Ready";
+      }
+    }
+
+    private void failed(Exception error) {
+      if (!stopped) {
+        state = State.FAILED;
+        message = KyuubiService.message(error);
+      }
+    }
+
+    private void stopping() {
+      if (state != State.FAILED) {
+        state = State.STOPPING;
+        message = "Closing";
+      }
+    }
+
+    private Connection requireConnection() {
+      if (state != State.READY || connection == null) {
+        throw new IllegalStateException("Session is " + state + ": " + message);
+      }
+      return connection;
+    }
+
+    private String beginOperation(String sql) {
+      String operationId = UUID.randomUUID().toString();
+      long now = System.currentTimeMillis();
+      List<KyuubiOperationInfo> updated = new ArrayList<>();
+      updated.add(
+          new KyuubiOperationInfo(
+              operationId,
+              sql,
+              "RUNNING_STATE",
+              now,
+              now,
+              0,
+              "",
+              Map.of(),
+              List.of(),
+              List.of()));
+      for (int index = 0;
+          index < operations.size() && updated.size() < MAX_MONITORED_OPERATIONS;
+          index++) {
+        updated.add(operations.get(index));
+      }
+      operations = List.copyOf(updated);
+      return operationId;
+    }
+
+    private void finishOperation(String operationId, Statement statement, Exception error) {
+      List<KyuubiOperationInfo> updated = new ArrayList<>(operations.size());
+      long now = System.currentTimeMillis();
+      for (KyuubiOperationInfo operation : operations) {
+        if (operation.id().equals(operationId)) {
+          updated.add(
+              new KyuubiOperationInfo(
+                  operation.id(),
+                  operation.statement(),
+                  error == null ? "FINISHED_STATE" : "ERROR_STATE",
+                  operation.createdAtEpochMs(),
+                  operation.startedAtEpochMs(),
+                  now,
+                  error == null ? "" : message(error),
+                  operation.metrics(),
+                  operation.progressHeaders(),
+                  operation.progressRows()));
+        } else {
+          updated.add(operation);
+        }
+      }
+      operations = List.copyOf(updated);
+      updateLogs(queryLogs(statement));
+    }
+
+    private void updateLogs(List<String> fetched) {
+      if (!fetched.isEmpty()) {
+        logs = fetched;
+      }
     }
 
     private KyuubiSessionInfo toInfo(boolean active) {
-      return new KyuubiSessionInfo(id, name, sparkParams, active, createdAt);
+      return new KyuubiSessionInfo(
+          id, name, sparkParams, active, createdAt, kyuubiSessionId, state.name(), message);
     }
+
+    private KyuubiSessionMonitor monitor(KyuubiRestClient.Snapshot snapshot, String monitoringError) {
+      List<KyuubiOperationInfo> currentOperations = operations;
+      return new KyuubiSessionMonitor(
+          id,
+          state.name(),
+          message,
+          kyuubiSessionId,
+          snapshot == null ? null : snapshot.engineId(),
+          snapshot == null ? null : snapshot.engineName(),
+          snapshot == null ? null : snapshot.engineUrl(),
+          snapshot == null ? 0 : snapshot.openedAtEpochMs(),
+          snapshot == null
+              ? currentOperations.size()
+              : Math.max(snapshot.totalOperations(), currentOperations.size()),
+          count(currentOperations, "PENDING"),
+          count(currentOperations, "RUNNING"),
+          count(currentOperations, "FINISHED"),
+          count(currentOperations, "ERROR", "CANCELED"),
+          snapshot == null ? 0 : snapshot.executorPoolSize(),
+          snapshot == null ? 0 : snapshot.executorPoolActiveCount(),
+          snapshot == null ? 0 : snapshot.executorPoolQueueSize(),
+          currentOperations,
+          logs,
+          monitoringError);
+    }
+  }
+
+  private enum State {
+    STARTING,
+    ENGINE_STARTING,
+    READY,
+    STOPPING,
+    FAILED
   }
 }

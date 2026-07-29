@@ -48,6 +48,9 @@ kudos:
     # Kyuubi HiveServer2 JDBC endpoint used by the query editor.
     kyuubi-url: jdbc:hive2://kyuubi.test.local:10009/default;principal=kyuubi/kyuubi.test.local@TEST.LOCAL
 
+    # Internal Kyuubi REST endpoint used for session telemetry, never proxied to a browser.
+    kyuubi-rest-url: http://kyuubi.test.local:10099
+
     # ZooKeeper quorum the HBase client bootstraps from.
     hbase-quorum: hbase.test.local
 

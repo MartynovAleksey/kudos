@@ -16,7 +16,9 @@
 
 package com.kudos.ui;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -25,6 +27,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -68,7 +71,49 @@ class UiPageRenderingTests {
   @Test
   @WithMockUser("admin")
   void editorRenders() throws Exception {
-    assertPageRenders("/editor", "Kyuubi Spark SQL", "executeQuery");
+    assertPageRenders(
+        "/editor",
+        "Kyuubi Spark SQL",
+        "executeQuery",
+        "clearResults",
+        "closeAllSessions",
+        "resultsPane",
+        "logsPane");
+  }
+
+  @Test
+  @WithMockUser("admin")
+  void editorKeepsMonitoringAboveTheQueryAndLogsInsideTheResultTabs() throws Exception {
+    String page =
+        mockMvc.perform(get("/editor")).andExpect(status().isOk()).andReturn().getResponse()
+            .getContentAsString();
+
+    assertThat(page.indexOf("id=\"sessionMonitor\"")).isLessThan(page.indexOf("id=\"queryField\""));
+    assertThat(page.indexOf("id=\"sessionMonitorOperations\""))
+        .isLessThan(page.indexOf("id=\"queryField\""));
+    assertThat(page.indexOf("resultsContainer"))
+        .isLessThan(page.indexOf("id=\"sessionMonitorLogs\""));
+    assertThat(page)
+        .contains("id=\"resultsTabItem\" class=\"active\"")
+        .contains("id=\"resultsPane\" class=\"tab-pane active\" role=\"tabpanel\"")
+        .contains("aria-labelledby=\"logsTab\" aria-hidden=\"true\" hidden")
+        .contains("class=\"actions k8s-query-actions\"");
+  }
+
+  @Test
+  @WithMockUser("admin")
+  void exportsDisplayedQueryResult() throws Exception {
+    mockMvc
+        .perform(
+            post("/api/sql/export/results")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"columns\":[\"answer\"],\"rows\":[[42]]}"))
+        .andExpect(status().isOk())
+        .andExpect(
+            content()
+                .contentType(
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+        .andExpect(header().string("Content-Disposition", "attachment; filename=\"query-results.xlsx\""));
   }
 
   @Test

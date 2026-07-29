@@ -103,6 +103,7 @@ kudos:
   cluster:
     webhdfs-url: http://namenode.example.com:9870
     kyuubi-url: "jdbc:hive2://kyuubi.example.com:10009/default;principal=kyuubi/kyuubi.example.com@EXAMPLE.COM"
+    kyuubi-rest-url: http://kyuubi.example.com:10099
     hbase-quorum: zk1.example.com,zk2.example.com,zk3.example.com
     ozone-ofs-uri: ofs://omservice/
     ozone-conf-dir: /etc/ozone/conf
