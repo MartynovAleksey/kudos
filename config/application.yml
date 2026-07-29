@@ -41,6 +41,11 @@ spring:
     user-dn-pattern: uid={0},cn=users,cn=accounts
 
 kudos:
+  # External, HTTP Basic-capable API. The browser UI uses a separate
+  # session-only transport and remains functional when this is false.
+  api:
+    enabled: true
+
   cluster:
     # WebHDFS endpoint used by the file browser, over SPNEGO.
     webhdfs-url: http://hdfs.test.local:9870
@@ -96,13 +101,14 @@ kudos:
     lockout-minutes: 15
 
   # Service modules. Set any to false to remove that screen from the sidebar and
-  # make its API answer 404 — for a cluster that does not run that service.
+  # make its API and UI-only transport answer 404 — for a cluster that does not
+  # run that service.
   features:
-    editor: true   # Kyuubi Spark SQL  (/editor, /api/sql/**)
-    files: true    # HDFS browser      (/filebrowser, /api/hdfs/**)
-    ozone: true    # Ozone browser     (/ozone, /api/ozone/**)
-    hbase: true    # HBase browser     (/hbase, /api/hbase/**)
-    jobs: true     # Spark jobs + UI   (/jobs, /api/spark/**, /spark-ui/**)
+    editor: true   # Kyuubi Spark SQL  (/editor, /api/sql/**, /ui-api/sql/**)
+    files: true    # HDFS browser      (/filebrowser, /api/hdfs/**, /ui-api/hdfs/**)
+    ozone: true    # Ozone browser     (/ozone, /api/ozone/**, /ui-api/ozone/**)
+    hbase: true    # HBase browser     (/hbase, /api/hbase/**, /ui-api/hbase/**)
+    jobs: true     # Spark jobs + UI   (/jobs, /api/spark/**, /ui-api/spark/**, /spark-ui/**)
 # spring:
 #   kafka:
 #     bootstrap-servers: kafka.test.local:9092

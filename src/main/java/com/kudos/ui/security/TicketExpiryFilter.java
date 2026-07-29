@@ -57,7 +57,10 @@ public class TicketExpiryFilter extends OncePerRequestFilter {
       sessionCleanup.logout(request, response, authentication);
 
       String uri = request.getRequestURI();
-      if (uri.startsWith("/api/")) {
+      if (uri.equals("/api")
+          || uri.startsWith("/api/")
+          || uri.equals("/ui-api")
+          || uri.startsWith("/ui-api/")) {
         // No WWW-Authenticate: the browser must not answer an expired ticket
         // with a native Basic box. The script client reads the 401 and stops.
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);

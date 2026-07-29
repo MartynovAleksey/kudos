@@ -50,7 +50,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 @RestController
-@RequestMapping("/api")
+@RequestMapping({"/api", "/ui-api"})
 public class ClusterController {
 
   /** Caps a preview so a stray click on a large file cannot flood the browser. */

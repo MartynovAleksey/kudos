@@ -89,7 +89,7 @@ kubectl create secret generic kudos-vault-approle \
 kubectl create configmap kudos-cluster-conf --from-file=core-site.xml --from-file=ozone-site.xml
 
   --from-file=role_id=./role_id --from-file=secret_id=./secret_id
-`application-vault.yml`). В ConfigMap — только кластер, LDAP и модульные настройки:
+```
 
 ```yaml
 spring:
@@ -100,6 +100,9 @@ spring:
 ```yaml
     user-dn-pattern: uid={0},cn=users,cn=accounts
 kudos:
+  api:
+    base: dc=example,dc=com
+    enabled: true
   cluster:
     webhdfs-url: http://namenode.example.com:9870
     kyuubi-url: "jdbc:hive2://kyuubi.example.com:10009/default;principal=kyuubi/kyuubi.example.com@EXAMPLE.COM"
@@ -116,6 +119,14 @@ kudos:
     hbase: true
     jobs: true
 ```
+
+    files: true
+    ozone: true
+    hbase: true
+    jobs: true
+```
+
+`kudos.api.enabled` defaults to `true`. For a UI-only deployment, set it to
 
 `externalConfig.envFromSecret`, then perform a rollout or restart. The setting
 

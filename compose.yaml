@@ -356,6 +356,9 @@ services:
       # Log directory for the container (the app-logs volume above). Kept out of
       # the shared config file so local runs default to ./logs instead.
       KUDOS_LOGGING_DIR: /var/log/kudos
+      # Operators can override this for an API-disabled deployment without
+      # changing the mounted YAML: KUDOS_API_ENABLED=false docker compose up -d app
+      KUDOS_API_ENABLED: ${KUDOS_API_ENABLED:-true}
       JAVA_TOOL_OPTIONS: >-
         -Djava.security.krb5.conf=/run/secrets-kudos/krb5.conf
         --add-exports=java.security.jgss/sun.security.krb5=ALL-UNNAMED

@@ -82,6 +82,23 @@ class TicketExpiryFilterTests {
   }
 
   @Test
+  void anExpiredTicketRefusesAUiApiCallWithoutRedirecting() throws Exception {
+    authenticateWith(Instant.now().minusSeconds(1));
+    var request = new MockHttpServletRequest("GET", "/ui-api/sessions");
+    request.setRequestURI("/ui-api/sessions");
+    request.getSession(true);
+    var response = new MockHttpServletResponse();
+    var chain = new MockFilterChain();
+
+    filter.doFilter(request, response, chain);
+
+    assertThat(response.getStatus()).isEqualTo(401);
+    assertThat(response.getRedirectedUrl()).isNull();
+    assertThat(response.getHeader("WWW-Authenticate")).isNull();
+    assertThat(chain.getRequest()).isNull();
+  }
+
+  @Test
   void aValidTicketPassesThrough() throws Exception {
     authenticateWith(Instant.now().plusSeconds(3600));
     var request = new MockHttpServletRequest("GET", "/editor");

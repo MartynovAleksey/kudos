@@ -21,6 +21,8 @@
 (function () {
   'use strict';
 
+  var UI_API = '/ui-api';
+
   function el(id) {
     return document.getElementById(id);
   }
@@ -37,8 +39,22 @@
     container.appendChild(box);
   }
 
+  function browserFetch(url, options) {
+    var configured = Object.assign({ credentials: 'same-origin' }, options || {});
+    var method = (configured.method || 'GET').toUpperCase();
+    if (['GET', 'HEAD', 'OPTIONS', 'TRACE'].indexOf(method) === -1) {
+      var token = document.querySelector('meta[name="_csrf"]');
+      var header = document.querySelector('meta[name="_csrf_header"]');
+      if (token && header) {
+        configured.headers = Object.assign({}, configured.headers || {});
+        configured.headers[header.getAttribute('content')] = token.getAttribute('content');
+      }
+    }
+    return fetch(url, configured);
+  }
+
   function request(url, options) {
-    return fetch(url, Object.assign({ credentials: 'same-origin' }, options || {})).then(
+    return browserFetch(url, options).then(
       function (response) {
         if (!response.ok) {
           return response.text().then(function (body) {
@@ -377,7 +393,7 @@
       showOutputTab('results');
       results.innerHTML = '<div class="k8s-muted">Executing…</div>';
       run.disabled = true;
-      return request('/api/sql/execute', {
+      return request(UI_API + '/sql/execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sql: sql })
@@ -411,9 +427,8 @@
           if (!result) {
             return null;
           }
-          return fetch('/api/sql/export/results', {
+          return browserFetch(UI_API + '/sql/export/results', {
             method: 'POST',
-            credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(result)
           });
@@ -474,7 +489,7 @@
     var knownSessions = [];
 
     function loadSessions() {
-      request('/api/sessions')
+      request(UI_API + '/sessions')
         .then(renderSessions)
         .catch(function (error) { showError(sessionsPanel, error); });
     }
@@ -495,7 +510,7 @@
         sessionMonitorLogs.textContent = 'No operation logs yet.';
         return;
       }
-      request('/api/sessions/' + encodeURIComponent(session.id) + '/monitor')
+      request(UI_API + '/sessions/' + encodeURIComponent(session.id) + '/monitor')
         .then(function (monitor) {
           if (activeSessionId !== session.id) {
             return;
@@ -542,13 +557,13 @@
       if (session.active) {
         return;
       }
-      send('/api/sessions/activate', { id: session.id })
+      send(UI_API + '/sessions/activate', { id: session.id })
         .then(loadSessions)
         .catch(function (error) { toast(error.message || String(error)); });
     }
 
     function closeSession(session) {
-      send('/api/sessions/stop', { id: session.id })
+      send(UI_API + '/sessions/stop', { id: session.id })
         .then(function () {
           forgetQuery(session.id);
           delete resultsBySession[session.id];
@@ -643,12 +658,12 @@
     }
 
     function restartSession(session) {
-      sessionForm(session, 'Restart session', '/api/sessions/restart');
+      sessionForm(session, 'Restart session', UI_API + '/sessions/restart');
     }
 
     if (newSessionBtn) {
       newSessionBtn.addEventListener('click', function () {
-        sessionForm(null, 'New session', '/api/sessions/start');
+        sessionForm(null, 'New session', UI_API + '/sessions/start');
       });
     }
 
@@ -659,7 +674,7 @@
       confirmModal('Close all Kyuubi sessions?', function () {
         Promise.all(
           knownSessions.map(function (session) {
-            return send('/api/sessions/stop', { id: session.id });
+            return send(UI_API + '/sessions/stop', { id: session.id });
           })
         )
           .then(function () {
@@ -684,7 +699,7 @@
     var refresh = el('refreshBrowser');
     var newFolderBtn = el('newFolder');
     var uploadInput = el('uploadFile');
-    var base = '/api/' + kind;
+    var base = UI_API + '/' + kind;
     var currentPath = '/';
 
     function joinPath(dir, name) {
@@ -1052,7 +1067,7 @@
     /* --------------------------------------------------------- table list */
 
     function loadTables(selectName) {
-      request('/api/hbase/tables')
+      request(UI_API + '/hbase/tables')
         .then(function (tables) {
           tablesEl.innerHTML = '';
           if (!tables.length) {
@@ -1101,10 +1116,10 @@
     function tableActions(table) {
       var toggle = table.enabled
         ? button('Disable', 'btn btn-small', function () {
-            lifecycle('/api/hbase/table/disable', { table: table.name }, 'Table disabled');
+            lifecycle(UI_API + '/hbase/table/disable', { table: table.name }, 'Table disabled');
           })
         : button('Enable', 'btn btn-small', function () {
-            lifecycle('/api/hbase/table/enable', { table: table.name }, 'Table enabled');
+            lifecycle(UI_API + '/hbase/table/enable', { table: table.name }, 'Table enabled');
           });
       return element('div', { class: 'k8s-table-actions' }, [
         button('New row', 'btn btn-small btn-primary', function () {
@@ -1126,7 +1141,7 @@
             'truncate',
             function () {
               lifecycle(
-                '/api/hbase/table/truncate',
+                UI_API + '/hbase/table/truncate',
                 { table: table.name, preserveSplits: true },
                 'Table truncated'
               );
@@ -1135,7 +1150,7 @@
         }),
         button('Drop', 'btn btn-small btn-danger', function () {
           confirmDestructive('Drop table ' + table.name + '? This cannot be undone.', 'drop', function () {
-            send('/api/hbase/table/delete', { table: table.name })
+            send(UI_API + '/hbase/table/delete', { table: table.name })
               .then(function () {
                 toast('Table dropped');
                 current = null;
@@ -1205,7 +1220,7 @@
         }
         results.innerHTML = '<div class="k8s-muted">Scanning…</div>';
         pager.innerHTML = '';
-        request('/api/hbase/scan?' + params.toString())
+        request(UI_API + '/hbase/scan?' + params.toString())
           .then(function (rows) {
             var hasNext = rows.length > size;
             var pageRows = hasNext ? rows.slice(0, size) : rows;
@@ -1349,7 +1364,7 @@
             }),
             button('delete', 'k8s-link k8s-link-danger', function () {
               confirmDestructive('Delete row ' + row.rowKey + '?', 'delete', function () {
-                send('/api/hbase/row/delete', { table: tableName, row: row.rowKey })
+                send(UI_API + '/hbase/row/delete', { table: tableName, row: row.rowKey })
                   .then(function () {
                     toast('Row deleted');
                     openTable(current);
@@ -1390,7 +1405,7 @@
         element('div', { class: 'k8s-subhead' }, [
           button('Load versions', 'k8s-link', function () {
             request(
-              '/api/hbase/cell/versions?table=' +
+              UI_API + '/hbase/cell/versions?table=' +
                 encodeURIComponent(tableName) +
                 '&row=' +
                 encodeURIComponent(rowKey) +
@@ -1422,7 +1437,7 @@
           label: 'Delete cell',
           class: 'btn btn-small btn-danger',
           action: function (handle) {
-            send('/api/hbase/cell/delete', {
+            send(UI_API + '/hbase/cell/delete', {
               table: tableName,
               row: rowKey,
               columns: [cell.column]
@@ -1450,7 +1465,7 @@
               var form = new FormData();
               form.append('file', upload.files[0]);
               request(
-                '/api/hbase/cell/upload?table=' +
+                UI_API + '/hbase/cell/upload?table=' +
                   encodeURIComponent(tableName) +
                   '&row=' +
                   encodeURIComponent(rowKey) +
@@ -1470,7 +1485,7 @@
             }
             var cells = {};
             cells[cell.column] = value.value;
-            send('/api/hbase/row', { table: tableName, row: rowKey, cells: cells })
+            send(UI_API + '/hbase/row', { table: tableName, row: rowKey, cells: cells })
               .then(done)
               .catch(function (error) {
                 toast(error.message || String(error));
@@ -1549,7 +1564,7 @@
               toast('Add at least one column');
               return;
             }
-            send('/api/hbase/row', { table: tableName, row: key, cells: cells })
+            send(UI_API + '/hbase/row', { table: tableName, row: key, cells: cells })
               .then(function () {
                 handle.close();
                 toast('Row saved');
@@ -1580,7 +1595,7 @@
         { label: 'Close', action: function (handle) { handle.close(); } }
       ]);
 
-      request('/api/hbase/describe?table=' + encodeURIComponent(tableName))
+      request(UI_API + '/hbase/describe?table=' + encodeURIComponent(tableName))
         .then(function (families) {
           list.innerHTML = '';
           list.className = '';
@@ -1614,7 +1629,7 @@
                       'Delete family ' + family.name + '? Its data is lost.',
                       'delete',
                       function () {
-                      send('/api/hbase/family/delete', {
+                      send(UI_API + '/hbase/family/delete', {
                         table: tableName,
                         family: family.name
                       })
@@ -1651,7 +1666,7 @@
               toast('A family name is required');
               return;
             }
-            send(existing ? '/api/hbase/family/modify' : '/api/hbase/family/add', {
+            send(existing ? UI_API + '/hbase/family/modify' : UI_API + '/hbase/family/add', {
               table: tableName,
               family: family
             })
@@ -1713,7 +1728,7 @@
               toast('Add at least one column family');
               return;
             }
-            send('/api/hbase/table/create', { table: tableName, families: payload })
+            send(UI_API + '/hbase/table/create', { table: tableName, families: payload })
               .then(function () {
                 handle.close();
                 toast('Table created');
@@ -1734,7 +1749,7 @@
       openModal('Regions — ' + tableName, body, [
         { label: 'Close', action: function (handle) { handle.close(); } }
       ]);
-      request('/api/hbase/regions?table=' + encodeURIComponent(tableName))
+      request(UI_API + '/hbase/regions?table=' + encodeURIComponent(tableName))
         .then(function (regions) {
           body.innerHTML = '';
           body.className = '';
@@ -1775,7 +1790,7 @@
             }
             var form = new FormData();
             form.append('file', file.files[0]);
-            request('/api/hbase/bulk?table=' + encodeURIComponent(tableName), {
+            request(UI_API + '/hbase/bulk?table=' + encodeURIComponent(tableName), {
               method: 'POST',
               body: form
             })
@@ -2053,7 +2068,7 @@
     function load() {
       list.innerHTML = '<div class="k8s-muted">Loading…</div>';
       pager.innerHTML = '';
-      var url = '/api/spark/applications?limit=500';
+      var url = UI_API + '/spark/applications?limit=500';
       var lower = lowerBound();
       if (lower) {
         url += '&minDate=' + encodeURIComponent(lower);

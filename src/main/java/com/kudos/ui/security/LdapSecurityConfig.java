@@ -22,6 +22,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpStatus;
 import org.springframework.ldap.core.support.BaseLdapPathContextSource;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -32,6 +33,7 @@ import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.ldap.LdapBindAuthenticationManagerFactory;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
 import org.springframework.security.web.authentication.logout.SecurityContextLogoutHandler;
 import org.springframework.security.web.authentication.www.BasicAuthenticationEntryPoint;
@@ -93,13 +95,11 @@ public class LdapSecurityConfig {
    * choose one entry point from the request, and the browser's Accept header
    * made it pick the wrong one for token-free API calls.
    *
-   * <p>The chain reuses the session created at form login rather than being
-   * stateless. The UI fetches {@code /api} from the browser with its session
-   * cookie; a stateless chain ignored that cookie, answered 401 Basic, and the
-   * browser popped a second, native login box. Honouring the existing session
-   * lets a signed-in browser through with no challenge, while a script that
-   * arrives with neither session nor credentials still gets the 401 (it never
-   * creates a session of its own — {@code NEVER}, not {@code IF_REQUIRED}).
+   * <p>The external API accepts either an existing form-login session or HTTP
+   * Basic credentials for compatibility. A request with neither still gets a
+   * 401, and this chain never creates a session of its own ({@code NEVER}, not
+   * {@code IF_REQUIRED}). Browser UI traffic uses the separate, session-only
+   * {@code /ui-api} chain below.
    */
   @Bean
   @Order(1)
@@ -134,6 +134,28 @@ public class LdapSecurityConfig {
 
   @Bean
   @Order(2)
+  SecurityFilterChain uiApiSecurity(HttpSecurity http) throws Exception {
+    return http
+        .securityMatcher("/ui-api/**")
+        .authorizeHttpRequests(authorization -> authorization.anyRequest().authenticated())
+        // Fetch callers need a status, not a form-login redirect. HTTP Basic is
+        // deliberately absent: only the session established by form login is
+        // accepted on this internal transport.
+        .exceptionHandling(
+            handling ->
+                handling.authenticationEntryPoint(
+                    new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
+        .requestCache(cache -> cache.disable())
+        .sessionManagement(
+            session ->
+                session.sessionCreationPolicy(
+                    org.springframework.security.config.http.SessionCreationPolicy.NEVER))
+        .addFilterAfter(new TicketExpiryFilter(), SecurityContextHolderFilter.class)
+        .build();
+  }
+
+  @Bean
+  @Order(3)
   SecurityFilterChain uiSecurity(
       HttpSecurity http,
       AuthenticationManager ldapAuthenticationManager,

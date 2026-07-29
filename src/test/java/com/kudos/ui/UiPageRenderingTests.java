@@ -38,6 +38,7 @@ import org.springframework.test.web.servlet.MockMvc;
  */
 @SpringBootTest(
     properties = {
+      "kudos.api.enabled=true",
       "kudos.cluster.kerberos-principal={user}@EXAMPLE.COM"
     })
 @AutoConfigureMockMvc
@@ -77,6 +78,8 @@ class UiPageRenderingTests {
         "executeQuery",
         "clearResults",
         "closeAllSessions",
+        "name=\"_csrf\"",
+        "name=\"_csrf_header\"",
         "resultsPane",
         "logsPane");
   }

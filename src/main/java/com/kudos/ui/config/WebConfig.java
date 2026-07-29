@@ -45,7 +45,9 @@ public class WebConfig implements WebMvcConfigurer {
   public void addInterceptors(InterceptorRegistry registry) {
     // Gate disabled modules before anything else, then audit what runs.
     registry.addInterceptor(new FeatureGate(features));
-    registry.addInterceptor(new AuditInterceptor(audit)).addPathPatterns("/api/**");
+    registry
+        .addInterceptor(new AuditInterceptor(audit))
+        .addPathPatterns("/api/**", "/ui-api/**");
   }
 
   @Override

@@ -21,6 +21,7 @@ spring:
     password: ${LDAP_MANAGER_PASSWORD:}
     user-dn-pattern: ${LDAP_USER_DN_PATTERN:uid={0}}
 server.error.include-message: always
+springdoc.paths-to-match: /api/**
 spring.servlet.multipart:
   # The HBase bulk-CSV and cell-upload endpoints accept sizable files; the 1 MB
   # default would reject a modest bulk load.
@@ -41,3 +42,4 @@ kudos.cluster:
   # The ticket is obtained from the password presented at login, so each request
   # carries the Kerberos identity of the user who made it.
   kerberos-principal: ${KERBEROS_PRINCIPAL_TEMPLATE:{user}@EXAMPLE.COM}
+kudos.api.enabled: ${KUDOS_API_ENABLED:true}

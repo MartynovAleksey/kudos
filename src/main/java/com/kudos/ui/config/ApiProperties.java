@@ -16,14 +16,13 @@
 
 package com.kudos.ui.config;
 
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 
-@Configuration
-@EnableConfigurationProperties({
-  ClusterProperties.class,
-  UiProperties.class,
-  FeaturesProperties.class,
-  ApiProperties.class
-})
-public class AppConfig {}
+/** Controls whether the externally documented API is reachable. */
+@ConfigurationProperties(prefix = "kudos.api")
+public record ApiProperties(Boolean enabled) {
+
+  public ApiProperties {
+    enabled = enabled == null ? Boolean.TRUE : enabled;
+  }
+}
