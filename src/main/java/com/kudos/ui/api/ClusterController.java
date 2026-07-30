@@ -31,6 +31,7 @@ import com.kudos.ui.service.KyuubiSessionMonitor;
 import com.kudos.ui.service.OzoneService;
 import com.kudos.ui.service.QueryResult;
 import com.kudos.ui.service.SparkApplication;
+import com.kudos.ui.service.SparkApplicationAccessService;
 import com.kudos.ui.service.SparkHistoryService;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -48,6 +49,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.security.core.Authentication;
 
 @RestController
 @RequestMapping({"/api", "/ui-api"})
@@ -67,26 +69,31 @@ public class ClusterController {
   private final HbaseService hbase;
   private final OzoneService ozone;
   private final SparkHistoryService sparkHistory;
+  private final SparkApplicationAccessService sparkAccess;
 
   public ClusterController(
       HdfsService hdfs,
       KyuubiService kyuubi,
       HbaseService hbase,
       OzoneService ozone,
-      SparkHistoryService sparkHistory) {
+      SparkHistoryService sparkHistory,
+      SparkApplicationAccessService sparkAccess) {
     this.hdfs = hdfs;
     this.kyuubi = kyuubi;
     this.hbase = hbase;
     this.ozone = ozone;
     this.sparkHistory = sparkHistory;
+    this.sparkAccess = sparkAccess;
   }
 
   @GetMapping("/spark/applications")
   List<SparkApplication> sparkApplications(
       @RequestParam(defaultValue = "500") int limit,
-      @RequestParam(required = false) String minDate)
+      @RequestParam(required = false) String minDate,
+      @RequestParam(required = false) String user,
+      Authentication authentication)
       throws Exception {
-    return sparkHistory.applications(limit, minDate);
+    return sparkAccess.applications(authentication, limit, minDate, user);
   }
 
   @GetMapping("/hdfs")
@@ -160,6 +167,21 @@ public class ClusterController {
   @GetMapping("/sessions/{id}/monitor")
   KyuubiSessionMonitor sessionMonitor(@PathVariable String id) {
     return kyuubi.monitor(id);
+  }
+
+  @PostMapping("/sessions/{id}/operations/{operationId}/execute")
+  QueryResult executeOperation(@PathVariable String id, @PathVariable String operationId) throws Exception {
+    return kyuubi.executeOperation(id, operationId, MAX_RESULT_ROWS);
+  }
+
+  @GetMapping("/sessions/{id}/operations/{operationId}/sql")
+  void downloadOperationSql(
+      @PathVariable String id, @PathVariable String operationId, HttpServletResponse response)
+      throws Exception {
+    response.setCharacterEncoding(java.nio.charset.StandardCharsets.UTF_8.name());
+    response.setContentType("application/sql; charset=UTF-8");
+    response.setHeader("Content-Disposition", "attachment; filename=\"kyuubi-operation.sql\"");
+    response.getWriter().write(kyuubi.operationSql(id, operationId));
   }
 
   @PostMapping("/sessions/start")

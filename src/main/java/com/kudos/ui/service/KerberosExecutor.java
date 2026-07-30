@@ -19,6 +19,7 @@ package com.kudos.ui.service;
 import com.kudos.ui.security.KerberosAuthentication;
 import java.security.PrivilegedExceptionAction;
 import javax.security.auth.Subject;
+import jakarta.annotation.PostConstruct;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.springframework.security.core.Authentication;
@@ -37,6 +38,18 @@ import org.springframework.stereotype.Service;
 @Service
 public class KerberosExecutor {
 
+  /**
+   * UGI keeps its security configuration in static process-wide state. Set it
+   * once at startup: changing it for every request races concurrent HDFS,
+   * HBase and Ozone calls and can downgrade an Ozone client to simple auth.
+   */
+  @PostConstruct
+  void enableKerberosForHadoopClients() {
+    Configuration configuration = new Configuration(false);
+    configuration.set("hadoop.security.authentication", "kerberos");
+    UserGroupInformation.setConfiguration(configuration);
+  }
+
   public <T> T asLoggedInUser(PrivilegedExceptionAction<T> action) throws Exception {
     Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
     if (!(authentication instanceof KerberosAuthentication kerberos)) {
@@ -50,10 +63,6 @@ public class KerberosExecutor {
       throw new IllegalStateException(
           "The Kerberos ticket for this session is gone; sign in again");
     }
-
-    Configuration configuration = new Configuration();
-    configuration.set("hadoop.security.authentication", "kerberos");
-    UserGroupInformation.setConfiguration(configuration);
     return UserGroupInformation.getUGIFromSubject(subject).doAs(action);
   }
 }

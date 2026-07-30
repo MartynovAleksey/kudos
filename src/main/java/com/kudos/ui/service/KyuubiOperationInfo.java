@@ -28,6 +28,7 @@ public record KyuubiOperationInfo(
     long startedAtEpochMs,
     long completedAtEpochMs,
     String error,
+    int executionCount,
     Map<String, String> metrics,
     List<String> progressHeaders,
     List<List<String>> progressRows) {}

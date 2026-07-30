@@ -18,6 +18,8 @@ package com.kudos.ui.api;
 
 import com.kudos.ui.config.FeaturesProperties;
 import com.kudos.ui.config.UiProperties;
+import com.kudos.ui.security.RoleAccess;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ModelAttribute;
 
@@ -31,10 +33,12 @@ public class UiModelAdvice {
 
   private final UiProperties ui;
   private final FeaturesProperties features;
+  private final RoleAccess roles;
 
-  public UiModelAdvice(UiProperties ui, FeaturesProperties features) {
+  public UiModelAdvice(UiProperties ui, FeaturesProperties features, RoleAccess roles) {
     this.ui = ui;
     this.features = features;
+    this.roles = roles;
   }
 
   @ModelAttribute("bannerHtml")
@@ -45,5 +49,10 @@ public class UiModelAdvice {
   @ModelAttribute("features")
   FeaturesProperties features() {
     return features;
+  }
+
+  @ModelAttribute("administrator")
+  boolean administrator(Authentication authentication) {
+    return roles.isAdministrator(authentication);
   }
 }

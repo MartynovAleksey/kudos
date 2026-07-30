@@ -21,3 +21,5 @@ USER root
 # Apple Silicon. The LTS wheel has the same Python API and changes no Hue UI.
 RUN /usr/share/hue/build/env/bin/pip uninstall -y polars \
     && /usr/share/hue/build/env/bin/pip install --no-cache-dir polars-lts-cpu==1.8.2
+
+RUN mkdir -p /etc/hadoop/conf

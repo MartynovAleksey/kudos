@@ -33,6 +33,7 @@ services:
       IPA_DM_PASSWORD: DirectoryManager1
       IPA_ADMIN_INITIAL_PASSWORD: KudosAdmin2026Secure!
       IPA_TEST_PASSWORD: KudosAdmin2026Secure!
+      IPA_ANALYST_PASSWORD: KudosAnalyst2026Secure!
     # Docker Desktop tmpfs lacks POSIX ACL support, while 389 Directory Server
     # uses setfacl under /run. Docker-managed ext4 volumes provide it.
     volumes:
@@ -40,6 +41,7 @@ services:
       - kerberos-shared:/shared
       # Holds only the application's TLS material and krb5.conf, never a keytab.
       - app-secrets:/app-secrets
+      - hue-secrets:/hue-secrets
       - freeipa-run:/run
       - freeipa-tmp:/tmp
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
@@ -220,6 +222,10 @@ services:
         condition: service_healthy
       ozone:
         condition: service_healthy
+        # Ozone's container IP can change after a recreate. Spark History keeps
+        # the Hadoop RPC address for its lifetime, so recreate it too and keep
+        # completed Kyuubi engines visible in Jobs.
+        restart: true
     volumes:
       - kerberos-shared:/shared:ro
     ports:
@@ -387,6 +393,19 @@ services:
     platform: linux/amd64
     hostname: hue-reference.test.local
     command: ["./build/env/bin/hue", "runcpserver"]
+    depends_on:
+      freeipa:
+        condition: service_healthy
+      hdfs:
+        condition: service_healthy
+    environment:
+      KRB5_CONFIG: /run/kudos-hue/krb5.conf
+      HADOOP_CONF_DIR: /etc/hadoop/conf
+    volumes:
+      - hue-secrets:/run/kudos-hue:ro
+      - ./docker/hue-reference/hue.ini:/usr/share/hue/desktop/conf/z-kudos.ini:ro
+      - ./docker/hdfs/core-site.xml:/etc/hadoop/conf/core-site.xml:ro
+      - ./docker/hdfs/hdfs-site.xml:/etc/hadoop/conf/hdfs-site.xml:ro
     ports:
       - "8082:8888"
     networks:
@@ -404,6 +423,7 @@ volumes:
   hdfs-data:
   hbase-data:
   ozone-data:
+  hue-secrets:
   # AppRole role_id/secret_id written by vault-bootstrap, read by vault-agent.
   vault-approle:
   # Vault-issued TLS PEM (tls.crt/tls.key/ca.crt) shared from vault-agent to app.

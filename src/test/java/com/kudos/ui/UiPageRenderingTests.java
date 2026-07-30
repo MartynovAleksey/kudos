@@ -70,7 +70,7 @@ class UiPageRenderingTests {
   }
 
   @Test
-  @WithMockUser("admin")
+  @WithMockUser(username = "admin", authorities = "ROLE_ADMINISTRATOR")
   void editorRenders() throws Exception {
     assertPageRenders(
         "/editor",
@@ -85,26 +85,27 @@ class UiPageRenderingTests {
   }
 
   @Test
-  @WithMockUser("admin")
-  void editorKeepsMonitoringAboveTheQueryAndLogsInsideTheResultTabs() throws Exception {
+  @WithMockUser(username = "admin", authorities = "ROLE_ADMINISTRATOR")
+  void editorKeepsMonitoringAboveTheQueryAndOutputInsideSeparateTabs() throws Exception {
     String page =
         mockMvc.perform(get("/editor")).andExpect(status().isOk()).andReturn().getResponse()
             .getContentAsString();
 
     assertThat(page.indexOf("id=\"sessionMonitor\"")).isLessThan(page.indexOf("id=\"queryField\""));
-    assertThat(page.indexOf("id=\"sessionMonitorOperations\""))
-        .isLessThan(page.indexOf("id=\"queryField\""));
     assertThat(page.indexOf("resultsContainer"))
         .isLessThan(page.indexOf("id=\"sessionMonitorLogs\""));
+    assertThat(page.indexOf("resultsContainer"))
+        .isLessThan(page.indexOf("id=\"sessionMonitorOperations\""));
     assertThat(page)
         .contains("id=\"resultsTabItem\" class=\"active\"")
         .contains("id=\"resultsPane\" class=\"tab-pane active\" role=\"tabpanel\"")
         .contains("aria-labelledby=\"logsTab\" aria-hidden=\"true\" hidden")
+        .contains("aria-labelledby=\"operationsTab\" aria-hidden=\"true\" hidden")
         .contains("class=\"actions k8s-query-actions\"");
   }
 
   @Test
-  @WithMockUser("admin")
+  @WithMockUser(username = "admin", authorities = "ROLE_ADMINISTRATOR")
   void exportsDisplayedQueryResult() throws Exception {
     mockMvc
         .perform(
@@ -120,37 +121,37 @@ class UiPageRenderingTests {
   }
 
   @Test
-  @WithMockUser("admin")
+  @WithMockUser(username = "admin", authorities = "ROLE_ADMINISTRATOR")
   void fileBrowserRenders() throws Exception {
     assertPageRenders("/filebrowser", "HDFS", "breadcrumbs");
   }
 
   @Test
-  @WithMockUser("admin")
+  @WithMockUser(username = "admin", authorities = "ROLE_ADMINISTRATOR")
   void ozoneBrowserRenders() throws Exception {
     assertPageRenders("/ozone", "Ozone", "breadcrumbs");
   }
 
   @Test
-  @WithMockUser("admin")
+  @WithMockUser(username = "admin", authorities = "ROLE_ADMINISTRATOR")
   void hbaseBrowserRenders() throws Exception {
     assertPageRenders("/hbase", "HBase", "tableList");
   }
 
   @Test
-  @WithMockUser("admin")
+  @WithMockUser(username = "admin", authorities = "ROLE_ADMINISTRATOR")
   void jobsBrowserRenders() throws Exception {
     assertPageRenders("/jobs", "Spark Jobs", "jobList", "jobPager", "jobRange");
   }
 
   @Test
   @WithMockUser("some.analyst")
-  void jobsFilterStartsOnTheSignedInUser() throws Exception {
+  void userCannotSeeTheAdministratorUserFilter() throws Exception {
     mockMvc
         .perform(get("/jobs"))
         .andExpect(status().isOk())
         .andExpect(
-            content().string(org.hamcrest.Matchers.containsString("data-default-user=\"some.analyst\"")))
+                content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("jobUserFilter"))))
         // Last week is the range the screen opens on.
         .andExpect(
             content()
@@ -158,7 +159,7 @@ class UiPageRenderingTests {
   }
 
   @Test
-  @WithMockUser("admin")
+  @WithMockUser(username = "admin", authorities = "ROLE_ADMINISTRATOR")
   void jobDetailEmbedsTheProxiedSparkUi() throws Exception {
     assertPageRenders(
         "/jobs/local-1234567890",

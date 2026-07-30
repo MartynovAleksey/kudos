@@ -48,4 +48,14 @@
       DEFAULT
     </value>
   </property>
+  <!-- Reference Hue authenticates with the disposable admin principal and may
+       issue WebHDFS requests for its UI user in this test-only environment. -->
+  <property>
+    <name>hadoop.proxyuser.admin.hosts</name>
+    <value>*</value>
+  </property>
+  <property>
+    <name>hadoop.proxyuser.admin.groups</name>
+    <value>*</value>
+  </property>
 </configuration>

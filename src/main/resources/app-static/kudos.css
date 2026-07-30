@@ -215,6 +215,12 @@
   display: none;
 }
 
+.k8s-jobs-section {
+  margin: 18px 0 8px;
+  font-size: 15px;
+  font-weight: 500;
+}
+
 .k8s-pager {
   display: flex;
   align-items: center;
@@ -769,42 +775,43 @@
 .k8s-session-empty {
   margin-bottom: 8px;
 }
-.k8s-session-id,
-.k8s-session-state {
-  margin-left: 6px;
-  color: #6a7278;
-  font-size: 11px;
-  white-space: nowrap;
+.k8s-session-indicator {
+  width: 9px;
+  height: 9px;
+  margin-left: 7px;
+  border-radius: 50%;
+  flex: 0 0 auto;
 }
-.k8s-session-id {
-  max-width: 105px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.k8s-session-ready {
+  background: #3fae2a;
+}
+.k8s-session-starting {
+  background: #e5a100;
+}
+.k8s-session-failed {
+  background: #b94a48;
 }
 .k8s-session-monitor {
   padding-top: 4px;
   margin-bottom: 12px;
 }
-.k8s-session-monitor h4 {
-  margin: 0 0 7px;
-}
-.k8s-session-monitor h4 {
-  margin-top: 12px;
-  font-size: 13px;
-}
 .k8s-session-metrics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 18px;
   margin: 7px 0;
 }
 .k8s-session-metric {
+  display: block;
   color: #4b5359;
   font-size: 12px;
+  line-height: 1.55;
 }
 .k8s-session-monitor .k8s-warning {
   margin: 8px 0;
   color: #8a6d3b;
+}
+
+.k8s-operations-scroll {
+  max-height: 260px;
+  overflow-y: auto;
 }
 .k8s-session-logs {
   max-height: 180px;

@@ -41,9 +41,7 @@
       <div id="sessionMonitor" class="k8s-session-monitor">
         <div id="sessionMonitorSummary"></div>
         <div id="sessionMonitorWarning" class="k8s-warning k8s-hidden"></div>
-        <div id="sessionMonitorMetrics"></div>
-        <h4>Operations</h4>
-        <div id="sessionMonitorOperations" class="k8s-muted"></div>
+        <div id="sessionMonitorMetrics" class="k8s-session-metrics"></div>
       </div>
       <div id="noSessions" class="k8s-muted k8s-session-empty">
         No sessions — queries run on the default engine. Use + to start one.
@@ -76,6 +74,10 @@
           <a id="logsTab" href="#logsPane" role="tab" aria-controls="logsPane"
              aria-selected="false">Log</a>
         </li>
+        <li id="operationsTabItem">
+          <a id="operationsTab" href="#operationsPane" role="tab" aria-controls="operationsPane"
+             aria-selected="false">Operations</a>
+        </li>
       </ul>
       <div class="tab-content k8s-output-content">
         <div id="resultsPane" class="tab-pane active" role="tabpanel"
@@ -87,6 +89,10 @@
         <div id="logsPane" class="tab-pane" role="tabpanel"
              aria-labelledby="logsTab" aria-hidden="true" hidden>
           <pre id="sessionMonitorLogs" class="k8s-session-logs"></pre>
+        </div>
+        <div id="operationsPane" class="tab-pane" role="tabpanel"
+             aria-labelledby="operationsTab" aria-hidden="true" hidden>
+          <div id="sessionMonitorOperations" class="k8s-muted"></div>
         </div>
       </div>
     </div>

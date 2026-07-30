@@ -26,6 +26,10 @@ import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import com.kudos.ui.service.SparkApplicationAccessService;
+import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -43,6 +47,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 public class SparkUiProxyController {
 
   static final String PREFIX = "/spark-ui";
+  private static final Pattern HISTORY_APPLICATION = Pattern.compile("^/history/([^/]+)/.*");
+  private static final Pattern API_APPLICATION = Pattern.compile("^/api/v1/applications/([^/]+)(?:/.*)?");
 
   /**
    * Response headers worth passing through; the rest are per-hop noise.
@@ -56,23 +62,33 @@ public class SparkUiProxyController {
       List.of("Content-Type", "Content-Disposition", "Cache-Control");
 
   private final ClusterProperties properties;
+  private final SparkApplicationAccessService sparkAccess;
 
-  public SparkUiProxyController(ClusterProperties properties) {
+  public SparkUiProxyController(ClusterProperties properties, SparkApplicationAccessService sparkAccess) {
     this.properties = properties;
+    this.sparkAccess = sparkAccess;
   }
 
   @GetMapping("/**")
-  void proxy(HttpServletRequest request, HttpServletResponse response) throws IOException {
+  void proxy(HttpServletRequest request, HttpServletResponse response, Authentication authentication)
+      throws Exception {
     String path = request.getRequestURI().substring(PREFIX.length());
     if (path.isEmpty()) {
       path = "/";
+    }
+    if (!sparkAccess.isAdministrator(authentication) && !isStaticResource(path)) {
+      String applicationId = applicationId(path);
+      if (applicationId == null || !sparkAccess.canView(authentication, applicationId)) {
+        response.sendError(HttpServletResponse.SC_FORBIDDEN);
+        return;
+      }
     }
     String query = request.getQueryString();
     URL target =
         URI.create(properties.sparkHistoryUrl() + path + (query == null ? "" : "?" + query))
             .toURL();
 
-    HttpURLConnection connection = (HttpURLConnection) target.openConnection();
+    HttpURLConnection connection = open(target);
     connection.setRequestMethod("GET");
     connection.setConnectTimeout(5_000);
     connection.setReadTimeout(60_000);
@@ -119,5 +135,25 @@ public class SparkUiProxyController {
       return PREFIX + location;
     }
     return location;
+  }
+
+  private static String applicationId(String path) {
+    for (Pattern pattern : List.of(HISTORY_APPLICATION, API_APPLICATION)) {
+      Matcher matcher = pattern.matcher(path);
+      if (matcher.matches()) {
+        return matcher.group(1);
+      }
+    }
+    return null;
+  }
+
+  /** Spark's CSS, JavaScript and images carry no job data but are required for a user's job page. */
+  private static boolean isStaticResource(String path) {
+    return path.startsWith("/static/");
+  }
+
+  /** Package-visible seam keeps proxy authorization testable without a network listener. */
+  HttpURLConnection open(URL target) throws IOException {
+    return (HttpURLConnection) target.openConnection();
   }
 }

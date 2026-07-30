@@ -22,6 +22,7 @@ project_root="$(cd -- "$script_dir/.." && pwd)"
 docker_bin="$(command -v docker)"
 compose_bin="${DOCKER_COMPOSE_BIN:-$HOME/.docker/cli-plugins/docker-compose}"
 admin_password="${TEST_ADMIN_PASSWORD:-KudosAdmin2026Secure!}"
+analyst_password="${TEST_ANALYST_PASSWORD:-KudosAnalyst2026Secure!}"
 
 run_docker() {
   env DOCKER_CONFIG="$project_root/docker/.docker-config" PATH="/usr/bin:/bin" "$docker_bin" "$@"
@@ -73,6 +74,18 @@ run_docker exec -e TEST_ADMIN_PASSWORD="$admin_password" "$freeipa_id" bash -lc 
     -w "$TEST_ADMIN_PASSWORD" | grep -q "uid=admin"
 '
 echo "PASS FreeIPA LDAP + Kerberos password login"
+
+run_docker exec -e TEST_ANALYST_PASSWORD="$analyst_password" "$freeipa_id" bash -lc '
+  set -euo pipefail
+  printf "%s\n" "$TEST_ANALYST_PASSWORD" | kinit analyst@TEST.LOCAL
+  klist -s
+  ldapwhoami -x -H ldap://freeipa.test.local \
+    -D uid=analyst,cn=users,cn=accounts,dc=test,dc=local \
+    -w "$TEST_ANALYST_PASSWORD" | grep -q "uid=analyst"
+  echo "${IPA_TEST_PASSWORD}" | kinit admin@TEST.LOCAL
+  ipa group-show kudos-administrators | grep -q "admin"
+'
+echo "PASS FreeIPA analyst user role identity"
 
 hdfs_output="$(run_docker exec "$hdfs_id" bash -lc '
   set -euo pipefail
@@ -170,6 +183,24 @@ app_api() {
   curl --fail --silent --connect-timeout 5 --max-time 60 \
     "${app_resolve[@]}" -u "admin:$admin_password" "$@"
 }
+
+# A regular user must authenticate successfully, but must never browse the
+# shared Spark History root or request another owner's jobs with `user=admin`.
+analyst_ui_status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+  --connect-timeout 5 --max-time 30 "${app_resolve[@]}" \
+  -u "analyst:$analyst_password" "$app_base/spark-ui/")"
+if [[ "$analyst_ui_status" != 403 ]]; then
+  echo "Regular user unexpectedly accessed shared Spark UI: HTTP $analyst_ui_status" >&2
+  exit 1
+fi
+analyst_jobs="$(curl --fail --silent --connect-timeout 5 --max-time 60 \
+  "${app_resolve[@]}" -u "analyst:$analyst_password" \
+  "$app_base/api/spark/applications?limit=50&user=admin")"
+if grep -q '"user":"admin"' <<<"$analyst_jobs"; then
+  echo "Regular user received another owner's Spark jobs" >&2
+  exit 1
+fi
+echo "PASS Spring role isolation (analyst)"
 
 app_api --get --data-urlencode 'path=/' $app_base/api/hdfs/list \
   | grep -q '\['

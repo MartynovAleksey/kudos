@@ -133,13 +133,13 @@ public class OzoneService {
   }
 
   private <T> T withFileSystem(FileSystemAction<T> action) throws Exception {
+    Configuration configuration = new Configuration();
+    addClusterConfiguration(configuration);
+    configuration.set("hadoop.security.authentication", "kerberos");
+    configuration.set("ozone.security.enabled", "true");
+    configuration.set("fs.ofs.impl", "org.apache.hadoop.fs.ozone.RootedOzoneFileSystem");
     return kerberos.asLoggedInUser(
         () -> {
-          Configuration configuration = new Configuration();
-          addClusterConfiguration(configuration);
-          configuration.set("hadoop.security.authentication", "kerberos");
-          configuration.set("ozone.security.enabled", "true");
-          configuration.set("fs.ofs.impl", "org.apache.hadoop.fs.ozone.RootedOzoneFileSystem");
           // The stand runs a single OM. Left at its default the client spends
           // minutes failing over to the same node before surfacing an error,
           // and a page request just hangs.

@@ -33,6 +33,7 @@ import java.security.PrivilegedExceptionAction;
 import java.sql.Driver;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.sql.Statement;
 import java.util.List;
 import java.util.UUID;
@@ -133,6 +134,87 @@ class KyuubiServiceTests {
                 assertTrue(
                     url.contains(
                         "spark.driver.extraJavaOptions=-Dderby.system.home=/tmp/kudos-metastore-")));
+  }
+
+  @Test
+  void compactsConsecutiveSqlAndCanReuseTheSavedOperation() throws Exception {
+    UUID sessionId = UUID.randomUUID();
+    HiveConnection connection = connection(sessionId);
+    Statement statement = connection.createStatement();
+    driver = mock(Driver.class);
+    when(driver.connect(any(), any())).thenReturn(connection);
+    DriverManager.registerDriver(driver);
+    SecurityContextHolder.getContext()
+        .setAuthentication(
+            new UsernamePasswordAuthenticationToken("analyst", "", List.of()));
+
+    KyuubiService service =
+        new KyuubiService(
+            new ClusterProperties("", "jdbc:kyuubi-test:", "", "", "", "", "", ""),
+            passthroughKerberos(),
+            mock(KyuubiRestClient.class));
+    KyuubiSessionInfo started = service.start("history", "");
+    awaitReady(service, started.id());
+
+    ResultSet firstResult = result(42);
+    ResultSet secondResult = result(42);
+    when(statement.executeQuery(" SELECT 42 ")).thenReturn(firstResult);
+    when(statement.executeQuery("SELECT   42")).thenReturn(secondResult);
+    service.execute(" SELECT 42 ", 10);
+    service.execute("SELECT   42", 10);
+
+    KyuubiOperationInfo operation = service.monitor(started.id()).operations().getFirst();
+    assertEquals(1, service.monitor(started.id()).operations().size());
+    assertEquals(2, operation.executionCount());
+    assertEquals("SELECT   42", service.operationSql(started.id(), operation.id()));
+
+    service.executeOperation(started.id(), operation.id(), 10);
+    KyuubiOperationInfo rerun = service.monitor(started.id()).operations().getFirst();
+    assertEquals(3, rerun.executionCount());
+  }
+
+  @Test
+  void removesStoppedSessionFromRunningApplications() throws Exception {
+    HiveConnection connection = connection(UUID.randomUUID());
+    driver = mock(Driver.class);
+    when(driver.connect(any(), any())).thenReturn(connection);
+    DriverManager.registerDriver(driver);
+    SecurityContextHolder.getContext()
+        .setAuthentication(
+            new UsernamePasswordAuthenticationToken("analyst", "", List.of()));
+
+    KyuubiService service =
+        new KyuubiService(
+            new ClusterProperties("", "jdbc:kyuubi-test:", "", "", "", "", "", ""),
+            passthroughKerberos(),
+            mock(KyuubiRestClient.class));
+    KyuubiSessionInfo started = service.start("temporary", "");
+    awaitReady(service, started.id());
+
+    service.stop(started.id());
+
+    assertTrue(service.sessions().isEmpty());
+    assertTrue(service.runningApplications().isEmpty());
+  }
+
+  private static KerberosExecutor passthroughKerberos() {
+    return new KerberosExecutor() {
+      @Override
+      public <T> T asLoggedInUser(PrivilegedExceptionAction<T> action) throws Exception {
+        return action.run();
+      }
+    };
+  }
+
+  private static ResultSet result(int value) throws Exception {
+    ResultSet result = mock(ResultSet.class);
+    ResultSetMetaData metadata = mock(ResultSetMetaData.class);
+    when(metadata.getColumnCount()).thenReturn(1);
+    when(metadata.getColumnLabel(1)).thenReturn("answer");
+    when(result.getMetaData()).thenReturn(metadata);
+    when(result.next()).thenReturn(true, false);
+    when(result.getObject(1)).thenReturn(value);
+    return result;
   }
 
   private static KyuubiSessionInfo awaitReady(KyuubiService service, String id) throws Exception {

@@ -32,14 +32,18 @@
 
   <div class="card card-small">
     <div class="card-body">
-      <!-- The user filter starts on the signed-in user and the range on the
-           last week, so the screen opens on this user's recent work. -->
       <div class="k8s-toolbar">
         <span class="k8s-toolbar-item">
           <i class="fa fa-fw fa-search muted"></i>
           <input type="text" id="jobSearch" class="k8s-search"
-                 placeholder="Filter by application, id, user or start time"
-                 th:attr="data-default-user=${#authentication.name}"/>
+                 placeholder="Filter by application, id or start time"/>
+        </span>
+
+        <!-- Only administrators may select another owner's jobs. The server
+             still applies this restriction when a user crafts the parameter. -->
+        <span class="k8s-toolbar-item" th:if="${administrator}">
+          <label for="jobUserFilter" class="muted">User</label>
+          <input type="text" id="jobUserFilter" placeholder="All users"/>
         </span>
 
         <span class="k8s-toolbar-item">
@@ -76,6 +80,11 @@
         </span>
       </div>
 
+      <div id="runningJobs">
+        <div class="k8s-muted">Loading running applications…</div>
+      </div>
+
+      <h3 class="k8s-jobs-section">Completed</h3>
       <div id="jobList">
         <div class="k8s-muted">Loading…</div>
       </div>

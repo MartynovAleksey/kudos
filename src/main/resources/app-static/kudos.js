@@ -287,34 +287,36 @@
     var activeSessionId = 'default';
     var resultsBySession = Object.create(null);
     var queryKeyPrefix = 'kudos.sql.' + query.getAttribute('data-query-owner') + '.';
-    var resultsTab = el('resultsTab');
-    var logsTab = el('logsTab');
-    var resultsTabItem = el('resultsTabItem');
-    var logsTabItem = el('logsTabItem');
-    var resultsPane = el('resultsPane');
-    var logsPane = el('logsPane');
+    // Query results may contain sensitive data, so retain them only while this
+    // browser tab lives. This survives navigation to another KUDOS tool.
+    var resultKeyPrefix = 'kudos.sql.result.' + query.getAttribute('data-query-owner') + '.';
+    var outputTabs = [
+      { name: 'results', tab: el('resultsTab'), item: el('resultsTabItem'), pane: el('resultsPane') },
+      { name: 'logs', tab: el('logsTab'), item: el('logsTabItem'), pane: el('logsPane') },
+      {
+        name: 'operations',
+        tab: el('operationsTab'),
+        item: el('operationsTabItem'),
+        pane: el('operationsPane')
+      }
+    ];
 
     function showOutputTab(name) {
-      var showResults = name === 'results';
-      resultsTabItem.classList.toggle('active', showResults);
-      logsTabItem.classList.toggle('active', !showResults);
-      resultsPane.classList.toggle('active', showResults);
-      logsPane.classList.toggle('active', !showResults);
-      resultsPane.hidden = !showResults;
-      logsPane.hidden = showResults;
-      resultsTab.setAttribute('aria-selected', String(showResults));
-      logsTab.setAttribute('aria-selected', String(!showResults));
-      resultsPane.setAttribute('aria-hidden', String(!showResults));
-      logsPane.setAttribute('aria-hidden', String(showResults));
+      outputTabs.forEach(function (output) {
+        var selected = output.name === name;
+        output.item.classList.toggle('active', selected);
+        output.pane.classList.toggle('active', selected);
+        output.pane.hidden = !selected;
+        output.tab.setAttribute('aria-selected', String(selected));
+        output.pane.setAttribute('aria-hidden', String(!selected));
+      });
     }
 
-    resultsTab.addEventListener('click', function (event) {
-      event.preventDefault();
-      showOutputTab('results');
-    });
-    logsTab.addEventListener('click', function (event) {
-      event.preventDefault();
-      showOutputTab('logs');
+    outputTabs.forEach(function (output) {
+      output.tab.addEventListener('click', function (event) {
+        event.preventDefault();
+        showOutputTab(output.name);
+      });
     });
     showOutputTab('results');
 
@@ -342,6 +344,33 @@
       }
     }
 
+    function storedResult(sessionId) {
+      try {
+        var value = sessionStorage.getItem(resultKeyPrefix + sessionId);
+        return value ? JSON.parse(value) : null;
+      } catch (ignored) {
+        return null;
+      }
+    }
+
+    function rememberResult(sessionId, result) {
+      resultsBySession[sessionId] = result;
+      try {
+        sessionStorage.setItem(resultKeyPrefix + sessionId, JSON.stringify(result));
+      } catch (ignored) {
+        // Rendering continues when storage is disabled or full.
+      }
+    }
+
+    function forgetResult(sessionId) {
+      delete resultsBySession[sessionId];
+      try {
+        sessionStorage.removeItem(resultKeyPrefix + sessionId);
+      } catch (ignored) {
+        // Nothing to remove when storage is unavailable.
+      }
+    }
+
     function renderEmptyResult() {
       results.innerHTML = '<div class="k8s-muted">Run a query to see its results.</div>';
     }
@@ -358,8 +387,9 @@
     }
 
     function restoreResult() {
-      var result = resultsBySession[activeSessionId];
+      var result = resultsBySession[activeSessionId] || storedResult(activeSessionId);
       if (result) {
+        resultsBySession[activeSessionId] = result;
         renderResult(result);
       } else {
         renderEmptyResult();
@@ -367,7 +397,7 @@
     }
 
     function clearResults() {
-      delete resultsBySession[activeSessionId];
+      forgetResult(activeSessionId);
       renderEmptyResult();
     }
 
@@ -382,6 +412,7 @@
     }
 
     query.value = storedQuery(activeSessionId);
+    restoreResult();
 
     function execute() {
       var sql = query.value.trim();
@@ -389,7 +420,7 @@
         return Promise.resolve(null);
       }
       var executionSessionId = activeSessionId;
-      delete resultsBySession[executionSessionId];
+      forgetResult(executionSessionId);
       showOutputTab('results');
       results.innerHTML = '<div class="k8s-muted">Executing…</div>';
       run.disabled = true;
@@ -399,7 +430,7 @@
         body: JSON.stringify({ sql: sql })
       })
         .then(function (result) {
-          resultsBySession[executionSessionId] = result;
+          rememberResult(executionSessionId, result);
           if (activeSessionId === executionSessionId) {
             renderResult(result);
           }
@@ -496,7 +527,10 @@
 
     function metric(label, value) {
       var shown = value === null || value === undefined || value === '' ? '—' : value;
-      return element('span', { class: 'k8s-session-metric' }, [label + ': ', shown]);
+      return element('div', { class: 'k8s-session-metric' }, [
+        element('strong', { text: label }),
+        ': ' + shown
+      ]);
     }
 
     function loadMonitor(session) {
@@ -532,25 +566,99 @@
             metric('Kyuubi pool', monitor.executorPoolActiveCount + '/' + monitor.executorPoolSize),
             metric('Queue', monitor.executorPoolQueueSize)
           ].forEach(function (item) { sessionMonitorMetrics.appendChild(item); });
-          sessionMonitorOperations.innerHTML = '';
-          if (monitor.operations && monitor.operations.length) {
-            sessionMonitorOperations.appendChild(
-              buildTable(
-                ['State', 'Statement', 'Started', 'Error'],
-                monitor.operations.map(function (operation) {
-                  return [operation.state, operation.statement, formatDate(operation.startedAtEpochMs), operation.error];
-                })
-              )
-            );
-          } else {
-            sessionMonitorOperations.appendChild(text('No operations yet.'));
-          }
+          renderOperations(session, monitor.operations || []);
           sessionMonitorLogs.textContent = (monitor.logs || []).join('\n') || 'No operation logs yet.';
         })
         .catch(function (error) {
           sessionMonitorWarning.classList.remove('k8s-hidden');
           sessionMonitorWarning.textContent = error.message || String(error);
         });
+    }
+
+    function renderOperations(session, operations) {
+      var previous = sessionMonitorOperations.querySelector('.k8s-operations-scroll');
+      var scrollTop = previous ? previous.scrollTop : 0;
+      sessionMonitorOperations.innerHTML = '';
+      if (!operations.length) {
+        sessionMonitorOperations.appendChild(text('No operations yet.'));
+        return;
+      }
+      var scroll = element('div', { class: 'k8s-operations-scroll' });
+      var table = element('table', { class: 'table table-condensed table-huedatatable' });
+      var head = document.createElement('thead');
+      var header = document.createElement('tr');
+      ['State', 'Statement', 'Runs', 'Started', 'Error', 'Actions'].forEach(function (label) {
+        header.appendChild(element('th', { text: label }));
+      });
+      head.appendChild(header);
+      table.appendChild(head);
+      var body = document.createElement('tbody');
+      operations.forEach(function (operation) {
+        var row = document.createElement('tr');
+        [
+          operation.state,
+          operation.statement,
+          String(operation.executionCount || 1),
+          formatDate(operation.startedAtEpochMs),
+          operation.error || ''
+        ].forEach(function (value) {
+          row.appendChild(element('td', { text: value }));
+        });
+        var actions = element('span', { class: 'k8s-row-actions' });
+        var rerun = button('Run', 'k8s-link', function () {
+          rerunOperation(session, operation);
+        });
+        rerun.title = 'Run this SQL in the active session';
+        var open = button('Open', 'k8s-link', function () {
+          query.value = operation.statement;
+          saveQuery();
+          toast('SQL opened in Query Editor');
+        });
+        open.title = 'Open SQL in Query Editor without running it';
+        var download = element('a', {
+          class: 'k8s-link',
+          href: UI_API + '/sessions/' + encodeURIComponent(session.id)
+            + '/operations/' + encodeURIComponent(operation.id) + '/sql',
+          text: 'Download',
+          title: 'Download SQL file'
+        });
+        actions.appendChild(rerun);
+        actions.appendChild(open);
+        actions.appendChild(download);
+        var actionCell = document.createElement('td');
+        actionCell.appendChild(actions);
+        row.appendChild(actionCell);
+        body.appendChild(row);
+      });
+      table.appendChild(body);
+      scroll.appendChild(table);
+      sessionMonitorOperations.appendChild(scroll);
+      scroll.scrollTop = scrollTop;
+    }
+
+    function rerunOperation(session, operation) {
+      var executionSessionId = session.id;
+      run.disabled = true;
+      showOutputTab('results');
+      results.innerHTML = '<div class="k8s-muted">Executing saved SQL…</div>';
+      request(
+        UI_API + '/sessions/' + encodeURIComponent(session.id) + '/operations/'
+          + encodeURIComponent(operation.id) + '/execute',
+        { method: 'POST' }
+      )
+        .then(function (result) {
+          rememberResult(executionSessionId, result);
+          if (activeSessionId === executionSessionId) {
+            renderResult(result);
+          }
+          loadSessions();
+        })
+        .catch(function (error) {
+          if (activeSessionId === executionSessionId) {
+            showError(results, error);
+          }
+        })
+        .then(function () { run.disabled = false; });
     }
 
     function activateSession(session) {
@@ -566,7 +674,7 @@
       send(UI_API + '/sessions/stop', { id: session.id })
         .then(function () {
           forgetQuery(session.id);
-          delete resultsBySession[session.id];
+          forgetResult(session.id);
           loadSessions();
         })
         .catch(function (error) { toast(error.message || String(error)); });
@@ -603,11 +711,12 @@
         });
         close.title = 'Close session';
         close.setAttribute('aria-label', 'Close session ' + session.name);
-        var state = element('span', { class: 'k8s-session-state', text: session.state });
-        var sessionId = element('span', {
-          class: 'k8s-session-id',
-          title: session.kyuubiSessionId || session.message,
-          text: session.kyuubiSessionId || 'ID pending'
+        var status = session.state === 'READY' ? 'ready'
+          : session.state === 'FAILED' ? 'failed' : 'starting';
+        var indicator = element('span', {
+          class: 'k8s-session-indicator k8s-session-' + status,
+          title: session.message,
+          'aria-label': 'Session ' + session.state
         });
         var tab = element(
           'div',
@@ -617,8 +726,7 @@
           },
           [
             label,
-            state,
-            sessionId,
+            indicator,
             restart,
             close
           ]
@@ -679,7 +787,7 @@
         )
           .then(function () {
             knownSessions.forEach(function (session) { forgetQuery(session.id); });
-            knownSessions.forEach(function (session) { delete resultsBySession[session.id]; });
+            knownSessions.forEach(function (session) { forgetResult(session.id); });
             loadSessions();
           })
           .catch(function (error) { toast(error.message || String(error)); });
@@ -1814,6 +1922,7 @@
 
   function initJobs() {
     var list = el('jobList');
+    var running = el('runningJobs');
     var pager = el('jobPager');
     var search = el('jobSearch');
     var range = el('jobRange');
@@ -1822,10 +1931,11 @@
     var to = el('jobTo');
     var pageSize = el('jobPageSize');
     var refresh = el('refreshJobs');
+    var userFilter = el('jobUserFilter');
 
     // Newest run first is the useful default, matching how the history server
     // itself orders the list.
-    var state = { applications: [], sortKey: 'startTime', sortDir: 'desc', page: 1 };
+    var state = { applications: [], running: [], sortKey: 'startTime', sortDir: 'desc', page: 1 };
 
     var columns = [
       { key: 'completed', label: '' },
@@ -1888,7 +1998,6 @@
       var haystack = [
         application.name,
         application.id,
-        application.user,
         formatStart(application)
       ]
         .join(' ')
@@ -1937,6 +2046,7 @@
               state.sortDir = 'asc';
             }
             state.page = 1;
+            renderRunning();
             render();
           });
           th.appendChild(link);
@@ -1954,22 +2064,29 @@
         (application.completed ? 'fa-check-circle k8s-ok' : 'fa-spinner k8s-running');
       icon.title = application.completed ? 'Completed' : 'Running';
 
-      // Both the name and the id open the proxied Spark UI for this
-      // application, the way the job browser drills into a run.
-      var name = document.createElement('a');
-      name.href = '/jobs/' + encodeURIComponent(application.id);
+      // History owns completed applications. A live Kyuubi engine has no
+      // History UI yet, so show it without a broken link.
+      var name = document.createElement(application.completed ? 'a' : 'span');
+      if (application.completed) {
+        name.href = '/jobs/' + encodeURIComponent(application.id);
+      }
       name.appendChild(text(application.name));
-      var id = document.createElement('a');
-      id.href = '/jobs/' + encodeURIComponent(application.id);
+      var id = document.createElement(application.completed ? 'a' : 'span');
+      if (application.completed) {
+        id.href = '/jobs/' + encodeURIComponent(application.id);
+      }
       id.appendChild(text(application.id));
 
-      var logs = document.createElement('a');
-      logs.href =
-        '/spark-ui/api/v1/applications/' + encodeURIComponent(application.id) + '/logs';
-      logs.title = 'Download the event logs of this application';
-      var logsIcon = document.createElement('i');
-      logsIcon.className = 'fa fa-fw fa-download';
-      logs.appendChild(logsIcon);
+      var logs = document.createElement('span');
+      if (application.completed) {
+        logs = document.createElement('a');
+        logs.href =
+          '/spark-ui/api/v1/applications/' + encodeURIComponent(application.id) + '/logs';
+        logs.title = 'Download the event logs of this application';
+        var logsIcon = document.createElement('i');
+        logsIcon.className = 'fa fa-fw fa-download';
+        logs.appendChild(logsIcon);
+      }
 
       return [
         icon,
@@ -2065,6 +2182,41 @@
       renderPager(filtered.length, pages);
     }
 
+    function renderRunning() {
+      var visible = state.running.filter(matchesFilters).sort(compare);
+      running.innerHTML = '';
+      var title = document.createElement('h3');
+      title.className = 'k8s-jobs-section';
+      title.appendChild(text('Running (' + visible.length + ')'));
+      running.appendChild(title);
+      if (!visible.length) {
+        var empty = document.createElement('div');
+        empty.className = 'k8s-muted';
+        empty.appendChild(text('No running Spark applications.'));
+        running.appendChild(empty);
+        return;
+      }
+      var table = document.createElement('table');
+      table.className = 'table table-condensed table-huedatatable';
+      table.appendChild(header());
+      var body = document.createElement('tbody');
+      visible.forEach(function (application) {
+        var row = document.createElement('tr');
+        cells(application).forEach(function (cell) {
+          var td = document.createElement('td');
+          if (cell instanceof Node) {
+            td.appendChild(cell);
+          } else {
+            td.appendChild(text(cell));
+          }
+          row.appendChild(td);
+        });
+        body.appendChild(row);
+      });
+      table.appendChild(body);
+      running.appendChild(table);
+    }
+
     function load() {
       list.innerHTML = '<div class="k8s-muted">Loading…</div>';
       pager.innerHTML = '';
@@ -2073,10 +2225,19 @@
       if (lower) {
         url += '&minDate=' + encodeURIComponent(lower);
       }
+      if (userFilter && userFilter.value.trim()) {
+        url += '&user=' + encodeURIComponent(userFilter.value.trim());
+      }
       request(url)
         .then(function (applications) {
-          state.applications = applications;
+          state.running = applications.filter(function (application) {
+            return !application.completed;
+          });
+          state.applications = applications.filter(function (application) {
+            return application.completed;
+          });
           state.page = 1;
+          renderRunning();
           render();
         })
         .catch(function (error) {
@@ -2084,14 +2245,14 @@
         });
     }
 
-    // Opening on this user's own runs mirrors the job browser this screen
-    // replaces; clearing the box shows everyone's.
-    search.value = search.getAttribute('data-default-user') || '';
-
     search.addEventListener('input', function () {
       state.page = 1;
+      renderRunning();
       render();
     });
+    if (userFilter) {
+      userFilter.addEventListener('change', load);
+    }
     pageSize.addEventListener('change', function () {
       state.page = 1;
       render();

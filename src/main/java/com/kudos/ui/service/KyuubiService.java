@@ -25,6 +25,7 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.Statement;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -127,6 +128,20 @@ public class KyuubiService {
     }
   }
 
+  /** Exposes this user's live Kyuubi engines to the Jobs Running section. */
+  public List<SparkApplication> runningApplications() {
+    String user = currentUser();
+    UserSessions sessions = byUser.get(user);
+    return sessions == null ? List.of() : activeApplications(user, sessions);
+  }
+
+  /** Exposes every user's live Kyuubi engines for the administrator's Jobs screen. */
+  public List<SparkApplication> runningApplicationsForAllUsers() {
+    List<SparkApplication> applications = new ArrayList<>();
+    byUser.forEach((user, sessions) -> applications.addAll(activeApplications(user, sessions)));
+    return List.copyOf(applications);
+  }
+
   /** Adds a tab immediately, then opens its Kyuubi connection in the background. */
   public KyuubiSessionInfo start(String name, String sparkParams) {
     String username = currentUser();
@@ -148,7 +163,7 @@ public class KyuubiService {
   public void stop(String id) {
     UserSessions user = byUser.get(currentUser());
     if (user == null) {
-      return;
+      throw new IllegalStateException("No such session");
     }
     KyuubiSession removed;
     synchronized (user) {
@@ -156,6 +171,9 @@ public class KyuubiService {
       if (id.equals(user.activeId)) {
         user.activeId = user.sessions.keySet().stream().findFirst().orElse(null);
       }
+    }
+    if (removed == null) {
+      throw new IllegalStateException("No such session");
     }
     closeAsync(removed);
   }
@@ -212,6 +230,25 @@ public class KyuubiService {
     }
   }
 
+  /** Repeats a saved operation in its owning session, which becomes active first. */
+  public QueryResult executeOperation(String sessionId, String operationId, int maxRows) throws Exception {
+    KyuubiSession session = session(sessionId);
+    if (session == null) {
+      throw new IllegalArgumentException("No such session");
+    }
+    String statement = session.operationStatement(operationId);
+    activate(sessionId);
+    return execute(statement, maxRows);
+  }
+
+  public String operationSql(String sessionId, String operationId) {
+    KyuubiSession session = session(sessionId);
+    if (session == null) {
+      throw new IllegalArgumentException("No such session");
+    }
+    return session.operationStatement(operationId);
+  }
+
   // ------------------------------------------------------------- internals
 
   private void launch(KyuubiSession session, Authentication authentication) {
@@ -258,6 +295,25 @@ public class KyuubiService {
     }
     synchronized (user) {
       return user.activeId == null ? null : user.sessions.get(user.activeId);
+    }
+  }
+
+  private static List<SparkApplication> activeApplications(String user, UserSessions sessions) {
+    synchronized (sessions) {
+      return sessions.sessions.values().stream()
+          .filter(session -> session.state != State.FAILED)
+          .map(
+              session ->
+                  new SparkApplication(
+                      "kyuubi-" + session.id,
+                      session.name,
+                      user,
+                      Instant.ofEpochMilli(session.createdAt).toString(),
+                      "",
+                      Math.max(0, System.currentTimeMillis() - session.createdAt),
+                      false,
+                      "Kyuubi engine"))
+          .toList();
     }
   }
 
@@ -382,7 +438,7 @@ public class KyuubiService {
       String current = operation.state().toUpperCase(Locale.ROOT).replace("_STATE", "");
       for (String state : states) {
         if (current.equals(state)) {
-          result++;
+          result += operation.executionCount();
           break;
         }
       }
@@ -502,10 +558,11 @@ public class KyuubiService {
               sql,
               "RUNNING_STATE",
               now,
-              now,
-              0,
-              "",
-              Map.of(),
+                  now,
+                  0,
+                  "",
+                  1,
+                  Map.of(),
               List.of(),
               List.of()));
       for (int index = 0;
@@ -531,6 +588,7 @@ public class KyuubiService {
                   operation.startedAtEpochMs(),
                   now,
                   error == null ? "" : message(error),
+                  operation.executionCount(),
                   operation.metrics(),
                   operation.progressHeaders(),
                   operation.progressRows()));
@@ -538,8 +596,50 @@ public class KyuubiService {
           updated.add(operation);
         }
       }
-      operations = List.copyOf(updated);
+      operations = compactConsecutive(updated);
       updateLogs(queryLogs(statement));
+    }
+
+    private String operationStatement(String operationId) {
+      return operations.stream()
+          .filter(operation -> operation.id().equals(operationId))
+          .findFirst()
+          .map(KyuubiOperationInfo::statement)
+          .orElseThrow(() -> new IllegalArgumentException("No such operation"));
+    }
+
+    private static List<KyuubiOperationInfo> compactConsecutive(
+        List<KyuubiOperationInfo> operations) {
+      if (operations.size() < 2) {
+        return List.copyOf(operations);
+      }
+      KyuubiOperationInfo latest = operations.getFirst();
+      KyuubiOperationInfo previous = operations.get(1);
+      if ("RUNNING_STATE".equals(latest.state())
+          || !normalize(latest.statement()).equals(normalize(previous.statement()))) {
+        return List.copyOf(operations);
+      }
+      List<KyuubiOperationInfo> compacted = new ArrayList<>(operations);
+      compacted.set(
+          0,
+          new KyuubiOperationInfo(
+              latest.id(),
+              latest.statement(),
+              latest.state(),
+              latest.createdAtEpochMs(),
+              latest.startedAtEpochMs(),
+              latest.completedAtEpochMs(),
+              latest.error(),
+              latest.executionCount() + previous.executionCount(),
+              latest.metrics(),
+              latest.progressHeaders(),
+              latest.progressRows()));
+      compacted.remove(1);
+      return List.copyOf(compacted);
+    }
+
+    private static String normalize(String sql) {
+      return sql == null ? "" : sql.trim().replaceAll("\\s+", " ");
     }
 
     private void updateLogs(List<String> fetched) {
@@ -565,8 +665,8 @@ public class KyuubiService {
           snapshot == null ? null : snapshot.engineUrl(),
           snapshot == null ? 0 : snapshot.openedAtEpochMs(),
           snapshot == null
-              ? currentOperations.size()
-              : Math.max(snapshot.totalOperations(), currentOperations.size()),
+              ? executionCount(currentOperations)
+              : Math.max(snapshot.totalOperations(), executionCount(currentOperations)),
           count(currentOperations, "PENDING"),
           count(currentOperations, "RUNNING"),
           count(currentOperations, "FINISHED"),
@@ -577,6 +677,10 @@ public class KyuubiService {
           currentOperations,
           logs,
           monitoringError);
+    }
+
+    private static int executionCount(List<KyuubiOperationInfo> operations) {
+      return operations.stream().mapToInt(KyuubiOperationInfo::executionCount).sum();
     }
   }
 

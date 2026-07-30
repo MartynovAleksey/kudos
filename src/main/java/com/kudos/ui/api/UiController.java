@@ -17,7 +17,11 @@
 package com.kudos.ui.api;
 
 import com.kudos.ui.config.FeaturesProperties;
+import com.kudos.ui.service.SparkApplicationAccessService;
 import org.springframework.stereotype.Controller;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -31,9 +35,11 @@ import org.springframework.web.bind.annotation.RequestParam;
 public class UiController {
 
   private final FeaturesProperties features;
+  private final SparkApplicationAccessService sparkAccess;
 
-  public UiController(FeaturesProperties features) {
+  public UiController(FeaturesProperties features, SparkApplicationAccessService sparkAccess) {
     this.features = features;
+    this.sparkAccess = sparkAccess;
   }
 
   @GetMapping("/login")
@@ -101,7 +107,10 @@ public class UiController {
   }
 
   @GetMapping("/jobs/{applicationId}")
-  String job(@PathVariable String applicationId, Model model) {
+  String job(@PathVariable String applicationId, Model model, Authentication authentication) throws Exception {
+    if (!sparkAccess.canView(authentication, applicationId)) {
+      throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+    }
     model.addAttribute("app", "jobs");
     model.addAttribute("applicationId", applicationId);
     return "job";

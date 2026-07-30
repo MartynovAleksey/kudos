@@ -31,6 +31,23 @@ until ipa user-show admin >/dev/null 2>&1; do
   sleep 2
 done
 
+# Two UI roles are intentionally enough for the disposable reference stand.
+# FreeIPA remains the source of membership; the application never keeps a list
+# of privileged login names.
+if ! ipa user-show analyst >/dev/null 2>&1; then
+  printf '%s\n%s\n' "${IPA_ANALYST_PASSWORD}" "${IPA_ANALYST_PASSWORD}" \
+    | ipa user-add analyst --first=Analyst --last=User --password
+fi
+# `ipa user-add --password` marks the initial password as expired.  A browser
+# client cannot complete FreeIPA's interactive password-change flow, so make
+# this disposable test account usable for the documented credentials.
+# FreeIPA returns a non-zero code when the desired value is already stored.
+ipa user-mod analyst --password-expiration=20380101000000Z || true
+ipa group-add kudos-administrators --desc='KUDOS UI administrators' || true
+if ! ipa group-show kudos-administrators | grep -q 'Member users:.*admin'; then
+  ipa group-add-member kudos-administrators --users=admin
+fi
+
 # Fresh realms already use IPA_TEST_PASSWORD as their installer password. Make
 # a user keytab from that same password only when it is absent or stale. On
 # subsequent boots neither the password nor its Kerberos keys are changed.
@@ -188,4 +205,13 @@ if test -d /app-secrets; then
   install -m 0644 /shared/app-tls.p12 /app-secrets/app-tls.p12
   install -m 0644 /shared/ca.crt /app-secrets/ca.crt
   install -m 0644 /shared/krb5.conf /app-secrets/krb5.conf
+fi
+
+# Hue needs one test-user ticket to demonstrate its File Browser. Do not mount
+# the shared service-keytab volume into Hue: it contains principals unrelated
+# to this reference component.
+if test -d /hue-secrets; then
+  install -m 0644 /shared/admin.keytab /hue-secrets/admin.keytab
+  install -m 0644 /shared/ca.crt /hue-secrets/ca.crt
+  install -m 0644 /shared/krb5.conf /hue-secrets/krb5.conf
 fi

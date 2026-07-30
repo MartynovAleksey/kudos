@@ -32,6 +32,8 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.ldap.LdapBindAuthenticationManagerFactory;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.ldap.userdetails.DefaultLdapAuthoritiesPopulator;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
@@ -57,6 +59,10 @@ public class LdapSecurityConfig {
       LoginAttemptService attempts) {
     var factory = new LdapBindAuthenticationManagerFactory(source);
     factory.setUserDnPatterns(userDnPattern);
+    var groups = new DefaultLdapAuthoritiesPopulator(source, "cn=groups,cn=accounts");
+    groups.setGroupSearchFilter("(member={0})");
+    groups.setRolePrefix("ROLE_");
+    factory.setLdapAuthoritiesPopulator(groups);
     AuthenticationManager ldap = factory.createAuthenticationManager();
 
     return authentication -> {
@@ -76,7 +82,7 @@ public class LdapSecurityConfig {
             tickets.login(bound.getName(), presented.toString());
         attempts.loginSucceeded(username);
         return new KerberosAuthentication(
-            bound.getName(), ticket.subject(), ticket.expiresAt(), bound.getAuthorities());
+            bound.getName(), ticket.subject(), ticket.expiresAt(), uiAuthorities(bound));
       } catch (LoginException failure) {
         attempts.loginFailed(username);
         throw new BadCredentialsException(
@@ -86,6 +92,15 @@ public class LdapSecurityConfig {
         throw failure;
       }
     };
+  }
+
+  static java.util.List<SimpleGrantedAuthority> uiAuthorities(Authentication authentication) {
+    boolean administrator =
+        authentication.getAuthorities().stream()
+            .map(authority -> authority.getAuthority())
+            .anyMatch("ROLE_KUDOS-ADMINISTRATORS"::equalsIgnoreCase);
+    return java.util.List.of(
+        new SimpleGrantedAuthority(administrator ? "ROLE_ADMINISTRATOR" : "ROLE_USER"));
   }
 
   /**

@@ -26,6 +26,7 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.stereotype.Service;
 
 /**
@@ -76,6 +77,11 @@ public class SparkHistoryService {
               attempt.path("appSparkVersion").asText()));
     }
     return applications;
+  }
+
+  /** Looks up an application before exposing its History UI to a non-admin user. */
+  public Optional<SparkApplication> application(String id) throws Exception {
+    return applications(5_000, null).stream().filter(application -> application.id().equals(id)).findFirst();
   }
 
   /**
