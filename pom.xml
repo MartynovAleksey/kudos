@@ -33,6 +33,29 @@
     <java.version>21</java.version>
     <hadoop.version>3.4.2</hadoop.version>
     <ozone.version>2.2.0</ozone.version>
+    <!-- CVE-2026-41293/43512/43515 (CRITICAL) + 41284/42498/43513 (HIGH): bump
+         the Spring Boot BOM's managed Tomcat past 11.0.21 to the 11.0.22 patch. -->
+    <tomcat.version>11.0.22</tomcat.version>
+    <!-- HIGH-severity transitives, pinned by overriding the Spring Boot BOM's
+         managed version property. Each is a patch/minor bump within the same
+         line (no API break expected); the whole regression suite + a compose
+         smoke run gate the risky ones (netty on Hadoop RPC, Spring web/LDAP). -->
+    <!-- ~35 netty HIGH (codec-http/http2/http3/redis/haproxy, handler-ssl-ocsp,
+         resolver-dns, transport-*) via hadoop-client -> netty-all. -->
+    <netty.version>4.2.16.Final</netty.version>
+    <!-- CVE-2026-10050: jetty-security (Hadoop's internal HTTP), 12.1.x line. -->
+    <jetty.version>12.1.10</jetty.version>
+    <!-- CVE-2026-54512/54513 + GHSA-r7wm-3cxj-wff9 (HIGH) + later MEDIUM: Jackson 3
+         (tools.jackson), Spring Boot's JSON stack. -->
+    <jackson-bom.version>3.1.5</jackson-bom.version>
+    <!-- CVE-2026-41842/41845/41850/41853: Spring Framework (webmvc/web/expression). -->
+    <spring-framework.version>7.0.8</spring-framework.version>
+    <!-- CVE-2026-41720: Spring LDAP auth bypass with empty password. -->
+    <spring-ldap.version>4.0.4</spring-ldap.version>
+    <!-- CVE-2026-41731: spring-kafka deserialization RCE (Kafka audit, optional). -->
+    <spring-kafka.version>4.0.6</spring-kafka.version>
+    <!-- LOW (CVE in logback-core): bump Spring Boot's managed Logback patch. -->
+    <logback.version>1.5.34</logback.version>
   </properties>
   <dependencies>
     <dependency>
@@ -93,11 +116,12 @@
       <version>4.0.1</version>
       <classifier>standalone</classifier>
     </dependency>
-    <!-- Streaming .xlsx writer for exporting query results. -->
+    <!-- Streaming .xlsx writer for exporting query results.
+         CVE-2025-31672 (MEDIUM) + pulls a fixed commons-compress transitively. -->
     <dependency>
       <groupId>org.apache.poi</groupId>
       <artifactId>poi-ooxml</artifactId>
-      <version>5.2.5</version>
+      <version>5.4.0</version>
     </dependency>
     <!-- OpenAPI spec and Swagger UI for the /api endpoints. -->
     <dependency>
@@ -121,6 +145,73 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
+
+  <!--
+    Pin transitive versions to patch CVEs the upstream deps still ship.
+    CVE-2025-14813 (CRITICAL, GOSTCTR) + CVE-2026-0636 (MEDIUM, LDAP injection):
+    hadoop-client pulls bcprov-jdk18on 1.78.1; force 1.84 (same 1.x API line).
+  -->
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.bouncycastle</groupId>
+        <artifactId>bcprov-jdk18on</artifactId>
+        <version>1.84</version>
+      </dependency>
+      <!--
+        Jackson 2.x (com.fasterxml) comes from hadoop-client and springdoc, not
+        from the Spring Boot BOM (Boot 4 ships Jackson 3 / tools.jackson). Import
+        the 2.21.4 BOM to lift the whole 2.x line past
+        CVE-2026-54512/54513 + GHSA-r7wm-3cxj-wff9 (jackson-databind/-core).
+      -->
+      <dependency>
+        <groupId>com.fasterxml.jackson</groupId>
+        <artifactId>jackson-bom</artifactId>
+        <version>2.21.5</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <!--
+        MEDIUM/LOW transitives with no Spring Boot BOM property, pinned to their
+        fixed patch/minor within the same major line (API-compatible):
+          commons-configuration2  2.10.1 -> 2.15.0  (hadoop-common config)
+          nimbus-jose-jwt          9.37.2 -> 9.37.4  (hadoop-auth JOSE)
+          lz4-java                 1.10.1 -> 1.11.1  (compression codec)
+        The 2.8.0/3.12.0/30.1.1 copies Trivy also flags are shaded inside
+        hive-jdbc:standalone and ozone-filesystem-hadoop3 — not reachable by a
+        pin (different physical jars), so left for the reachability review.
+      -->
+      <dependency>
+        <groupId>org.apache.commons</groupId>
+        <artifactId>commons-configuration2</artifactId>
+        <version>2.15.0</version>
+      </dependency>
+      <dependency>
+        <groupId>com.nimbusds</groupId>
+        <artifactId>nimbus-jose-jwt</artifactId>
+        <version>9.37.4</version>
+      </dependency>
+      <dependency>
+        <groupId>at.yawk.lz4</groupId>
+        <artifactId>lz4-java</artifactId>
+        <version>1.11.1</version>
+      </dependency>
+      <!--
+        CVE-2026-56740/56741 (HIGH, jline-remote-telnet): hadoop-client pulls the
+        jline 3.9.0 uber-jar. Trivy confirms the remote-telnet module is fixed
+        only in 4.2.1 (the 3.30.x line is still flagged), so pin the 4.x major.
+        Safe here because KUDOS never runs Hadoop's interactive console — the
+        jline classes are on the classpath but never loaded at runtime; verified
+        by the full test suite and a compose smoke run.
+      -->
+      <dependency>
+        <groupId>org.jline</groupId>
+        <artifactId>jline</artifactId>
+        <version>4.2.1</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
   <build>
     <plugins>
       <plugin>

@@ -21,56 +21,56 @@ RUN echo 'Downloading Maven dependencies (this can take several minutes on the f
 COPY src src
 RUN echo 'Compiling kudos...' && \
     mvn -B -Dstyle.color=never -DskipTests package
-## Scan scripts live in the build stage so the optional scan stages below inherit
-## them; copied after packaging so editing a script does not bust the build cache.
-#COPY scripts scripts
+# Scan scripts live in the build stage so the optional scan stages below inherit
+# them; copied after packaging so editing a script does not bust the build cache.
+COPY scripts scripts
+
+# =============================================================================
+# Optional security-scan stages. They branch off `build` and are NOT part of the
+# default image graph, so a normal `docker build` / `docker compose build`
+# (which targets the final `runtime` stage) never runs them. Build one on demand
+# with --target and export its Markdown report with --output. BuildKit required.
 #
-## =============================================================================
-## Optional security-scan stages. They branch off `build` and are NOT part of the
-## default image graph, so a normal `docker build` / `docker compose build`
-## (which targets the final `runtime` stage) never runs them. Build one on demand
-## with --target and export its Markdown report with --output. BuildKit required.
-##
-##   OWASP dependency-check  ->  ./owasp.md
-##     DOCKER_BUILDKIT=1 docker build -f docker/app/Dockerfile \
-##       --target owasp-report \
-##       --secret id=owasp_key,src=$HOME/OWASP-API.key \
-##       --output type=local,dest=. .
-##
-##   Trivy (scans the built fat-jar)  ->  ./trivy.md
-##     DOCKER_BUILDKIT=1 docker build -f docker/app/Dockerfile \
-##       --target trivy-report \
-##       --output type=local,dest=. .
-## =============================================================================
+#   OWASP dependency-check  ->  ./owasp.md
+#     DOCKER_BUILDKIT=1 docker build -f docker/app/Dockerfile \
+#       --target owasp-report \
+#       --secret id=owasp_key,src=$HOME/OWASP-API.key \
+#       --output type=local,dest=. .
 #
-## --- OWASP dependency-check ---------------------------------------------------
-## The NVD API key is provided as a BuildKit secret (a file), mounted only for the
-## scan command and never written into a layer or the build history.
-#FROM build AS owasp-scan
-#RUN apt-get update && apt-get install -y --no-install-recommends python3 && \
-#    rm -rf /var/lib/apt/lists/*
-## The NVD database and the plugin jars are cached under ~/.m2, so re-runs are
-## fast and an interrupted first download resumes instead of restarting.
-#RUN --mount=type=secret,id=owasp_key,required=false \
-#    --mount=type=cache,target=/root/.m2 \
-#    OWASP_API_KEY_FILE=/run/secrets/owasp_key bash scripts/scan-owasp.sh
-#
-## Export-only stage: its filesystem is just the report, so
-## `--output type=local` drops owasp.md straight into the destination directory.
-#FROM scratch AS owasp-report
-#COPY --from=owasp-scan /workspace/owasp.md /owasp.md
-#
-## --- Trivy --------------------------------------------------------------------
-#FROM build AS trivy-scan
-## Bring the trivy binary in from its official image; add python3 for rendering.
-#COPY --from=aquasec/trivy:latest /usr/local/bin/trivy /usr/local/bin/trivy
-#RUN apt-get update && apt-get install -y --no-install-recommends python3 && \
-#    rm -rf /var/lib/apt/lists/*
-## Cache Trivy's vulnerability DB so re-runs skip the ~100 MB download.
-#RUN --mount=type=cache,target=/root/.cache/trivy bash scripts/scan-trivy.sh
-#
-#FROM scratch AS trivy-report
-#COPY --from=trivy-scan /workspace/trivy.md /trivy.md
+#   Trivy (scans the built fat-jar)  ->  ./trivy.md
+#     DOCKER_BUILDKIT=1 docker build -f docker/app/Dockerfile \
+#       --target trivy-report \
+#       --output type=local,dest=. .
+# =============================================================================
+
+# --- OWASP dependency-check ---------------------------------------------------
+# The NVD API key is provided as a BuildKit secret (a file), mounted only for the
+# scan command and never written into a layer or the build history.
+FROM build AS owasp-scan
+RUN apt-get update && apt-get install -y --no-install-recommends python3 && \
+    rm -rf /var/lib/apt/lists/*
+# The NVD database and the plugin jars are cached under ~/.m2, so re-runs are
+# fast and an interrupted first download resumes instead of restarting.
+RUN --mount=type=secret,id=owasp_key,required=false \
+    --mount=type=cache,target=/root/.m2 \
+    OWASP_API_KEY_FILE=/run/secrets/owasp_key bash scripts/scan-owasp.sh
+
+# Export-only stage: its filesystem is just the report, so
+# `--output type=local` drops owasp.md straight into the destination directory.
+FROM scratch AS owasp-report
+COPY --from=owasp-scan /workspace/owasp.md /owasp.md
+
+# --- Trivy --------------------------------------------------------------------
+FROM build AS trivy-scan
+# Bring the trivy binary in from its official image; add python3 for rendering.
+COPY --from=aquasec/trivy:latest /usr/local/bin/trivy /usr/local/bin/trivy
+RUN apt-get update && apt-get install -y --no-install-recommends python3 && \
+    rm -rf /var/lib/apt/lists/*
+# Cache Trivy's vulnerability DB so re-runs skip the ~100 MB download.
+RUN --mount=type=cache,target=/root/.cache/trivy bash scripts/scan-trivy.sh
+
+FROM scratch AS trivy-report
+COPY --from=trivy-scan /workspace/trivy.md /trivy.md
 
 # --- Runtime image (default target; must stay last) ---------------------------
 FROM eclipse-temurin:21-jre AS runtime
