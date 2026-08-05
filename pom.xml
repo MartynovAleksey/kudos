@@ -32,7 +32,7 @@
   <properties>
     <java.version>21</java.version>
     <hadoop.version>3.4.2</hadoop.version>
-    <ozone.version>2.0.0</ozone.version>
+    <ozone.version>2.2.0</ozone.version>
   </properties>
   <dependencies>
     <dependency>
