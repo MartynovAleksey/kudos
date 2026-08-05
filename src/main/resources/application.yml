@@ -20,7 +20,7 @@ spring:
     username: ${LDAP_MANAGER_DN:}
     password: ${LDAP_MANAGER_PASSWORD:}
     user-dn-pattern: ${LDAP_USER_DN_PATTERN:uid={0}}
-server.error.include-message: always
+spring.web.error.include-message: always
 springdoc.paths-to-match: /api/**
 spring.servlet.multipart:
   # The HBase bulk-CSV and cell-upload endpoints accept sizable files; the 1 MB

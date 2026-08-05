@@ -40,7 +40,7 @@ import org.springframework.security.web.authentication.LoginUrlAuthenticationEnt
 import org.springframework.security.web.authentication.logout.SecurityContextLogoutHandler;
 import org.springframework.security.web.authentication.www.BasicAuthenticationEntryPoint;
 import org.springframework.security.web.context.SecurityContextHolderFilter;
-import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 
 @Configuration
 public class LdapSecurityConfig {
@@ -231,7 +231,7 @@ public class LdapSecurityConfig {
                 logout
                     // The sidebar signs out with a plain link and the countdown
                     // signs out by navigating, so accept GET, not only POST.
-                    .logoutRequestMatcher(new AntPathRequestMatcher("/logout"))
+                    .logoutRequestMatcher(PathPatternRequestMatcher.withDefaults().matcher("/logout"))
                     // Wipe the ticket's key material as the session goes.
                     .addLogoutHandler(new KerberosTicketCleanup())
                     .addLogoutHandler(new SecurityContextLogoutHandler())
