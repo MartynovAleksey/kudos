@@ -32,8 +32,6 @@
   <properties>
     <java.version>21</java.version>
     <hadoop.version>3.4.2</hadoop.version>
-    <!-- Use HBase's Hadoop 3 build; the unqualified artifact targets Hadoop 2. -->
-    <hbase.version>2.6.2-hadoop3</hbase.version>
     <ozone.version>2.0.0</ozone.version>
   </properties>
   <dependencies>
@@ -80,16 +78,6 @@
       <groupId>org.apache.ozone</groupId>
       <artifactId>ozone-filesystem-hadoop3</artifactId>
       <version>${ozone.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.hbase</groupId>
-      <artifactId>hbase-client</artifactId>
-      <version>${hbase.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.hbase</groupId>
-      <artifactId>hbase-common</artifactId>
-      <version>${hbase.version}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.hive</groupId>

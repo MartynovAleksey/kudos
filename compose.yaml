@@ -147,14 +147,8 @@ services:
       - kerberos-shared:/shared:ro
       - hbase-data:/data
     ports:
-      - "9090:9090"
+      - "8080:8080"
       - "16010:16010"
-      # ZooKeeper, Master and RegionServer RPC — the HBase client discovers the
-      # cluster via ZK and then RPCs the master/regionserver (advertised as
-      # hbase.test.local), so all three must be reachable from outside compose.
-      - "2181:2181"
-      - "16000:16000"
-      - "16020:16020"
     networks:
       default:
         aliases:
@@ -167,9 +161,12 @@ services:
           | grep -q '[o]rg.apache.hadoop.hbase.master.HMaster'
           && ps -ef
           | grep -q '[o]rg.apache.hadoop.hbase.regionserver.HRegionServer'
-          && bash -c ': > /dev/tcp/hbase.test.local/9090'
+          && export KRB5_CONFIG=/shared/krb5.conf
+          && kinit -kt /shared/hbase-hbase.test.local.keytab hbase/hbase.test.local@TEST.LOCAL
+          && curl --fail --silent --noproxy '*' --connect-timeout 3 --max-time 8
+          --negotiate -u : http://hbase.test.local:8080/ >/dev/null
       interval: 10s
-      timeout: 5s
+      timeout: 15s
       retries: 30
 
   ozone:
@@ -357,6 +354,7 @@ services:
       - app-logs:/var/log/kudos
     environment:
       SPRING_CONFIG_ADDITIONAL_LOCATION: file:/etc/kudos/
+      HBASE_REST_URL: http://hbase.test.local:8080
       # Serve HTTPS with the Vault-issued PEM certificate (application-vault.yml).
       SPRING_PROFILES_ACTIVE: vault
       # Log directory for the container (the app-logs volume above). Kept out of

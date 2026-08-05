@@ -1184,8 +1184,7 @@
           }
           tables.forEach(function (table) {
             var link = element('a', { href: 'javascript:void(0)' }, [
-              element('span', { text: table.name }),
-              table.enabled ? null : element('span', { class: 'k8s-badge-off', text: 'disabled' })
+              element('span', { text: table.name })
             ]);
             var li = element('li', {}, [link]);
             link.addEventListener('click', function () {
@@ -1210,25 +1209,7 @@
 
     /* ------------------------------------------------------------ actions */
 
-    function lifecycle(url, body, message) {
-      send(url, body)
-        .then(function () {
-          toast(message);
-          loadTables(current ? current.name : null);
-        })
-        .catch(function (error) {
-          toast(error.message || String(error));
-        });
-    }
-
     function tableActions(table) {
-      var toggle = table.enabled
-        ? button('Disable', 'btn btn-small', function () {
-            lifecycle(UI_API + '/hbase/table/disable', { table: table.name }, 'Table disabled');
-          })
-        : button('Enable', 'btn btn-small', function () {
-            lifecycle(UI_API + '/hbase/table/enable', { table: table.name }, 'Table enabled');
-          });
       return element('div', { class: 'k8s-table-actions' }, [
         button('New row', 'btn btn-small btn-primary', function () {
           openRowEditor(table.name, null);
@@ -1241,20 +1222,6 @@
         }),
         button('Regions', 'btn btn-small', function () {
           openRegions(table.name);
-        }),
-        toggle,
-        button('Truncate', 'btn btn-small', function () {
-          confirmDestructive(
-            'Truncate ' + table.name + '? Every row is permanently deleted.',
-            'truncate',
-            function () {
-              lifecycle(
-                UI_API + '/hbase/table/truncate',
-                { table: table.name, preserveSplits: true },
-                'Table truncated'
-              );
-            }
-          );
         }),
         button('Drop', 'btn btn-small btn-danger', function () {
           confirmDestructive('Drop table ' + table.name + '? This cannot be undone.', 'drop', function () {
@@ -1730,25 +1697,6 @@
                     openFamilyEditor(tableName, family, function () {
                       modal.close();
                       openFamilies(tableName);
-                    });
-                  }),
-                  button('Delete', 'k8s-link k8s-link-danger', function () {
-                    confirmDestructive(
-                      'Delete family ' + family.name + '? Its data is lost.',
-                      'delete',
-                      function () {
-                      send(UI_API + '/hbase/family/delete', {
-                        table: tableName,
-                        family: family.name
-                      })
-                        .then(function () {
-                          toast('Family deleted');
-                          modal.close();
-                          openFamilies(tableName);
-                        })
-                        .catch(function (error) {
-                          toast(error.message || String(error));
-                        });
                     });
                   })
                 ])

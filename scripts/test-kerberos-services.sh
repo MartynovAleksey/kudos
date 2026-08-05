@@ -147,23 +147,30 @@ echo "PASS Ozone Kerberos put/get"
 hbase_output="$(run_docker exec "$hbase_id" bash -lc '
   set -euo pipefail
   export KRB5_CONFIG=/shared/krb5.conf
-  export HBASE_HOME=/opt/hbase
-  export HBASE_CONF_DIR=/opt/hbase/conf
-  export HBASE_OPTS="-Djava.security.krb5.conf=/shared/krb5.conf"
   kdestroy 2>/dev/null || true
   kinit -kt /shared/admin.keytab admin@TEST.LOCAL
-  printf "disable '\''kudos_test'\''\ndrop '\''kudos_test'\''\n" \
-    | /opt/hbase/bin/hbase shell -n >/dev/null 2>&1 || true
-  {
-    printf "create \047kudos_test\047, \047d\047\n"
-    printf "put \047kudos_test\047, \047row1\047, \047d:value\047, \047hbase-kerberos-ok\047\n"
-    printf "get \047kudos_test\047, \047row1\047\n"
-    printf "disable \047kudos_test\047\n"
-    printf "drop \047kudos_test\047\n"
-  } | /opt/hbase/bin/hbase shell -n
+  base=http://hbase.test.local:8080
+  table=kudos_test
+  curl --silent --negotiate -u : -X DELETE "$base/$table/schema" >/dev/null 2>&1 || true
+  curl --fail --silent --negotiate -u : -H "Content-Type: application/json" \
+    -X PUT "$base/$table/schema" \
+    -d "{\"name\":\"$table\",\"ColumnSchema\":[{\"name\":\"d\"}]}" >/dev/null
+  curl --fail --silent --negotiate -u : -H "Content-Type: application/json" \
+    -X PUT "$base/$table/row1" \
+    -d "{\"Row\":[{\"key\":\"cm93MQ==\",\"Cell\":[{\"column\":\"ZDp2YWx1ZQ==\",\"\$\":\"aGJhc2UtcmVzdC1rZXJiZXJvcy1vaw==\"}]}]}" >/dev/null
+  curl --fail --silent --negotiate -u : "$base/$table/row1"
+  curl --fail --silent --negotiate -u : -X DELETE "$base/$table/schema" >/dev/null
 ')"
-grep -q 'value=hbase-kerberos-ok' <<<"$hbase_output"
-echo "PASS HBase Kerberos RPC put/get"
+grep -q 'aGJhc2UtcmVzdC1rZXJiZXJvcy1vaw==' <<<"$hbase_output"
+echo "PASS HBase REST SPNEGO put/get"
+
+hbase_anonymous_status="$(run_docker exec "$hbase_id" curl --silent --output /dev/null \
+  --write-out '%{http_code}' --connect-timeout 5 --max-time 20 http://hbase.test.local:8080/)"
+if [[ "$hbase_anonymous_status" != "401" && "$hbase_anonymous_status" != "403" ]]; then
+  echo "HBase REST Gateway answered $hbase_anonymous_status instead of refusing anonymous access" >&2
+  exit 1
+fi
+echo "PASS HBase REST Gateway requires SPNEGO"
 
 # Published ports are addressed by IP: resolving "localhost" goes through the
 # macOS resolver, which under heavy container load can block far longer than
@@ -222,11 +229,49 @@ app_api "${hb_json[@]}" -X POST "$app_base/api/hbase/table/delete" \
   -d "{\"table\":\"$hb_table\"}" >/dev/null 2>&1 || true
 app_api "${hb_json[@]}" -X POST "$app_base/api/hbase/table/create" \
   -d "{\"table\":\"$hb_table\",\"families\":[{\"name\":\"cf\",\"maxVersions\":3}]}" >/dev/null
-app_api "$app_base/api/hbase/tables" | grep -q "\"name\":\"$hb_table\",\"enabled\":true"
+app_api "$app_base/api/hbase/tables" | grep -q "\"name\":\"$hb_table\""
 app_api "${hb_json[@]}" -X POST "$app_base/api/hbase/row" \
   -d "{\"table\":\"$hb_table\",\"row\":\"r1\",\"cells\":{\"cf:a\":\"hello\"}}" >/dev/null
 app_api "$app_base/api/hbase/scan?table=$hb_table&limit=10" \
   | grep -q '"column":"cf:a","value":"hello"'
+app_api "$app_base/api/hbase/regions?table=$hb_table" | grep -q '"name":'
+
+app_api "${hb_json[@]}" -X POST "$app_base/api/hbase/family/add" \
+  -d "{\"table\":\"$hb_table\",\"family\":{\"name\":\"cf2\",\"maxVersions\":2}}" >/dev/null
+app_api "$app_base/api/hbase/describe?table=$hb_table" | grep -q '"name":"cf2"'
+
+# Verify the full mutation path: multiple versions, a binary cell, column
+# deletion, and CSV bulk upload. No temporary files are needed: curl reads the
+# multipart body directly from stdin.
+app_api "${hb_json[@]}" -X POST "$app_base/api/hbase/row" \
+  -d "{\"table\":\"$hb_table\",\"row\":\"versions\",\"cells\":{\"cf:a\":\"old\"}}" >/dev/null
+sleep 1
+app_api "${hb_json[@]}" -X POST "$app_base/api/hbase/row" \
+  -d "{\"table\":\"$hb_table\",\"row\":\"versions\",\"cells\":{\"cf:a\":\"new\"}}" >/dev/null
+versions="$(app_api "$app_base/api/hbase/cell/versions?table=$hb_table&row=versions&column=cf:a&versions=10")"
+grep -q '"value":"old"' <<<"$versions"
+grep -q '"value":"new"' <<<"$versions"
+
+printf '\000binary\377' \
+  | app_api -X POST -F 'file=@-;filename=value.bin;type=application/octet-stream' \
+      "$app_base/api/hbase/cell/upload?table=$hb_table&row=binary&column=cf:a" >/dev/null
+app_api "$app_base/api/hbase/row?table=$hb_table&row=binary" | grep -q '"binary":true'
+
+app_api "${hb_json[@]}" -X POST "$app_base/api/hbase/row" \
+  -d "{\"table\":\"$hb_table\",\"row\":\"delete-cell\",\"cells\":{\"cf:a\":\"keep\",\"cf:remove\":\"remove\"}}" >/dev/null
+app_api "${hb_json[@]}" -X POST "$app_base/api/hbase/cell/delete" \
+  -d "{\"table\":\"$hb_table\",\"row\":\"delete-cell\",\"columns\":[\"cf:remove\"]}" >/dev/null
+if app_api "$app_base/api/hbase/row?table=$hb_table&row=delete-cell" | grep -q '"column":"cf:remove"'; then
+  echo "HBase cell delete did not remove the requested column" >&2
+  exit 1
+fi
+
+bulk_result="$(printf 'row,cf:a\ncsv-row,csv-value\n' \
+  | app_api -X POST -F 'file=@-;filename=rows.csv;type=text/csv' \
+      "$app_base/api/hbase/bulk?table=$hb_table")"
+[[ "$bulk_result" == "1" ]]
+app_api "$app_base/api/hbase/row?table=$hb_table&row=csv-row" \
+  | grep -q '"value":"csv-value"'
 
 # Cursor pagination, the way the row browser pages forward: a page ends on a
 # row key, and the next page starts exclusively after it — no repeats, no gaps.
@@ -246,13 +291,14 @@ app_api "${hb_json[@]}" -X POST "$app_base/api/hbase/family/modify" \
 app_api "$app_base/api/hbase/describe?table=$hb_table" | grep -q '"name":"cf","maxVersions":7'
 app_api "${hb_json[@]}" -X POST "$app_base/api/hbase/row/delete" \
   -d "{\"table\":\"$hb_table\",\"row\":\"r1\"}" >/dev/null
+
 app_api "${hb_json[@]}" -X POST "$app_base/api/hbase/table/delete" \
   -d "{\"table\":\"$hb_table\"}" >/dev/null
 if app_api "$app_base/api/hbase/tables" | grep -q "\"name\":\"$hb_table\""; then
   echo "HBase self-test table $hb_table was not dropped" >&2
   exit 1
 fi
-echo "PASS HBase browser lifecycle (create, put, scan, alter, drop)"
+echo "PASS HBase browser lifecycle (schema, regions, mutations, versions, bulk, drop)"
 
 app_api -H 'Content-Type: application/json' \
   -d '{"sql":"SELECT 40 + 2 AS result"}' \

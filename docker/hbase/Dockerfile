@@ -26,8 +26,9 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/* && \
     curl -fsSL \
       "https://archive.apache.org/dist/hbase/${HBASE_VERSION}/hbase-${HBASE_VERSION}-bin.tar.gz" \
-      | tar -xz -C /opt && \
-    ln -s "/opt/hbase-${HBASE_VERSION}" /opt/hbase
+      | tar -xz -C /opt
+
+RUN ln -s "/opt/hbase-${HBASE_VERSION}" /opt/hbase
 
 ENV HBASE_HOME=/opt/hbase \
     HBASE_CONF_DIR=/opt/hbase/conf \
@@ -37,5 +38,5 @@ COPY hbase-site.xml core-site.xml /opt/hbase/conf/
 COPY start-hbase /usr/local/bin/start-hbase
 RUN chmod 0755 /usr/local/bin/start-hbase && mkdir -p /data/hbase
 
-EXPOSE 16010 16030 9090 2181
+EXPOSE 8080 16010 16030 2181
 ENTRYPOINT ["/usr/local/bin/start-hbase"]

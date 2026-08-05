@@ -39,6 +39,13 @@ class FeatureGateTests {
     assertAllowed("/ui-api/hdfs/list");
   }
 
+  @Test
+  void enabledHbasePassesBothApiPrefixes() throws Exception {
+    var enabledHbaseGate = new FeatureGate(new FeaturesProperties(true, true, true, true, true));
+    assertAllowed(enabledHbaseGate, "/api/hbase/tables");
+    assertAllowed(enabledHbaseGate, "/ui-api/hbase/scan");
+  }
+
   private void assertRejected(String path) throws Exception {
     var request = new MockHttpServletRequest("GET", path);
     request.setRequestURI(path);
@@ -49,9 +56,13 @@ class FeatureGateTests {
   }
 
   private void assertAllowed(String path) throws Exception {
+    assertAllowed(gate, path);
+  }
+
+  private static void assertAllowed(FeatureGate featureGate, String path) throws Exception {
     var request = new MockHttpServletRequest("GET", path);
     request.setRequestURI(path);
 
-    assertThat(gate.preHandle(request, new MockHttpServletResponse(), new Object())).isTrue();
+    assertThat(featureGate.preHandle(request, new MockHttpServletResponse(), new Object())).isTrue();
   }
 }

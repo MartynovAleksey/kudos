@@ -56,8 +56,8 @@ kudos:
     # Internal Kyuubi REST endpoint used for session telemetry, never proxied to a browser.
     kyuubi-rest-url: http://kyuubi.test.local:10099
 
-    # ZooKeeper quorum the HBase client bootstraps from.
-    hbase-quorum: hbase.test.local
+    # Kerberos-protected HBase REST Gateway; no ZooKeeper or HBase RPC is exposed to Kudos.
+    hbase-rest-url: http://hbase.test.local:8080
 
     # Root of the Ozone filesystem browsed by the Ozone screen.
     ozone-ofs-uri: ofs://ozone.test.local/

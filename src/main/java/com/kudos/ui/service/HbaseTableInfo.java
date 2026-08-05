@@ -16,5 +16,5 @@
 
 package com.kudos.ui.service;
 
-/** A table in the cluster and whether it is currently enabled. */
-public record HbaseTableInfo(String name, boolean enabled) {}
+/** A table listed by the standard HBase REST Gateway. */
+public record HbaseTableInfo(String name) {}

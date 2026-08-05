@@ -105,7 +105,7 @@ class ApiDisabledIntegrationTests {
     given(kyuubi.sessions()).willReturn(List.of());
     given(hdfs.listEntries("/")).willReturn(List.of());
     given(ozone.listEntries("/")).willReturn(List.of());
-    given(hbase.tables()).willReturn(List.of(new HbaseTableInfo("events", true)));
+    given(hbase.tables()).willReturn(List.of(new HbaseTableInfo("events")));
     given(sparkHistory.applications(500, null))
         .willReturn(
             List.of(
@@ -143,7 +143,7 @@ class ApiDisabledIntegrationTests {
     mockMvc
         .perform(get("/ui-api/hbase/tables").session((MockHttpSession) session))
         .andExpect(status().isOk())
-        .andExpect(content().json("[{\"name\":\"events\",\"enabled\":true}]"));
+        .andExpect(content().json("[{\"name\":\"events\"}]"));
     mockMvc
         .perform(get("/ui-api/spark/applications").session((MockHttpSession) session))
         .andExpect(status().isOk())

@@ -16,7 +16,10 @@
 
 package com.kudos.ui.service;
 
-import com.kudos.ui.config.ClusterProperties;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CharsetDecoder;
@@ -26,179 +29,81 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.hbase.Cell;
-import org.apache.hadoop.hbase.CellUtil;
-import org.apache.hadoop.hbase.HBaseConfiguration;
-import org.apache.hadoop.hbase.TableName;
-import org.apache.hadoop.hbase.client.Admin;
-import org.apache.hadoop.hbase.client.ColumnFamilyDescriptor;
-import org.apache.hadoop.hbase.client.ColumnFamilyDescriptorBuilder;
-import org.apache.hadoop.hbase.client.Connection;
-import org.apache.hadoop.hbase.client.ConnectionFactory;
-import org.apache.hadoop.hbase.client.Delete;
-import org.apache.hadoop.hbase.client.Get;
-import org.apache.hadoop.hbase.client.Put;
-import org.apache.hadoop.hbase.client.RegionInfo;
-import org.apache.hadoop.hbase.client.Result;
-import org.apache.hadoop.hbase.client.ResultScanner;
-import org.apache.hadoop.hbase.client.Scan;
-import org.apache.hadoop.hbase.client.Table;
-import org.apache.hadoop.hbase.client.TableDescriptor;
-import org.apache.hadoop.hbase.client.TableDescriptorBuilder;
-import org.apache.hadoop.hbase.filter.Filter;
-import org.apache.hadoop.hbase.filter.FilterList;
-import org.apache.hadoop.hbase.filter.FirstKeyOnlyFilter;
-import org.apache.hadoop.hbase.filter.KeyOnlyFilter;
-import org.apache.hadoop.hbase.filter.ParseFilter;
-import org.apache.hadoop.hbase.filter.PrefixFilter;
-import org.apache.hadoop.hbase.io.compress.Compression;
-import org.apache.hadoop.hbase.io.encoding.DataBlockEncoding;
-import org.apache.hadoop.hbase.regionserver.BloomType;
-import org.apache.hadoop.hbase.util.Bytes;
 import org.springframework.stereotype.Service;
 
-/**
- * The whole of the HBase browser's data path. Every method runs as the
- * signed-in user through {@link KerberosExecutor}, so the cluster applies that
- * user's own authorization. The operations mirror what Hue's HBase app exposes
- * over Thrift, done here against the native client: table lifecycle, column
- * family administration, scanning with filters, cell version history and the
- * row and cell mutations.
- */
+/** HBase browser operations backed exclusively by the Kerberos-protected REST Gateway. */
 @Service
 public class HbaseService {
 
-  private final ClusterProperties properties;
-  private final KerberosExecutor kerberos;
+  private static final ObjectMapper MAPPER = new ObjectMapper();
+  private static final int BULK_BATCH = 2000;
 
-  public HbaseService(ClusterProperties properties, KerberosExecutor kerberos) {
-    this.properties = properties;
-    this.kerberos = kerberos;
+  private final HbaseRestClient rest;
+
+  public HbaseService(HbaseRestClient rest) {
+    this.rest = rest;
   }
 
   // ---------------------------------------------------------------- tables
 
   public List<HbaseTableInfo> tables() throws Exception {
-    return withConnection(
-        connection -> {
-          try (Admin admin = connection.getAdmin()) {
-            List<HbaseTableInfo> tables = new ArrayList<>();
-            for (TableName name : admin.listTableNames()) {
-              tables.add(new HbaseTableInfo(name.getNameAsString(), admin.isTableEnabled(name)));
-            }
-            return tables;
-          }
-        });
+    JsonNode response = rest.get("/").body();
+    JsonNode tableList = response.isArray() ? response : array(response, "table");
+    List<HbaseTableInfo> tables = new ArrayList<>();
+    for (JsonNode table : tableList) {
+      tables.add(new HbaseTableInfo(table.path("name").asText()));
+    }
+    return tables;
   }
 
   public List<HbaseColumnFamily> describe(String table) throws Exception {
-    return withConnection(
-        connection -> {
-          try (Admin admin = connection.getAdmin()) {
-            TableDescriptor descriptor = admin.getDescriptor(TableName.valueOf(table));
-            List<HbaseColumnFamily> families = new ArrayList<>();
-            for (ColumnFamilyDescriptor family : descriptor.getColumnFamilies()) {
-              families.add(toColumnFamily(family));
-            }
-            return families;
-          }
-        });
+    JsonNode schema = rest.get(tablePath(table) + "/schema").body();
+    List<HbaseColumnFamily> families = new ArrayList<>();
+    for (JsonNode family : array(schema, "ColumnSchema")) {
+      families.add(toColumnFamily(family));
+    }
+    return families;
   }
 
   public List<HbaseRegion> regions(String table) throws Exception {
-    return withConnection(
-        connection -> {
-          try (Admin admin = connection.getAdmin()) {
-            List<HbaseRegion> regions = new ArrayList<>();
-            for (RegionInfo region : admin.getRegions(TableName.valueOf(table))) {
-              regions.add(
-                  new HbaseRegion(
-                      region.getEncodedName(),
-                      Bytes.toStringBinary(region.getStartKey()),
-                      Bytes.toStringBinary(region.getEndKey())));
-            }
-            return regions;
-          }
-        });
+    JsonNode response = rest.get(tablePath(table) + "/regions").body();
+    List<HbaseRegion> regions = new ArrayList<>();
+    for (JsonNode region : array(response, "Region")) {
+      regions.add(
+          new HbaseRegion(
+              region.path("name").asText(),
+              binaryKey(region.path("startKey").asText()),
+              binaryKey(region.path("endKey").asText())));
+    }
+    return regions;
   }
 
   public void createTable(String table, List<HbaseColumnFamily> families) throws Exception {
     if (families == null || families.isEmpty()) {
       throw new IllegalArgumentException("A table needs at least one column family");
     }
-    withConnection(
-        connection -> {
-          try (Admin admin = connection.getAdmin()) {
-            TableDescriptorBuilder builder =
-                TableDescriptorBuilder.newBuilder(TableName.valueOf(table));
-            for (HbaseColumnFamily family : families) {
-              builder.setColumnFamily(toDescriptor(family));
-            }
-            admin.createTable(builder.build());
-            return null;
-          }
-        });
+    ObjectNode schema = MAPPER.createObjectNode().put("name", table);
+    ArrayNode columns = schema.putArray("ColumnSchema");
+    for (HbaseColumnFamily family : families) {
+      columns.add(toSchema(family));
+    }
+    rest.put(tablePath(table) + "/schema", schema);
   }
 
   public void deleteTable(String table) throws Exception {
-    withConnection(
-        connection -> {
-          try (Admin admin = connection.getAdmin()) {
-            TableName name = TableName.valueOf(table);
-            if (admin.isTableEnabled(name)) {
-              admin.disableTable(name);
-            }
-            admin.deleteTable(name);
-            return null;
-          }
-        });
-  }
-
-  public void enableTable(String table) throws Exception {
-    withAdmin(admin -> admin.enableTable(TableName.valueOf(table)));
-  }
-
-  public void disableTable(String table) throws Exception {
-    withAdmin(admin -> admin.disableTable(TableName.valueOf(table)));
-  }
-
-  public void truncateTable(String table, boolean preserveSplits) throws Exception {
-    withConnection(
-        connection -> {
-          try (Admin admin = connection.getAdmin()) {
-            TableName name = TableName.valueOf(table);
-            if (admin.isTableEnabled(name)) {
-              admin.disableTable(name);
-            }
-            admin.truncateTable(name, preserveSplits);
-            return null;
-          }
-        });
+    rest.delete(tablePath(table) + "/schema");
   }
 
   public void addColumnFamily(String table, HbaseColumnFamily family) throws Exception {
-    withAdmin(admin -> admin.addColumnFamily(TableName.valueOf(table), toDescriptor(family)));
+    rest.post(tablePath(table) + "/schema", familySchema(table, family));
   }
 
   public void modifyColumnFamily(String table, HbaseColumnFamily family) throws Exception {
-    withAdmin(admin -> admin.modifyColumnFamily(TableName.valueOf(table), toDescriptor(family)));
-  }
-
-  public void deleteColumnFamily(String table, String family) throws Exception {
-    withAdmin(admin -> admin.deleteColumnFamily(TableName.valueOf(table), Bytes.toBytes(family)));
+    rest.post(tablePath(table) + "/schema", familySchema(table, family));
   }
 
   // ------------------------------------------------------------------ rows
 
-  /**
-   * Scans a table for the row browser. {@code startRow} is where the scan
-   * begins — the browser pages forward by starting the next page just after the
-   * last key it showed ({@code startInclusive} false). {@code prefix}, when
-   * given, restricts results to keys starting with it and is kept independent of
-   * the cursor so a prefix scan can be paged. Columns limit which cells come
-   * back, and a raw HBase filter string (the shell grammar) is applied on top.
-   */
   public List<HbaseRow> scan(
       String table,
       String startRow,
@@ -208,289 +113,325 @@ public class HbaseService {
       List<String> columns,
       String filter)
       throws Exception {
-    return withConnection(
-        connection -> {
-          try (Table handle = connection.getTable(TableName.valueOf(table))) {
-            Scan scan = new Scan().setLimit(limit);
-            if (startRow != null && !startRow.isEmpty()) {
-              scan.withStartRow(Bytes.toBytes(startRow), startInclusive);
-            }
-            selectColumns(scan, columns);
-            Filter combined =
-                buildFilter(prefix == null || prefix.isEmpty() ? null : prefix, filter);
-            if (combined != null) {
-              scan.setFilter(combined);
-            }
-            try (ResultScanner scanner = handle.getScanner(scan)) {
-              List<HbaseRow> rows = new ArrayList<>();
-              for (Result result : scanner) {
-                if (rows.size() >= limit) {
-                  break;
-                }
-                rows.add(toRow(result));
-              }
-              return rows;
-            }
-          }
-        });
+    if (limit <= 0) {
+      throw new IllegalArgumentException("Scan limit must be positive");
+    }
+    List<HbaseRow> rows =
+        filter == null || filter.isBlank()
+            ? scanWithScanner(table, startRow, prefix, limit, columns)
+            : scanWithFilter(table, startRow, prefix, limit, columns, filter);
+    if (!startInclusive && startRow != null && !startRow.isEmpty()) {
+      rows.removeIf(row -> row.rowKey().equals(startRow));
+    }
+    return rows.size() <= limit ? rows : rows.subList(0, limit);
   }
 
   /** Row keys starting with {@code prefix}, for the search box autocomplete. */
   public List<String> autocompleteRows(String table, String prefix, int limit) throws Exception {
-    return withConnection(
-        connection -> {
-          try (Table handle = connection.getTable(TableName.valueOf(table))) {
-            Scan scan = new Scan().setLimit(limit);
-            if (prefix != null && !prefix.isEmpty()) {
-              scan.withStartRow(Bytes.toBytes(prefix));
-              scan.setFilter(
-                  new FilterList(
-                      new PrefixFilter(Bytes.toBytes(prefix)),
-                      new FirstKeyOnlyFilter(),
-                      new KeyOnlyFilter()));
-            } else {
-              scan.setFilter(new FilterList(new FirstKeyOnlyFilter(), new KeyOnlyFilter()));
-            }
-            try (ResultScanner scanner = handle.getScanner(scan)) {
-              List<String> keys = new ArrayList<>();
-              for (Result result : scanner) {
-                if (keys.size() >= limit) {
-                  break;
-                }
-                keys.add(Bytes.toStringBinary(result.getRow()));
-              }
-              return keys;
-            }
-          }
-        });
+    List<String> keys = new ArrayList<>();
+    for (HbaseRow row : scan(table, "", true, prefix, limit, null, null)) {
+      keys.add(row.rowKey());
+    }
+    return keys;
   }
 
-  /** The latest value of every (selected) cell in a single row. */
+  /** The latest value of every selected cell in a single row. */
   public HbaseRow row(String table, String rowKey, List<String> columns) throws Exception {
-    return withConnection(
-        connection -> {
-          try (Table handle = connection.getTable(TableName.valueOf(table))) {
-            Get get = new Get(Bytes.toBytes(rowKey));
-            selectColumns(get, columns);
-            Result result = handle.get(get);
-            return result.isEmpty() ? null : toRow(result);
-          }
-        });
+    try {
+      return firstRow(rest.get(rowPath(table, rowKey, columns)).body());
+    } catch (HbaseRestClient.HbaseRestException error) {
+      if (error.status() == 404) {
+        return null;
+      }
+      throw error;
+    }
   }
 
   /** The version history of one cell, newest first. */
   public List<HbaseCell> cellVersions(String table, String rowKey, String column, int maxVersions)
       throws Exception {
-    String[] parts = splitColumn(column);
-    return withConnection(
-        connection -> {
-          try (Table handle = connection.getTable(TableName.valueOf(table))) {
-            Get get = new Get(Bytes.toBytes(rowKey)).readVersions(maxVersions);
-            get.addColumn(Bytes.toBytes(parts[0]), Bytes.toBytes(parts[1]));
-            Result result = handle.get(get);
-            List<HbaseCell> versions = new ArrayList<>();
-            for (Cell cell :
-                result.getColumnCells(Bytes.toBytes(parts[0]), Bytes.toBytes(parts[1]))) {
-              versions.add(toCell(cell));
-            }
-            return versions;
-          }
-        });
+    HbaseRow row = firstRow(rest.get(rowPath(table, rowKey, List.of(column)) + "?v=" + maxVersions).body());
+    return row == null ? List.of() : row.cells();
   }
 
   // ------------------------------------------------------------- mutations
 
-  /** Inserts or updates the given {@code column -> value} cells of a row. */
   public void putRow(String table, String rowKey, Map<String, String> cells) throws Exception {
     if (cells == null || cells.isEmpty()) {
       throw new IllegalArgumentException("No cells to write");
     }
-    withConnection(
-        connection -> {
-          try (Table handle = connection.getTable(TableName.valueOf(table))) {
-            Put put = new Put(Bytes.toBytes(rowKey));
-            cells.forEach(
-                (column, value) -> {
-                  String[] parts = splitColumn(column);
-                  put.addColumn(
-                      Bytes.toBytes(parts[0]),
-                      Bytes.toBytes(parts[1]),
-                      Bytes.toBytes(value == null ? "" : value));
-                });
-            handle.put(put);
-            return null;
-          }
-        });
+    ObjectNode row = MAPPER.createObjectNode();
+    row.put("key", base64(rowKey));
+    ArrayNode values = row.putArray("Cell");
+    cells.forEach(
+        (column, value) -> values.add(cell(column, (value == null ? "" : value).getBytes(StandardCharsets.UTF_8))));
+    putRows(table, List.of(row), rowKey);
   }
 
   /** Writes raw bytes to a single cell, for the binary upload path. */
   public void putCellBytes(String table, String rowKey, String column, byte[] value)
       throws Exception {
-    String[] parts = splitColumn(column);
-    withConnection(
-        connection -> {
-          try (Table handle = connection.getTable(TableName.valueOf(table))) {
-            Put put = new Put(Bytes.toBytes(rowKey));
-            put.addColumn(Bytes.toBytes(parts[0]), Bytes.toBytes(parts[1]), value);
-            handle.put(put);
-            return null;
-          }
-        });
+    ObjectNode row = MAPPER.createObjectNode();
+    row.put("key", base64(rowKey));
+    row.putArray("Cell").add(cell(column, value));
+    putRows(table, List.of(row), rowKey);
   }
 
   public void deleteCells(String table, String rowKey, List<String> columns) throws Exception {
-    withConnection(
-        connection -> {
-          try (Table handle = connection.getTable(TableName.valueOf(table))) {
-            Delete delete = new Delete(Bytes.toBytes(rowKey));
-            for (String column : columns) {
-              String[] parts = splitColumn(column);
-              delete.addColumns(Bytes.toBytes(parts[0]), Bytes.toBytes(parts[1]));
-            }
-            handle.delete(delete);
-            return null;
-          }
-        });
+    rest.delete(rowPath(table, rowKey, columns));
   }
 
   public void deleteRow(String table, String rowKey) throws Exception {
-    withConnection(
-        connection -> {
-          try (Table handle = connection.getTable(TableName.valueOf(table))) {
-            handle.delete(new Delete(Bytes.toBytes(rowKey)));
-            return null;
-          }
-        });
+    rest.delete(rowPath(table, rowKey, null));
   }
 
-  /**
-   * Loads a CSV whose header names the columns — the first column is the row
-   * key, the rest are {@code family:qualifier} — one row per line. Returns the
-   * number of rows written.
-   */
+  /** Loads the RFC-4180 CSV accepted by the browser's bulk-import form. */
   public int bulkUpload(String table, byte[] csv) throws Exception {
     List<String[]> lines = parseCsv(new String(csv, StandardCharsets.UTF_8));
     if (lines.size() < 2) {
       throw new IllegalArgumentException("The CSV needs a header row and at least one data row");
     }
     String[] header = lines.get(0);
-    return withConnection(
-        connection -> {
-          try (Table handle = connection.getTable(TableName.valueOf(table))) {
-            List<Put> batch = new ArrayList<>();
-            int written = 0;
-            for (int i = 1; i < lines.size(); i++) {
-              String[] fields = lines.get(i);
-              if (fields.length == 0 || fields[0].isEmpty()) {
-                continue;
-              }
-              Put put = new Put(Bytes.toBytes(fields[0]));
-              boolean any = false;
-              for (int c = 1; c < fields.length && c < header.length; c++) {
-                if (fields[c].isEmpty()) {
-                  continue;
-                }
-                String[] parts = splitColumn(header[c]);
-                put.addColumn(
-                    Bytes.toBytes(parts[0]), Bytes.toBytes(parts[1]), Bytes.toBytes(fields[c]));
-                any = true;
-              }
-              if (any) {
-                batch.add(put);
-              }
-              // Flush in bounded batches so a large upload does not build one
-              // enormous RPC or hold the whole file's Puts in memory at once.
-              if (batch.size() >= BULK_BATCH) {
-                handle.put(batch);
-                written += batch.size();
-                batch.clear();
-              }
-            }
-            if (!batch.isEmpty()) {
-              handle.put(batch);
-              written += batch.size();
-            }
-            return written;
-          }
-        });
+    List<ObjectNode> batch = new ArrayList<>();
+    int written = 0;
+    for (int i = 1; i < lines.size(); i++) {
+      String[] fields = lines.get(i);
+      if (fields.length == 0 || fields[0].isEmpty()) {
+        continue;
+      }
+      ObjectNode row = MAPPER.createObjectNode().put("key", base64(fields[0]));
+      ArrayNode values = row.putArray("Cell");
+      for (int c = 1; c < fields.length && c < header.length; c++) {
+        if (!fields[c].isEmpty()) {
+          values.add(cell(header[c], fields[c].getBytes(StandardCharsets.UTF_8)));
+        }
+      }
+      if (!values.isEmpty()) {
+        batch.add(row);
+      }
+      if (batch.size() >= BULK_BATCH) {
+        putRows(table, batch, fields[0]);
+        written += batch.size();
+        batch.clear();
+      }
+    }
+    if (!batch.isEmpty()) {
+      putRows(table, batch, null);
+      written += batch.size();
+    }
+    return written;
   }
-
-  private static final int BULK_BATCH = 2000;
 
   // -------------------------------------------------------------- internals
 
-  private static void selectColumns(Scan scan, List<String> columns) {
-    if (columns == null) {
-      return;
+  private List<HbaseRow> scanWithScanner(
+      String table, String startRow, String prefix, int limit, List<String> columns) throws Exception {
+    ObjectNode scanner = MAPPER.createObjectNode().put("caching", limit + 1);
+    if (startRow != null && !startRow.isEmpty()) {
+      scanner.put("startRow", base64(startRow));
     }
-    for (String column : columns) {
-      if (column == null || column.isBlank()) {
-        continue;
-      }
-      if (column.contains(":")) {
-        String[] parts = splitColumn(column);
-        scan.addColumn(Bytes.toBytes(parts[0]), Bytes.toBytes(parts[1]));
-      } else {
-        scan.addFamily(Bytes.toBytes(column));
-      }
-    }
-  }
-
-  private static void selectColumns(Get get, List<String> columns) {
-    if (columns == null) {
-      return;
-    }
-    for (String column : columns) {
-      if (column == null || column.isBlank()) {
-        continue;
-      }
-      if (column.contains(":")) {
-        String[] parts = splitColumn(column);
-        get.addColumn(Bytes.toBytes(parts[0]), Bytes.toBytes(parts[1]));
-      } else {
-        get.addFamily(Bytes.toBytes(column));
-      }
-    }
-  }
-
-  private static Filter buildFilter(String prefix, String filterString) throws Exception {
-    List<Filter> filters = new ArrayList<>();
+    addColumns(scanner, columns);
     if (prefix != null && !prefix.isEmpty()) {
-      filters.add(new PrefixFilter(Bytes.toBytes(prefix)));
+      ObjectNode filter = MAPPER.createObjectNode();
+      filter.put("type", "PrefixFilter");
+      filter.put("value", base64(prefix));
+      scanner.put("filter", MAPPER.writeValueAsString(filter));
     }
-    if (filterString != null && !filterString.isBlank()) {
-      filters.add(new ParseFilter().parseFilterString(filterString.trim()));
+    HbaseRestClient.Response created = rest.post(tablePath(table) + "/scanner", scanner);
+    String location = created.header("Location");
+    if (location == null || location.isBlank()) {
+      throw new IllegalStateException("HBase REST did not return a scanner Location");
     }
-    if (filters.isEmpty()) {
-      return null;
+    String scannerPath = rest.scannerPath(location);
+    try {
+      return rows(rest.get(scannerPath + "?n=" + (limit + 1) + "&c=" + Integer.MAX_VALUE).body());
+    } finally {
+      deleteScanner(scannerPath);
     }
-    return filters.size() == 1 ? filters.get(0) : new FilterList(filters);
   }
 
-  private static HbaseRow toRow(Result result) {
+  /** The legacy REST scan endpoint is the HBase-supported transport for ParseFilter strings. */
+  private List<HbaseRow> scanWithFilter(
+      String table, String startRow, String prefix, int limit, List<String> columns, String filter)
+      throws Exception {
+    StringBuilder path = new StringBuilder(tablePath(table)).append('/');
+    if (prefix != null && !prefix.isEmpty()) {
+      path.append(HbaseRestClient.pathSegment(prefix));
+    }
+    path.append('*').append("?limit=").append(limit + 1);
+    if (startRow != null && !startRow.isEmpty()) {
+      path.append("&startrow=").append(HbaseRestClient.pathSegment(startRow));
+    }
+    for (String column : nonBlank(columns)) {
+      path.append("&column=").append(HbaseRestClient.pathSegment(column));
+    }
+    path.append("&filter=").append(HbaseRestClient.pathSegment(filter.trim()));
+    return rows(rest.get(path.toString()).body());
+  }
+
+  private void deleteScanner(String scannerPath) throws Exception {
+    try {
+      rest.delete(scannerPath);
+    } catch (HbaseRestClient.HbaseRestException error) {
+      if (error.status() != 404 && error.status() != 410) {
+        throw error;
+      }
+    }
+  }
+
+  private void putRows(String table, List<ObjectNode> rows, String fallbackRow) throws Exception {
+    ObjectNode body = MAPPER.createObjectNode();
+    ArrayNode payloadRows = body.putArray("Row");
+    rows.forEach(payloadRows::add);
+    String anchor = fallbackRow == null ? "_kudos_bulk" : fallbackRow;
+    rest.put(rowPath(table, anchor, null), body);
+  }
+
+  private static ObjectNode familySchema(String table, HbaseColumnFamily family) {
+    ObjectNode schema = MAPPER.createObjectNode().put("name", table);
+    schema.putArray("ColumnSchema").add(toSchema(family));
+    return schema;
+  }
+
+  private static ObjectNode toSchema(HbaseColumnFamily family) {
+    ObjectNode schema = MAPPER.createObjectNode().put("name", family.name());
+    put(schema, "VERSIONS", family.maxVersions());
+    put(schema, "MIN_VERSIONS", family.minVersions());
+    put(schema, "COMPRESSION", family.compression());
+    put(schema, "TTL", family.timeToLive());
+    put(schema, "BLOCKCACHE", family.blockCacheEnabled());
+    put(schema, "BLOOMFILTER", family.bloomFilterType());
+    put(schema, "DATA_BLOCK_ENCODING", family.dataBlockEncoding());
+    put(schema, "IN_MEMORY", family.inMemory());
+    return schema;
+  }
+
+  private static void put(ObjectNode target, String name, Object value) {
+    if (value != null && (!(value instanceof String text) || !text.isBlank())) {
+      target.put(name, String.valueOf(value));
+    }
+  }
+
+  private static HbaseColumnFamily toColumnFamily(JsonNode family) {
+    return new HbaseColumnFamily(
+        family.path("name").asText(),
+        integer(family, "VERSIONS"),
+        integer(family, "MIN_VERSIONS"),
+        text(family, "COMPRESSION"),
+        integer(family, "TTL"),
+        bool(family, "BLOCKCACHE"),
+        text(family, "BLOOMFILTER"),
+        text(family, "DATA_BLOCK_ENCODING"),
+        bool(family, "IN_MEMORY"));
+  }
+
+  private static Integer integer(JsonNode node, String name) {
+    String value = text(node, name);
+    return value == null || value.isBlank() ? null : Integer.valueOf(value);
+  }
+
+  private static Boolean bool(JsonNode node, String name) {
+    String value = text(node, name);
+    return value == null || value.isBlank() ? null : Boolean.valueOf(value);
+  }
+
+  private static String text(JsonNode node, String name) {
+    JsonNode value = node.get(name);
+    return value == null || value.isNull() ? null : value.asText();
+  }
+
+  private static void addColumns(ObjectNode scanner, List<String> columns) {
+    List<String> selected = nonBlank(columns);
+    if (selected.isEmpty()) {
+      return;
+    }
+    ArrayNode values = scanner.putArray("column");
+    for (String column : selected) {
+      values.add(base64(column));
+    }
+  }
+
+  private static ObjectNode cell(String column, byte[] value) {
+    ObjectNode cell = MAPPER.createObjectNode();
+    cell.put("column", base64(column));
+    cell.put("$", Base64.getEncoder().encodeToString(value));
+    return cell;
+  }
+
+  private static List<HbaseRow> rows(JsonNode body) {
+    List<HbaseRow> rows = new ArrayList<>();
+    for (JsonNode row : array(body, "Row")) {
+      rows.add(toRow(row));
+    }
+    return rows;
+  }
+
+  private static HbaseRow firstRow(JsonNode body) {
+    List<HbaseRow> rows = rows(body);
+    return rows.isEmpty() ? null : rows.get(0);
+  }
+
+  private static HbaseRow toRow(JsonNode row) {
     List<HbaseCell> cells = new ArrayList<>();
-    for (Cell cell : result.listCells()) {
-      cells.add(toCell(cell));
+    for (JsonNode cell : array(row, "Cell")) {
+      String column = new String(Base64.getDecoder().decode(cell.path("column").asText()), StandardCharsets.UTF_8);
+      byte[] value = Base64.getDecoder().decode(cell.path("$").asText());
+      Decoded decoded = decode(value);
+      cells.add(new HbaseCell(column, decoded.text(), cell.path("timestamp").asLong(), decoded.binary()));
     }
-    return new HbaseRow(Bytes.toStringBinary(result.getRow()), cells);
+    return new HbaseRow(binaryKey(row.path("key").asText()), cells);
   }
 
-  private static HbaseCell toCell(Cell cell) {
-    String column =
-        Bytes.toString(CellUtil.cloneFamily(cell))
-            + ":"
-            + Bytes.toString(CellUtil.cloneQualifier(cell));
-    Decoded decoded = decode(CellUtil.cloneValue(cell));
-    return new HbaseCell(column, decoded.text(), cell.getTimestamp(), decoded.binary());
+  private static ArrayNode array(JsonNode node, String name) {
+    JsonNode value = node.path(name);
+    return value.isArray() ? (ArrayNode) value : MAPPER.createArrayNode();
   }
 
-  private static String[] splitColumn(String column) {
-    int colon = column.indexOf(':');
-    if (colon < 0) {
-      // A family with no qualifier addresses the family's default (empty) column.
-      return new String[] {column, ""};
+  private static String tablePath(String table) {
+    return "/" + HbaseRestClient.pathSegment(table);
+  }
+
+  private static String rowPath(String table, String row, List<String> columns) {
+    StringBuilder path = new StringBuilder(tablePath(table)).append('/').append(HbaseRestClient.pathSegment(row));
+    List<String> selected = nonBlank(columns);
+    if (!selected.isEmpty()) {
+      path.append('/');
+      for (int i = 0; i < selected.size(); i++) {
+        if (i > 0) {
+          path.append(',');
+        }
+        path.append(HbaseRestClient.pathSegment(selected.get(i)));
+      }
     }
-    return new String[] {column.substring(0, colon), column.substring(colon + 1)};
+    return path.toString();
+  }
+
+  private static List<String> nonBlank(List<String> values) {
+    if (values == null) {
+      return List.of();
+    }
+    return values.stream().filter(value -> value != null && !value.isBlank()).toList();
+  }
+
+  private static String base64(String value) {
+    return Base64.getEncoder().encodeToString(value.getBytes(StandardCharsets.UTF_8));
+  }
+
+  private static String binaryKey(String value) {
+    if (value == null || value.isEmpty()) {
+      return "";
+    }
+    byte[] bytes = Base64.getDecoder().decode(value);
+    StringBuilder text = new StringBuilder();
+    for (byte valueByte : bytes) {
+      int unsigned = Byte.toUnsignedInt(valueByte);
+      if (unsigned >= 0x20 && unsigned <= 0x7e && unsigned != '\\') {
+        text.append((char) unsigned);
+      } else {
+        text.append("\\x%02X".formatted(unsigned));
+      }
+    }
+    return text.toString();
   }
 
   /** UTF-8 text where the bytes are printable, Base64 otherwise. */
@@ -516,51 +457,7 @@ public class HbaseService {
 
   private record Decoded(String text, boolean binary) {}
 
-  private static HbaseColumnFamily toColumnFamily(ColumnFamilyDescriptor family) {
-    return new HbaseColumnFamily(
-        family.getNameAsString(),
-        family.getMaxVersions(),
-        family.getMinVersions(),
-        family.getCompressionType().getName(),
-        family.getTimeToLive(),
-        family.isBlockCacheEnabled(),
-        family.getBloomFilterType().name(),
-        family.getDataBlockEncoding().name(),
-        family.isInMemory());
-  }
-
-  private static ColumnFamilyDescriptor toDescriptor(HbaseColumnFamily family) {
-    ColumnFamilyDescriptorBuilder builder =
-        ColumnFamilyDescriptorBuilder.newBuilder(Bytes.toBytes(family.name()));
-    if (family.maxVersions() != null) {
-      builder.setMaxVersions(family.maxVersions());
-    }
-    if (family.minVersions() != null) {
-      builder.setMinVersions(family.minVersions());
-    }
-    if (family.compression() != null && !family.compression().isBlank()) {
-      builder.setCompressionType(Compression.Algorithm.valueOf(family.compression().toUpperCase()));
-    }
-    if (family.timeToLive() != null) {
-      builder.setTimeToLive(family.timeToLive());
-    }
-    if (family.blockCacheEnabled() != null) {
-      builder.setBlockCacheEnabled(family.blockCacheEnabled());
-    }
-    if (family.bloomFilterType() != null && !family.bloomFilterType().isBlank()) {
-      builder.setBloomFilterType(BloomType.valueOf(family.bloomFilterType().toUpperCase()));
-    }
-    if (family.dataBlockEncoding() != null && !family.dataBlockEncoding().isBlank()) {
-      builder.setDataBlockEncoding(
-          DataBlockEncoding.valueOf(family.dataBlockEncoding().toUpperCase()));
-    }
-    if (family.inMemory() != null) {
-      builder.setInMemory(family.inMemory());
-    }
-    return builder.build();
-  }
-
-  /** Minimal RFC-4180 CSV: comma-separated, double-quoted fields, "" escapes. */
+  /** Minimal RFC-4180 CSV: comma-separated, double-quoted fields, double-quote escapes. */
   private static List<String[]> parseCsv(String text) {
     List<String[]> rows = new ArrayList<>();
     List<String> field = new ArrayList<>();
@@ -601,42 +498,5 @@ public class HbaseService {
       rows.add(field.toArray(new String[0]));
     }
     return rows;
-  }
-
-  private void withAdmin(AdminAction action) throws Exception {
-    withConnection(
-        connection -> {
-          try (Admin admin = connection.getAdmin()) {
-            action.apply(admin);
-            return null;
-          }
-        });
-  }
-
-  private <T> T withConnection(ConnectionAction<T> action) throws Exception {
-    return kerberos.asLoggedInUser(
-        () -> {
-          Configuration configuration = HBaseConfiguration.create();
-          configuration.set("hbase.zookeeper.quorum", properties.hbaseQuorum());
-          configuration.set("hadoop.security.authentication", "kerberos");
-          configuration.set("hbase.security.authentication", "kerberos");
-          configuration.set("hbase.master.kerberos.principal", "hbase/_HOST@TEST.LOCAL");
-          configuration.set("hbase.regionserver.kerberos.principal", "hbase/_HOST@TEST.LOCAL");
-          configuration.setBoolean(
-              "hbase.unsafe.client.kerberos.hostname.disable.reversedns", true);
-          try (Connection connection = ConnectionFactory.createConnection(configuration)) {
-            return action.apply(connection);
-          }
-        });
-  }
-
-  @FunctionalInterface
-  private interface ConnectionAction<T> {
-    T apply(Connection connection) throws Exception;
-  }
-
-  @FunctionalInterface
-  private interface AdminAction {
-    void apply(Admin admin) throws Exception;
   }
 }

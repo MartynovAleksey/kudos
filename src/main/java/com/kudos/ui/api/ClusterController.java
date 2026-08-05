@@ -245,21 +245,6 @@ public class ClusterController {
     hbase.createTable(request.table(), request.families());
   }
 
-  @PostMapping("/hbase/table/enable")
-  void enableTable(@Valid @RequestBody TableRequest request) throws Exception {
-    hbase.enableTable(request.table());
-  }
-
-  @PostMapping("/hbase/table/disable")
-  void disableTable(@Valid @RequestBody TableRequest request) throws Exception {
-    hbase.disableTable(request.table());
-  }
-
-  @PostMapping("/hbase/table/truncate")
-  void truncateTable(@Valid @RequestBody TruncateRequest request) throws Exception {
-    hbase.truncateTable(request.table(), request.preserveSplits());
-  }
-
   @PostMapping("/hbase/table/delete")
   void deleteTable(@Valid @RequestBody TableRequest request) throws Exception {
     hbase.deleteTable(request.table());
@@ -273,11 +258,6 @@ public class ClusterController {
   @PostMapping("/hbase/family/modify")
   void modifyFamily(@Valid @RequestBody FamilyRequest request) throws Exception {
     hbase.modifyColumnFamily(request.table(), request.family());
-  }
-
-  @PostMapping("/hbase/family/delete")
-  void deleteFamily(@Valid @RequestBody FamilyDeleteRequest request) throws Exception {
-    hbase.deleteColumnFamily(request.table(), request.family());
   }
 
   @GetMapping("/hbase/scan")
@@ -437,11 +417,7 @@ public class ClusterController {
 
   record TableRequest(@NotBlank String table) {}
 
-  record TruncateRequest(@NotBlank String table, boolean preserveSplits) {}
-
   record FamilyRequest(@NotBlank String table, @NotNull HbaseColumnFamily family) {}
-
-  record FamilyDeleteRequest(@NotBlank String table, @NotBlank String family) {}
 
   record PutRowRequest(
       @NotBlank String table, @NotBlank String row, @NotEmpty Map<String, String> cells) {}

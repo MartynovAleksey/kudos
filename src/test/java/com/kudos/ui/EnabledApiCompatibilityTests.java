@@ -21,8 +21,10 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -116,6 +118,22 @@ class EnabledApiCompatibilityTests {
 
     verify(audit).record("GET", "/api/hbase/tables", 200);
     verify(audit).record("GET", "/ui-api/hbase/tables", 200);
+  }
+
+  @Test
+  void customHbaseAdminOperationsAreNotExposed() throws Exception {
+    MockHttpSession session = session();
+
+    for (String path :
+        List.of(
+            "/ui-api/hbase/table/enable",
+            "/ui-api/hbase/table/disable",
+            "/ui-api/hbase/table/truncate",
+            "/ui-api/hbase/family/delete")) {
+      mockMvc
+          .perform(post(path).session(session).with(csrf()))
+          .andExpect(status().isNotFound());
+    }
   }
 
   @Test

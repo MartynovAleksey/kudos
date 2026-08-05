@@ -23,7 +23,7 @@ public record ClusterProperties(
     String webhdfsUrl,
     String kyuubiUrl,
     String kyuubiRestUrl,
-    String hbaseQuorum,
+    String hbaseRestUrl,
     String ozoneOfsUri,
     String ozoneConfDir,
     String sparkHistoryUrl,

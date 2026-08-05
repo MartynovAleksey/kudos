@@ -32,7 +32,8 @@ kudos.cluster:
   kyuubi-url: ${KYUUBI_JDBC_URL:jdbc:hive2://localhost:10009/default;auth=KERBEROS;principal=kyuubi/_HOST@EXAMPLE.COM}
   # Internal REST API for session telemetry; this is not a browser UI proxy.
   kyuubi-rest-url: ${KYUUBI_REST_URL:http://localhost:10099}
-  hbase-quorum: ${HBASE_ZK_QUORUM:localhost}
+  # HBase REST Gateway. The application never opens ZooKeeper or HBase RPC connections.
+  hbase-rest-url: ${HBASE_REST_URL:}
   ozone-ofs-uri: ${OZONE_OFS_URI:ofs://omservice/}
   # Ozone's own service configuration, mounted read-only. The ofs:// client
   # needs the cluster's Kerberos principals and addresses from it.

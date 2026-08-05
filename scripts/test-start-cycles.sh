@@ -161,7 +161,7 @@ verify_endpoints() {
     dump_endpoint_diagnostics hue-reference
     return 1
   fi
-  for port in 8443 10009 10099 9870 9090 9862 18080; do
+  for port in 8443 10009 10099 9870 8080 9862 18080; do
     if ! bash -c ": >/dev/tcp/127.0.0.1/$port" 2>/dev/null; then
       log "Published port $port is not reachable from the host" >&2
       return 1

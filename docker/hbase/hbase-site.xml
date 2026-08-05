@@ -81,15 +81,39 @@
     <value>/shared/hbase-hbase.test.local.keytab</value>
   </property>
   <property>
-    <name>hbase.thrift.kerberos.principal</name>
-    <value>hbase/_HOST@TEST.LOCAL</value>
+    <name>hbase.rest.port</name>
+    <value>8080</value>
   </property>
   <property>
-    <name>hbase.thrift.keytab.file</name>
+    <name>hbase.rest.keytab.file</name>
     <value>/shared/hbase-hbase.test.local.keytab</value>
   </property>
   <property>
-    <name>hbase.thrift.security.qop</name>
-    <value>auth</value>
+    <name>hbase.rest.kerberos.principal</name>
+    <value>hbase/_HOST@TEST.LOCAL</value>
+  </property>
+  <property>
+    <name>hbase.rest.support.proxyuser</name>
+    <value>true</value>
+  </property>
+  <property>
+    <name>hbase.rest.authentication.type</name>
+    <value>kerberos</value>
+  </property>
+  <property>
+    <name>hbase.rest.authentication.kerberos.principal</name>
+    <value>HTTP/_HOST@TEST.LOCAL</value>
+  </property>
+  <property>
+    <name>hbase.rest.authentication.kerberos.keytab</name>
+    <value>/shared/HTTP-hbase.test.local.keytab</value>
+  </property>
+  <property>
+    <name>hadoop.proxyuser.hbase.groups</name>
+    <value>*</value>
+  </property>
+  <property>
+    <name>hadoop.proxyuser.hbase.hosts</name>
+    <value>*</value>
   </property>
 </configuration>

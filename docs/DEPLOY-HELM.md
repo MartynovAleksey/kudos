@@ -33,7 +33,7 @@ from values as environment variables.
 - Опубликованный образ приложения (`docker/app/Dockerfile`, стадия `runtime` —
 - A Kubernetes cluster and Helm 3+.
 - A published application image built with the `runtime` stage of
-- Сетевая доступность кластерных сервисов (WebHDFS, Kyuubi, ZooKeeper/HBase,
+  `dev/docker/app/Dockerfile`, accessible from the cluster; see
   [BUILD.md](BUILD.md).
 
 - Network access from the Pod to WebHDFS, Kyuubi, HBase REST Gateway, Ozone OM,
@@ -107,7 +107,7 @@ kudos:
     webhdfs-url: http://namenode.example.com:9870
     kyuubi-url: "jdbc:hive2://kyuubi.example.com:10009/default;principal=kyuubi/kyuubi.example.com@EXAMPLE.COM"
     kyuubi-rest-url: http://kyuubi.example.com:10099
-    hbase-quorum: zk1.example.com,zk2.example.com,zk3.example.com
+    hbase-rest-url: http://hbase.example.com:8080
     ozone-ofs-uri: ofs://omservice/
     ozone-conf-dir: /etc/ozone/conf
     spark-history-url: http://sparkhistory.example.com:18080
@@ -186,7 +186,7 @@ scripts/hybrid-down.sh          # снести (добавить --purge, что
 
 You can exercise production mode locally: run the **cluster and Vault in Docker
 
-**Оговорка — HBase.** Порты ZK/master/regionserver (2181/16000/16020) опубликованы и TCP-достижимы из пода, но нативный HBase-RPC c SASL/Kerberos не проходит через двойной NAT (docker-publish → под): клиент доходит до master, но RPC-хендшейк рвётся/таймаутит. Это ограничение именно гибридной локальной топологии, а не чарта/приложения — в реальном кластере, где под и HBase в одной сети, этого нет. Для локального HBase используйте полностью docker-режим (см. [README](README.md)).
+(docker-desktop). The Pod reaches Docker services through their published ports;
 
 match.
 

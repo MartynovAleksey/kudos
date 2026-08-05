@@ -112,7 +112,7 @@ kudos:
   cluster:
     webhdfs-url: http://hdfs.test.local:9870
     kyuubi-url: "jdbc:hive2://kyuubi.test.local:10009/default;principal=kyuubi/kyuubi.test.local@TEST.LOCAL"
-    hbase-quorum: hbase.test.local
+    hbase-rest-url: http://hbase.test.local:8080
     ozone-ofs-uri: ofs://ozone.test.local/
     ozone-conf-dir: /etc/ozone/conf
     spark-history-url: http://sparkhistory.test.local:18080

@@ -37,10 +37,15 @@ done
 
 "$HBASE_HOME/bin/hbase-daemon.sh" start master &
 "$HBASE_HOME/bin/hbase-daemon.sh" start regionserver &
-"$HBASE_HOME/bin/hbase-daemon.sh" start thrift -p 9090 &
+
+until bash -c ': > /dev/tcp/hbase.test.local/16020' 2>/dev/null; do
+  sleep 1
+done
+
+"$HBASE_HOME/bin/hbase-daemon.sh" start rest -p 8080 &
 
 stop_hbase() {
-  "$HBASE_HOME/bin/hbase-daemon.sh" stop thrift
+  "$HBASE_HOME/bin/hbase-daemon.sh" stop rest
   "$HBASE_HOME/bin/hbase-daemon.sh" stop regionserver
   "$HBASE_HOME/bin/hbase-daemon.sh" stop master
 }
