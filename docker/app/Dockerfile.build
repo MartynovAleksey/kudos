@@ -13,6 +13,20 @@
 # limitations under the License.
 
 # syntax=docker/dockerfile:1.7
+#
+# BUILD image — compiles the Spring Boot fat-jar (and the JRE healthcheck class)
+# and exports them to the host. The runtime image is built separately from these
+# artifacts by Dockerfile.runtime, so no build tooling ever lands in the runtime.
+#
+#   DOCKER_BUILDKIT=1 docker build -f docker/app/Dockerfile.build \
+#     --output type=local,dest=dist .
+#   -> dist/kudos-0.1.0.jar, dist/HealthCheck.class
+#
+# The optional security-scan stages live here too (they scan the built jar):
+#   DOCKER_BUILDKIT=1 docker build -f docker/app/Dockerfile.build --target trivy-report \
+#     --output type=local,dest=. .
+#   DOCKER_BUILDKIT=1 docker build -f docker/app/Dockerfile.build --target owasp-report \
+#     --secret id=owasp_key,src=$HOME/OWASP-API.key --output type=local,dest=. .
 FROM maven:3.9.11-eclipse-temurin-21 AS build
 WORKDIR /workspace
 COPY pom.xml .
@@ -24,24 +38,12 @@ RUN echo 'Compiling kudos...' && \
 # Scan scripts live in the build stage so the optional scan stages below inherit
 # them; copied after packaging so editing a script does not bust the build cache.
 COPY scripts scripts
-
-# =============================================================================
-# Optional security-scan stages. They branch off `build` and are NOT part of the
-# default image graph, so a normal `docker build` / `docker compose build`
-# (which targets the final `runtime` stage) never runs them. Build one on demand
-# with --target and export its Markdown report with --output. BuildKit required.
-#
-#   OWASP dependency-check  ->  ./owasp.md
-#     DOCKER_BUILDKIT=1 docker build -f docker/app/Dockerfile \
-#       --target owasp-report \
-#       --secret id=owasp_key,src=$HOME/OWASP-API.key \
-#       --output type=local,dest=. .
-#
-#   Trivy (scans the built fat-jar)  ->  ./trivy.md
-#     DOCKER_BUILDKIT=1 docker build -f docker/app/Dockerfile \
-#       --target trivy-report \
-#       --output type=local,dest=. .
-# =============================================================================
+# Precompile the container healthcheck into a small jar: the distroless runtime is
+# a JRE (no compiler), so it can run a .class/.jar but not a single-file .java.
+# A jar bundles the anonymous inner classes too (a bare .class would miss them).
+COPY docker/app/HealthCheck.java .
+RUN javac -d /workspace/health HealthCheck.java && \
+    jar --create --file /workspace/healthcheck.jar --main-class HealthCheck -C /workspace/health .
 
 # --- OWASP dependency-check ---------------------------------------------------
 # The NVD API key is provided as a BuildKit secret (a file), mounted only for the
@@ -72,9 +74,8 @@ RUN --mount=type=cache,target=/root/.cache/trivy bash scripts/scan-trivy.sh
 FROM scratch AS trivy-report
 COPY --from=trivy-scan /workspace/trivy.md /trivy.md
 
-# --- Runtime image (default target; must stay last) ---------------------------
-FROM eclipse-temurin:21-jre AS runtime
-WORKDIR /app
-COPY --from=build /workspace/target/kudos-0.1.0.jar app.jar
-EXPOSE 8443
-ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+# --- Default target: export the build artifacts to the host -------------------
+# `--output type=local,dest=dist` writes these straight into ./dist. Must stay last.
+FROM scratch AS artifacts
+COPY --from=build /workspace/target/kudos-0.1.0.jar /kudos-0.1.0.jar
+COPY --from=build /workspace/healthcheck.jar /healthcheck.jar

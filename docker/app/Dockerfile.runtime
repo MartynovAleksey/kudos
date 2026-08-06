@@ -1,0 +1,40 @@
+# Copyright 2026 Aleksey Martynov and contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# syntax=docker/dockerfile:1.7
+#
+# RUNTIME image — minimal distroless, built from the PRE-BUILT artifacts in ./dist
+# (produced by Dockerfile.build). No Maven, no build layers: just the JRE, the
+# fat-jar and the healthcheck class.
+#
+#   1) build artifacts:  DOCKER_BUILDKIT=1 docker build -f docker/app/Dockerfile.build \
+#                          --output type=local,dest=dist .
+#   2) runtime image:    docker build -f docker/app/Dockerfile.runtime -t kudos:0.1.0 .
+#
+# Distroless is the closest practical base to "scratch" for a JVM app: scratch has
+# no JVM, libc or dynamic linker, so `java -jar` cannot run there at all. Runs as a
+# non-root user (uid 65532); minimal CVE/attack surface, no shell, no package manager.
+FROM gcr.io/distroless/java21-debian12:nonroot AS runtime
+WORKDIR /app
+# Pre-built artifacts copied IN from the host (./dist).
+COPY dist/kudos-0.1.0.jar app.jar
+COPY dist/healthcheck.jar /app/healthcheck.jar
+# kudos.logging.dir (/var/log/kudos) holds the rolling app + audit logs. Ship the
+# directory owned by the non-root runtime user (65532) so a freshly created mounted
+# volume inherits writable ownership — otherwise logback's file appenders cannot
+# write. TLS material and krb5.conf are mounted world-readable, so the non-root
+# user reads them fine; /tmp (present in distroless, 1777) covers Tomcat/POI temp.
+COPY --chown=65532:65532 docker/app/logdir/ /var/log/kudos/
+EXPOSE 8443
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]

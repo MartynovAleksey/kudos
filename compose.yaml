@@ -313,9 +313,12 @@ services:
       start_period: 5s
 
   app:
+    # Thin distroless runtime built from the pre-built jar in ./dist. Populate
+    # ./dist first with Dockerfile.build (run-test-env.sh does this automatically):
+    #   docker build -f docker/app/Dockerfile.build --output type=local,dest=dist .
     build:
       context: .
-      dockerfile: docker/app/Dockerfile
+      dockerfile: docker/app/Dockerfile.runtime
     hostname: app.test.local
     depends_on:
       freeipa:
@@ -369,18 +372,19 @@ services:
     # The API and UI are served over TLS only.
     ports:
       - "8443:8443"
+    # The distroless runtime image has no shell/curl — probe with the bundled JRE
+    # running the precompiled healthcheck class (distroless is a JRE, so it runs a
+    # .class but not a single-file .java). Kubernetes uses its own httpGet probe.
     healthcheck:
       test:
-        - CMD-SHELL
-        - >-
-          curl --fail --silent --max-time 5
-          --cacert /vault/secrets/ca.crt
-          https://app.test.local:8443/actuator/health
-          | grep -q '"status":"UP"'
-      interval: 5s
+        - CMD
+        - java
+        - -jar
+        - /app/healthcheck.jar
+      interval: 15s
       timeout: 10s
-      retries: 24
-      start_period: 30s
+      retries: 8
+      start_period: 40s
 
   # Docker Hub Hue used only as a visual/behavioural reference. The derived
   # image replaces only Polars with its official legacy-CPU wheel so the

@@ -1,26 +1,42 @@
 # Building the `kudos` image
 
-Сборка приложения выполняется **в Docker** через multi-stage `docker/app/Dockerfile`.
-Тестовый стенд (compose) и прод-запуск (Helm) — отдельные части, см.
-[README.md](README.md) и [docs/DEPLOY-HELM.md](DEPLOY-HELM.md).
+The application build uses **two Dockerfiles**: the build image compiles and
+exports artifacts, while the runtime image packages them into a minimal image.
+The test environment (Compose) and production deployment (Helm) are separate;
+[docs/DEPLOY-HELM.md](DEPLOY-HELM.md).
 
 ## Build outputs
 
-`docker/app/Dockerfile` — multi-stage:
-
-1. **build** — копирует `pom.xml`, скачивает зависимости (кэш слоёв Docker),
-   затем копирует `src` и собирает исполняемый Spring Boot JAR (`mvn package`).
-2. **runtime** (стадия по умолчанию) — переносит только JAR в минимальный
-   Temurin 21 JRE. Это и есть образ приложения.
-
-Стадия по умолчанию — `runtime`, поэтому обычная сборка даёт готовый к запуску
-образ:
+**1. `docker/app/Dockerfile.build`** — компилирует Spring Boot JAR (и класс
+health-check class on a Maven/JDK image and **exports them to the host** in
 
 ```bash
-DOCKER_BUILDKIT=1 docker build -f docker/app/Dockerfile -t kudos:0.1.0 .
+DOCKER_BUILDKIT=1 docker build -f docker/app/Dockerfile.build \
+  --output type=local,dest=dist .
+# -> dist/kudos-0.1.0.jar, dist/HealthCheck.class
 ```
 
-Тот же образ собирает и тестовый compose (`docker compose build app`).
+**2. `docker/app/Dockerfile.runtime`** — берёт готовые артефакты из `./dist` и
+**2. `dev/docker/app/Dockerfile.runtime`** takes the prepared artifacts from
+`./dist` and places them in a **distroless** image
+(`gcr.io/distroless/java21-debian12:nonroot`). The image contains **neither
+
+```bash
+docker build -f docker/app/Dockerfile.runtime -t kudos:0.1.0 .
+```
+
+```
+
+> Distroless is a minimal JVM runtime without a shell or package manager,
+> minimizing CVEs. A true `FROM scratch` image is not suitable for a JVM
+> application because it contains no JVM, libc, or linker to run `java -jar`.
+
+Тестовый compose собирает `app` из `Dockerfile.runtime`; `scripts/run-test-env.sh`
+
+
+> baked into the image: Vault PKI issues it and a Vault Agent sidecar delivers
+> it to `/vault/secrets` for the `vault` profile. See
+> [DEPLOY-HELM.md](DEPLOY-HELM.md).
 
 > baked into the image: Vault PKI issues it and a Vault Agent sidecar delivers
 > it to `/vault/secrets` for the `vault` profile. See
@@ -40,14 +56,14 @@ no certificate is required.
 
 ## Optional security-scanning stages
 
-В `docker/app/Dockerfile` есть дополнительные стадии, которые **не** собираются
-при обычной сборке (не входят в граф стадии `runtime`). Каждая сканирует
+В `docker/app/Dockerfile.build` есть дополнительные стадии, которые **не**
+built during a normal artifact build (`--target artifacts`). Each scans the
 built fat JAR and exports a Markdown table through `--output`. BuildKit is
 
 Trivy → `./trivy.md`:
 
 ```bash
-DOCKER_BUILDKIT=1 docker build -f docker/app/Dockerfile \
+DOCKER_BUILDKIT=1 docker build -f docker/app/Dockerfile.build \
   --target trivy-report \
   --output type=local,dest=. .
 ```
@@ -56,7 +72,7 @@ DOCKER_BUILDKIT=1 docker build -f docker/app/Dockerfile \
 OWASP Dependency-Check produces `./owasp.md`; pass the NVD key as a file-based
 
 ```bash
-DOCKER_BUILDKIT=1 docker build -f docker/app/Dockerfile \
+DOCKER_BUILDKIT=1 docker build -f docker/app/Dockerfile.build \
   --target owasp-report \
   --secret id=owasp_key,src=$HOME/OWASP-API.key \
   --output type=local,dest=. .

@@ -38,6 +38,24 @@ run_compose() {
     "$@"
 }
 
+# Build the app artifacts (fat-jar + healthcheck class) into ./dist. The runtime
+# image (docker/app/Dockerfile.runtime, distroless) is built from these by compose,
+# so it carries no build tooling. Uses `--target build` + docker cp instead of
+# BuildKit --output so it works with the keychain-safe, PATH-stripped run_docker
+# wrapper (buildx is not on that PATH).
+build_artifacts() {
+  echo "Building application artifacts (jar + healthcheck) into ./dist ..."
+  rm -rf "$project_root/dist"
+  mkdir -p "$project_root/dist"
+  run_docker build -f "$project_root/docker/app/Dockerfile.build" \
+    --target build -t kudos-test-artifacts "$project_root"
+  local cid
+  cid="$(run_docker create kudos-test-artifacts)"
+  run_docker cp "$cid:/workspace/target/kudos-0.1.0.jar" "$project_root/dist/kudos-0.1.0.jar"
+  run_docker cp "$cid:/workspace/healthcheck.jar" "$project_root/dist/healthcheck.jar"
+  run_docker rm -f "$cid" >/dev/null
+}
+
 host_architecture="$(uname -m)"
 case "$host_architecture" in
   arm64 | aarch64)
@@ -71,4 +89,5 @@ done
 echo "Starting FreeIPA and app natively as linux/$native_architecture."
 echo "Kyuubi runs as linux/amd64 (emulated on Apple Silicon)."
 unset DOCKER_DEFAULT_PLATFORM
+build_artifacts
 run_compose up --build --remove-orphans "$@"
