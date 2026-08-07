@@ -279,9 +279,139 @@
 
   /* ------------------------------------------------------------------ editor */
 
+  // Spark SQL vocabulary for the Ace autocompleter. Keywords (incl. Spark-only
+  // clauses like LATERAL VIEW / DISTRIBUTE BY) and built-in functions.
+  var SPARK_SQL_KEYWORDS = (
+    'SELECT FROM WHERE GROUP BY ORDER BY HAVING LIMIT OFFSET DISTINCT ALL AS AND OR NOT ' +
+    'IN EXISTS BETWEEN LIKE RLIKE REGEXP IS NULL TRUE FALSE CASE WHEN THEN ELSE END ' +
+    'JOIN INNER JOIN LEFT JOIN RIGHT JOIN FULL JOIN LEFT OUTER JOIN RIGHT OUTER JOIN ' +
+    'FULL OUTER JOIN CROSS JOIN LEFT SEMI JOIN LEFT ANTI JOIN ON USING NATURAL ' +
+    'UNION UNION ALL INTERSECT EXCEPT MINUS WITH RECURSIVE VALUES ' +
+    'INSERT INTO INSERT OVERWRITE OVERWRITE TABLE CREATE TABLE CREATE OR REPLACE ' +
+    'CREATE VIEW CREATE TEMPORARY VIEW DROP TABLE DROP VIEW ALTER TABLE TRUNCATE TABLE ' +
+    'DESCRIBE DESC EXTENDED FORMATTED SHOW TABLES SHOW DATABASES SHOW COLUMNS SHOW ' +
+    'PARTITIONS USE EXPLAIN CACHE TABLE UNCACHE TABLE REFRESH TABLE ANALYZE TABLE ' +
+    'COMPUTE STATISTICS PARTITION PARTITIONED BY CLUSTERED BY SORTED BY INTO BUCKETS ' +
+    'DISTRIBUTE BY SORT BY CLUSTER BY LATERAL VIEW OUTER OVER PARTITION BY WINDOW ' +
+    'ROWS BETWEEN RANGE BETWEEN UNBOUNDED PRECEDING CURRENT ROW FOLLOWING TABLESAMPLE ' +
+    'PIVOT UNPIVOT GROUPING SETS ROLLUP CUBE CAST TRY_CAST INTERVAL ARRAY MAP STRUCT ' +
+    'STORED AS ROW FORMAT DELIMITED LOCATION TBLPROPERTIES OPTIONS COMMENT ' +
+    'IF NOT EXISTS IF EXISTS ADD COLUMNS RENAME TO SET RESET ASC DESC NULLS FIRST ' +
+    'NULLS LAST FETCH FIRST NEXT ONLY QUALIFY'
+  ).split(' ');
+  var SPARK_SQL_FUNCTIONS = (
+    'count sum avg min max first last first_value last_value nth_value collect_list ' +
+    'collect_set approx_count_distinct stddev stddev_pop stddev_samp variance var_pop ' +
+    'var_samp skewness kurtosis corr covar_pop covar_samp percentile percentile_approx ' +
+    'coalesce nvl nvl2 nullif greatest least ifnull isnull isnotnull nanvl if ' +
+    'concat concat_ws substring substr left right length char_length lower upper trim ' +
+    'ltrim rtrim lpad rpad repeat reverse replace overlay format_string format_number ' +
+    'regexp_replace regexp_extract regexp_extract_all split split_part instr locate ' +
+    'position ascii chr initcap translate soundex levenshtein base64 unbase64 ' +
+    'current_date current_timestamp now date_add date_sub datediff months_between ' +
+    'add_months last_day next_day trunc date_trunc extract year month day dayofmonth ' +
+    'dayofweek dayofyear weekday hour minute second weekofyear quarter make_date ' +
+    'to_date to_timestamp from_unixtime unix_timestamp to_unix_timestamp date_format ' +
+    'from_utc_timestamp to_utc_timestamp timestampadd timestampdiff ' +
+    'abs ceil ceiling floor round bround sqrt cbrt exp expm1 ln log log10 log2 pow ' +
+    'power rand randn pmod mod sign signum factorial hypot degrees radians ' +
+    'row_number rank dense_rank percent_rank ntile lag lead cume_dist ' +
+    'explode explode_outer posexplode posexplode_outer inline inline_outer stack ' +
+    'array map struct named_struct array_contains array_position size cardinality ' +
+    'sort_array array_distinct array_union array_intersect array_except array_join ' +
+    'arrays_zip flatten sequence shuffle slice element_at map_keys map_values ' +
+    'map_entries map_from_arrays map_concat get_json_object json_tuple from_json ' +
+    'to_json schema_of_json hash xxhash64 md5 sha sha1 sha2 crc32 aes_encrypt ' +
+    'aes_decrypt monotonically_increasing_id spark_partition_id input_file_name ' +
+    'count_distinct grouping grouping_id typeof'
+  ).split(' ');
+
+  // Mount an Ace SQL editor over the plain textarea, or fall back to the textarea
+  // itself if Ace is unavailable. The returned object proxies the few members
+  // initEditor() uses (.value, .getAttribute, .addEventListener('input'), .focus),
+  // so the rest of the editor logic is unchanged. Ctrl+Enter is bound separately.
+  function createSqlEditor(textarea, host) {
+    if (!window.ace || !host) {
+      return textarea;
+    }
+    var editor = window.ace.edit(host);
+    editor.setTheme('ace/theme/sqlserver');
+    editor.session.setMode('ace/mode/sql');
+    editor.setOptions({
+      enableBasicAutocompletion: true,
+      enableLiveAutocompletion: true,
+      enableSnippets: false,
+      fontSize: '13px',
+      fontFamily: "'Roboto Mono', monospace",
+      showPrintMargin: false,
+      highlightActiveLine: true,
+      tabSize: 2,
+      useSoftTabs: true,
+      newLineMode: 'unix'
+    });
+    editor.setOption('placeholder', host.getAttribute('data-placeholder') || '');
+    editor.renderer.setScrollMargin(6, 6);
+
+    var langTools = window.ace.require('ace/ext/language_tools');
+    if (langTools) {
+      var sparkCompleter = {
+        getCompletions: function (ed, session, pos, prefix, callback) {
+          var out = SPARK_SQL_KEYWORDS.map(function (word) {
+            return { caption: word, value: word, meta: 'keyword', score: 1000 };
+          });
+          SPARK_SQL_FUNCTIONS.forEach(function (fn) {
+            out.push({ caption: fn + '()', value: fn + '(', meta: 'function', score: 900 });
+          });
+          callback(null, out);
+        }
+      };
+      // Spark keywords/functions first, then Ace's own keyword + open-buffer word
+      // completers so identifiers already typed in the query are offered too.
+      editor.completers = [sparkCompleter, langTools.keyWordCompleter, langTools.textCompleter];
+    }
+
+    // Inline display:none, not the `hidden` attribute — the vendored Hue CSS
+    // styles `textarea` and overrides `[hidden]`, leaving the box visible.
+    textarea.style.display = 'none';
+    host.hidden = false;
+
+    // The container has CSS `resize: vertical`; Ace does not track that on its
+    // own, so nudge it to re-layout when the user drags the handle.
+    if (window.ResizeObserver) {
+      new ResizeObserver(function () {
+        editor.resize();
+      }).observe(host);
+    }
+
+    return {
+      aceEditor: editor,
+      get value() {
+        return editor.getValue();
+      },
+      set value(text) {
+        // -1 puts the cursor at the start instead of selecting the whole text.
+        editor.setValue(text == null ? '' : text, -1);
+      },
+      getAttribute: function (name) {
+        return textarea.getAttribute(name);
+      },
+      focus: function () {
+        editor.focus();
+      },
+      addEventListener: function (type, handler) {
+        if (type === 'input') {
+          editor.on('change', function () {
+            handler();
+          });
+        }
+        // 'keydown' (Ctrl+Enter) is bound as an Ace command in initEditor.
+      }
+    };
+  }
+
   function initEditor() {
     var run = el('executeQuery');
-    var query = el('queryField');
+    var query = createSqlEditor(el('queryField'), el('queryEditor'));
     var results = el('queryResults');
     var clearResultsBtn = el('clearResults');
     var activeSessionId = 'default';
@@ -500,11 +630,21 @@
     exportBtn.addEventListener('click', exportExcel);
     clearResultsBtn.addEventListener('click', clearResults);
     query.addEventListener('input', saveQuery);
-    query.addEventListener('keydown', function (event) {
-      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
-        execute();
-      }
-    });
+    if (query.aceEditor) {
+      query.aceEditor.commands.addCommand({
+        name: 'kudosExecute',
+        bindKey: { win: 'Ctrl-Enter', mac: 'Command-Enter' },
+        exec: function () {
+          execute();
+        }
+      });
+    } else {
+      query.addEventListener('keydown', function (event) {
+        if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+          execute();
+        }
+      });
+    }
 
     /* -------------------------------------------------------- sessions */
 

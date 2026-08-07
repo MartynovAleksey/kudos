@@ -269,6 +269,30 @@
   resize: vertical;
 }
 
+/* Ace SQL editor (mounted over #queryField by kudos.js). */
+.k8s-ace-editor {
+  width: 100%;
+  height: 220px;
+  min-height: 180px;
+  border: 1px solid #dddddd;
+  border-radius: 2px;
+  resize: vertical;
+  overflow: hidden;
+  line-height: 1.5;
+}
+.k8s-ace-editor .ace_gutter {
+  background: #f7f7f7;
+  color: #adadad;
+}
+.k8s-ace-editor .ace_placeholder {
+  font-family: 'Roboto Mono', monospace;
+  color: #adadad;
+  padding: 0;
+  margin: 0;
+  transform: none;
+  opacity: 1;
+}
+
 .k8s-result-scroll {
   max-height: 420px;
   overflow: auto;

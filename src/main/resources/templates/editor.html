@@ -46,10 +46,15 @@
       <div id="noSessions" class="k8s-muted k8s-session-empty">
         No sessions — queries run on the default engine. Use + to start one.
       </div>
+      <!-- Plain textarea is the no-Ace fallback and the value/owner holder;
+           kudos.js hides it and mounts the Ace editor into #queryEditor when
+           Ace loads (progressive enhancement). -->
       <textarea id="queryField" class="k8s-editor-area" tabindex="1"
                 spellcheck="false"
                 th:attr="data-query-owner=${#authentication.name}"
                 placeholder="Example: SELECT 40 + 2 AS result"></textarea>
+      <div id="queryEditor" class="k8s-ace-editor" hidden
+           data-placeholder="Example: SELECT 40 + 2 AS result — or press Ctrl + Space"></div>
       <div class="actions k8s-query-actions" style="margin-top: 10px;">
         <button type="button" id="executeQuery" class="btn btn-primary" tabindex="2">Execute</button>
         <span class="muted" style="padding-left: 10px;">Ctrl + Enter</span>
@@ -97,6 +102,13 @@
       </div>
     </div>
   </div>
+
+  <!-- Ace SQL editor (loaded only on this page). These execute during parse,
+       before kudos.js's DOMContentLoaded handler, so window.ace is ready. -->
+  <script th:src="@{/static/app/ace/ace.js}"></script>
+  <script th:src="@{/static/app/ace/ext-language_tools.js}"></script>
+  <script th:src="@{/static/app/ace/mode-sql.js}"></script>
+  <script th:src="@{/static/app/ace/theme-sqlserver.js}"></script>
 </div>
 </body>
 </html>
