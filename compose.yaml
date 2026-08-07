@@ -358,8 +358,13 @@ services:
     environment:
       SPRING_CONFIG_ADDITIONAL_LOCATION: file:/etc/kudos/
       HBASE_REST_URL: http://hbase.test.local:8080
-      # Serve HTTPS with the Vault-issued PEM certificate (application-vault.yml).
-      SPRING_PROFILES_ACTIVE: vault
+      # HTTPS is OFF by default (plain HTTP on 8443) so the browser and tests hit
+      # no self-signed-cert errors. Turn TLS on with the Vault cert by exporting
+      # both, then `docker compose up -d app`:
+      #   SPRING_PROFILES_ACTIVE=vault \
+      #   HEALTHCHECK_URL=https://app.test.local:8443/actuator/health
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-}
+      HEALTHCHECK_URL: ${HEALTHCHECK_URL:-http://app.test.local:8443/actuator/health}
       # Log directory for the container (the app-logs volume above). Kept out of
       # the shared config file so local runs default to ./logs instead.
       KUDOS_LOGGING_DIR: /var/log/kudos
@@ -369,7 +374,7 @@ services:
       JAVA_TOOL_OPTIONS: >-
         -Djava.security.krb5.conf=/run/secrets-kudos/krb5.conf
         --add-exports=java.security.jgss/sun.security.krb5=ALL-UNNAMED
-    # The API and UI are served over TLS only.
+    # Port 8443 — HTTP by default, HTTPS when the vault profile is active.
     ports:
       - "8443:8443"
     # The distroless runtime image has no shell/curl — probe with the bundled JRE

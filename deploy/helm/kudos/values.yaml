@@ -26,9 +26,14 @@ service:
   type: ClusterIP
   port: 8443
 
-# The app serves HTTPS on 8443 using the Vault-issued PEM under the `vault`
-# Spring profile. Leave this on.
-springProfiles: "vault"
+# TLS. HTTPS is OFF by default: the app serves plain HTTP on the service port, so
+# no certificate is required and clients hit no self-signed-cert errors. Set
+# enabled: true to serve HTTPS with a Vault-issued PEM — that adds the vault-agent
+# init+sidecar, mounts the cert, activates the `vault` Spring profile, and switches
+# the probes to HTTPS (requires the vault.* settings below). Recommended ON in
+# production.
+tls:
+  enabled: false
 
 podAnnotations: {}
 podSecurityContext:

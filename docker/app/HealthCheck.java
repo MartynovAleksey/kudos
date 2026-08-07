@@ -32,13 +32,13 @@ import javax.net.ssl.X509TrustManager;
 
 public class HealthCheck {
   public static void main(String[] args) throws Exception {
-    // Default to the container's own hostname (app.test.local), which matches the
-    // Vault cert's SAN — java.net.http.HttpClient always verifies the hostname and
-    // ignores any attempt to disable it, so we must connect to a name the cert
-    // covers. The CA is still self-signed, so the trust manager below skips chain
-    // validation. Override with HEALTHCHECK_URL where the hostname differs.
+    // HTTPS is off by default, so probe plain HTTP. When TLS is enabled the
+    // deployment overrides HEALTHCHECK_URL with an https:// app.test.local URL —
+    // that hostname matches the Vault cert's SAN, which matters because
+    // java.net.http.HttpClient always verifies the hostname (and ignores attempts
+    // to disable it); the self-signed CA is handled by the trust manager below.
     String url = System.getenv().getOrDefault("HEALTHCHECK_URL",
-        "https://app.test.local:8443/actuator/health");
+        "http://app.test.local:8443/actuator/health");
 
     TrustManager[] trustAll = {
       new X509TrustManager() {

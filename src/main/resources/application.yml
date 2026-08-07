@@ -20,6 +20,14 @@ spring:
     username: ${LDAP_MANAGER_DN:}
     password: ${LDAP_MANAGER_PASSWORD:}
     user-dn-pattern: ${LDAP_USER_DN_PATTERN:uid={0}}
+server:
+  # HTTPS is OFF by default: the app serves plain HTTP on this port, so local
+  # runs, tests and browsers hit no self-signed-certificate errors. Enable TLS by
+  # activating the `vault` profile (SPRING_PROFILES_ACTIVE=vault), which overrides
+  # ssl.enabled and supplies the Vault-issued certificate (application-vault.yml).
+  port: ${SERVER_PORT:8443}
+  ssl:
+    enabled: false
 spring.web.error.include-message: always
 springdoc.paths-to-match: /api/**
 spring.servlet.multipart:
