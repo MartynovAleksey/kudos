@@ -18,5 +18,19 @@ package com.kudos.ui.service;
 
 import java.util.List;
 
-/** Column-oriented SQL result, shaped for the editor's result grid. */
-public record QueryResult(List<String> columns, List<List<Object>> rows) {}
+/**
+ * Column-oriented SQL result, shaped for the editor's result grid. A statement
+ * that produces no result set (DDL/DML/SET) carries no columns/rows and a
+ * {@code message} acknowledgement instead ("OK" / "N row(s) affected").
+ */
+public record QueryResult(List<String> columns, List<List<Object>> rows, String message) {
+
+  public QueryResult(List<String> columns, List<List<Object>> rows) {
+    this(columns, rows, null);
+  }
+
+  /** Acknowledgement for a statement with no result set. */
+  public static QueryResult ok(String message) {
+    return new QueryResult(List.of(), List.of(), message);
+  }
+}

@@ -57,7 +57,9 @@
            data-placeholder="Example: SELECT 40 + 2 AS result — or press Ctrl + Space"></div>
       <div class="actions k8s-query-actions" style="margin-top: 10px;">
         <button type="button" id="executeQuery" class="btn btn-primary" tabindex="2">Execute</button>
-        <span class="muted" style="padding-left: 10px;">Ctrl + Enter</span>
+        <button type="button" id="executeAllQuery" class="btn" tabindex="3"
+                title="Run every statement in the editor">Execute all</button>
+        <span class="muted" style="padding-left: 10px;">Ctrl + Enter runs the statement at the cursor (or the selection)</span>
         <button type="button" id="exportExcel" class="btn" tabindex="3">
           <i class="fa fa-file-excel-o"></i> Export to Excel
         </button>
@@ -81,7 +83,7 @@
         </li>
         <li id="operationsTabItem">
           <a id="operationsTab" href="#operationsPane" role="tab" aria-controls="operationsPane"
-             aria-selected="false">Operations</a>
+             aria-selected="false">Session History</a>
         </li>
       </ul>
       <div class="tab-content k8s-output-content">

@@ -91,8 +91,8 @@ public class KyuubiService {
       synchronized (session) {
         try (Statement statement = session.requireConnection().createStatement()) {
           String operationId = session.beginOperation(sql);
-          try (ResultSet resultSet = statement.executeQuery(sql)) {
-            QueryResult result = toResult(resultSet, maxRows);
+          try {
+            QueryResult result = runStatement(statement, sql, maxRows);
             session.finishOperation(operationId, statement, null);
             return result;
           } catch (Exception error) {
@@ -105,11 +105,27 @@ public class KyuubiService {
     return kerberos.asLoggedInUser(
         () -> {
           try (Connection connection = openKyuubiConnection(properties.kyuubiUrl());
-              Statement statement = connection.createStatement();
-              ResultSet resultSet = statement.executeQuery(sql)) {
-            return toResult(resultSet, maxRows);
+              Statement statement = connection.createStatement()) {
+            return runStatement(statement, sql, maxRows);
           }
         });
+  }
+
+  /**
+   * Run a single statement. A statement that yields a result set (SELECT, SHOW,
+   * DESCRIBE …) becomes a grid; one that does not (SET, USE, CREATE, INSERT …)
+   * returns an "OK" / rows-affected acknowledgement instead of failing.
+   */
+  private static QueryResult runStatement(Statement statement, String sql, int maxRows)
+      throws Exception {
+    boolean hasResultSet = statement.execute(sql);
+    if (hasResultSet) {
+      try (ResultSet resultSet = statement.getResultSet()) {
+        return toResult(resultSet, maxRows);
+      }
+    }
+    int updateCount = statement.getUpdateCount();
+    return QueryResult.ok(updateCount >= 0 ? updateCount + " row(s) affected" : "OK");
   }
 
   // -------------------------------------------------------------- sessions

@@ -158,8 +158,9 @@ class KyuubiServiceTests {
 
     ResultSet firstResult = result(42);
     ResultSet secondResult = result(42);
-    when(statement.executeQuery(" SELECT 42 ")).thenReturn(firstResult);
-    when(statement.executeQuery("SELECT   42")).thenReturn(secondResult);
+    when(statement.execute(" SELECT 42 ")).thenReturn(true);
+    when(statement.execute("SELECT   42")).thenReturn(true);
+    when(statement.getResultSet()).thenReturn(firstResult, secondResult);
     service.execute(" SELECT 42 ", 10);
     service.execute("SELECT   42", 10);
 

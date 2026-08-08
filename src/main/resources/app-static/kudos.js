@@ -409,10 +409,104 @@
     };
   }
 
+  // Split a SQL buffer into individual statements on top-level `;`, ignoring `;`
+  // inside '...', "...", `...`, -- line comments and /* */ block comments. Each
+  // statement keeps its char range. Empty/comment-only statements and a trailing
+  // `;` are dropped; order is preserved. (Verified end-to-end on the stend:
+  // `select 1; select 2; select 3;`, `select 'a;b'`, `-- x; y`, comment-only.)
+  function splitSqlStatements(text) {
+    var out = [];
+    var i = 0;
+    var n = text.length;
+    var start = 0;
+    var inS = false;
+    var inD = false;
+    var inB = false;
+    var inLine = false;
+    var inBlock = false;
+    while (i < n) {
+      var c = text.charAt(i);
+      var c2 = text.charAt(i + 1);
+      if (inLine) {
+        if (c === '\n') inLine = false;
+        i++;
+      } else if (inBlock) {
+        if (c === '*' && c2 === '/') { inBlock = false; i += 2; } else i++;
+      } else if (inS) {
+        if (c === "'") inS = false;
+        i++;
+      } else if (inD) {
+        if (c === '"') inD = false;
+        i++;
+      } else if (inB) {
+        if (c === '`') inB = false;
+        i++;
+      } else if (c === '-' && c2 === '-') {
+        inLine = true; i += 2;
+      } else if (c === '/' && c2 === '*') {
+        inBlock = true; i += 2;
+      } else if (c === "'") {
+        inS = true; i++;
+      } else if (c === '"') {
+        inD = true; i++;
+      } else if (c === '`') {
+        inB = true; i++;
+      } else if (c === ';') {
+        pushStatement(out, text, start, i);
+        i++;
+        start = i;
+      } else {
+        i++;
+      }
+    }
+    pushStatement(out, text, start, n);
+    return out;
+  }
+
+  function pushStatement(out, text, start, end) {
+    var raw = text.slice(start, end);
+    if (!hasRunnableSql(raw)) {
+      return;
+    }
+    var lead = raw.match(/^\s*/)[0].length;
+    var trail = raw.match(/\s*$/)[0].length;
+    // start/end are the trimmed range (used for cursor matching + highlight).
+    out.push({ sql: raw.trim(), start: start + lead, end: end - trail });
+  }
+
+  // True if s has non-whitespace outside comments (string literals count as content).
+  function hasRunnableSql(s) {
+    var i = 0;
+    var n = s.length;
+    var inLine = false;
+    var inBlock = false;
+    while (i < n) {
+      var c = s.charAt(i);
+      var c2 = s.charAt(i + 1);
+      if (inLine) {
+        if (c === '\n') inLine = false;
+        i++;
+      } else if (inBlock) {
+        if (c === '*' && c2 === '/') { inBlock = false; i += 2; } else i++;
+      } else if (c === '-' && c2 === '-') {
+        inLine = true; i += 2;
+      } else if (c === '/' && c2 === '*') {
+        inBlock = true; i += 2;
+      } else if (c !== ' ' && c !== '\t' && c !== '\n' && c !== '\r') {
+        return true;
+      } else {
+        i++;
+      }
+    }
+    return false;
+  }
+
   function initEditor() {
     var run = el('executeQuery');
+    var runAll = el('executeAllQuery');
     var query = createSqlEditor(el('queryField'), el('queryEditor'));
     var results = el('queryResults');
+    var activeMarker = null;
     var clearResultsBtn = el('clearResults');
     var activeSessionId = 'default';
     var resultsBySession = Object.create(null);
@@ -505,15 +599,26 @@
       results.innerHTML = '<div class="k8s-muted">Run a query to see its results.</div>';
     }
 
-    function renderResult(result) {
-      results.innerHTML = '';
-      if (!result.rows.length) {
-        results.appendChild(element('div', { class: 'k8s-muted', text: 'The query returned no rows.' }));
+    function renderResultInto(gridEl, result) {
+      gridEl.innerHTML = '';
+      if (result && result.message) {
+        gridEl.appendChild(element('div', { class: 'k8s-muted', text: result.message }));
+        return;
+      }
+      if (!result || !result.rows || !result.rows.length) {
+        gridEl.appendChild(element('div', { class: 'k8s-muted', text: 'The query returned no rows.' }));
         return;
       }
       var scroll = element('div', { class: 'k8s-result-scroll' });
       scroll.appendChild(buildTable(result.columns, result.rows));
-      results.appendChild(scroll);
+      gridEl.appendChild(scroll);
+    }
+
+    function renderResult(result) {
+      results.innerHTML = '';
+      var grid = element('div');
+      results.appendChild(grid);
+      renderResultInto(grid, result);
     }
 
     function restoreResult() {
@@ -544,38 +649,162 @@
     query.value = storedQuery(activeSessionId);
     restoreResult();
 
-    function execute() {
-      var sql = query.value.trim();
-      if (!sql) {
+    function cursorOffset() {
+      if (query.aceEditor) {
+        return query.aceEditor.session.doc.positionToIndex(query.aceEditor.getCursorPosition());
+      }
+      return typeof query.selectionStart === 'number' ? query.selectionStart : query.value.length;
+    }
+
+    function selectedText() {
+      if (query.aceEditor) {
+        return query.aceEditor.getSelectedText();
+      }
+      if (typeof query.selectionStart === 'number') {
+        return query.value.slice(query.selectionStart, query.selectionEnd);
+      }
+      return '';
+    }
+
+    // The statements Execute/Ctrl+Enter should run: the selection if any, else
+    // the statement under the cursor (selection > active statement). Execute all
+    // runs every statement in the buffer.
+    function statementsToRun(runAllStatements) {
+      if (runAllStatements) {
+        return splitSqlStatements(query.value);
+      }
+      var selection = selectedText();
+      if (selection && selection.trim()) {
+        return splitSqlStatements(selection);
+      }
+      var all = splitSqlStatements(query.value);
+      if (!all.length) {
+        return [];
+      }
+      var offset = cursorOffset();
+      for (var k = 0; k < all.length; k++) {
+        if (offset >= all[k].start && offset <= all[k].end) {
+          return [all[k]];
+        }
+      }
+      return [all[all.length - 1]];
+    }
+
+    function buildStatementStrip(reports, gridEl) {
+      var strip = element('div', { class: 'k8s-stmt-strip' });
+      reports.forEach(function (report, index) {
+        var chip = element('button', {
+          type: 'button',
+          class: 'k8s-stmt-chip' + (report.ok ? '' : ' k8s-stmt-error'),
+          text: 'Q' + (index + 1) + (report.ok ? '' : ' ✕'),
+          title: report.sql
+        });
+        chip.addEventListener('click', function () {
+          var chips = strip.querySelectorAll('.k8s-stmt-chip');
+          for (var c = 0; c < chips.length; c++) {
+            chips[c].classList.remove('active');
+          }
+          chip.classList.add('active');
+          if (report.ok) {
+            renderResultInto(gridEl, report.result);
+          } else {
+            showError(gridEl, report.error);
+          }
+        });
+        strip.appendChild(chip);
+      });
+      return strip;
+    }
+
+    function renderReports(sessionId, reports) {
+      // Remember the last statement that produced a grid (fall back to any ok
+      // result) so Export and tab restore work.
+      var remembered = null;
+      for (var k = reports.length - 1; k >= 0 && !remembered; k--) {
+        if (reports[k].ok && reports[k].result && reports[k].result.rows && reports[k].result.rows.length) {
+          remembered = reports[k].result;
+        }
+      }
+      if (!remembered) {
+        for (var m = reports.length - 1; m >= 0 && !remembered; m--) {
+          if (reports[m].ok && reports[m].result) {
+            remembered = reports[m].result;
+          }
+        }
+      }
+      if (remembered) {
+        rememberResult(sessionId, remembered);
+      } else {
+        forgetResult(sessionId);
+      }
+      if (activeSessionId !== sessionId) {
+        return;
+      }
+      results.innerHTML = '';
+      var grid = element('div');
+      if (reports.length > 1) {
+        var strip = buildStatementStrip(reports, grid);
+        results.appendChild(strip);
+        var lastChip = strip.querySelectorAll('.k8s-stmt-chip')[reports.length - 1];
+        if (lastChip) {
+          lastChip.classList.add('active');
+        }
+      }
+      results.appendChild(grid);
+      var last = reports[reports.length - 1];
+      if (last.ok) {
+        renderResultInto(grid, last.result);
+      } else {
+        showError(grid, last.error);
+      }
+    }
+
+    // Run statements sequentially, awaiting each; stop at the first error.
+    function runStatements(statements) {
+      if (!statements.length) {
         return Promise.resolve(null);
       }
       var executionSessionId = activeSessionId;
       forgetResult(executionSessionId);
       showOutputTab('results');
-      results.innerHTML = '<div class="k8s-muted">Executing…</div>';
       run.disabled = true;
-      return request(UI_API + '/sql/execute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sql: sql })
-      })
-        .then(function (result) {
-          rememberResult(executionSessionId, result);
-          if (activeSessionId === executionSessionId) {
-            renderResult(result);
+      if (runAll) runAll.disabled = true;
+      var reports = [];
+      var index = 0;
+      function step() {
+        if (index >= statements.length) {
+          return Promise.resolve();
+        }
+        results.innerHTML =
+          '<div class="k8s-muted">Executing ' + (index + 1) + ' / ' + statements.length + '…</div>';
+        return request(UI_API + '/sql/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sql: statements[index].sql })
+        }).then(
+          function (result) {
+            reports.push({ sql: statements[index].sql, ok: true, result: result });
+            index++;
+            return step();
+          },
+          function (error) {
+            reports.push({ sql: statements[index].sql, ok: false, error: error });
+            return Promise.reject(reports);
           }
-          return result;
-        })
-        .catch(function (error) {
-          if (activeSessionId === executionSessionId) {
-            showError(results, error);
-          }
-          return null;
-        })
-        .then(function (result) {
+        );
+      }
+      return step()
+        .then(function () { return reports; }, function () { return reports; })
+        .then(function () {
+          renderReports(executionSessionId, reports);
           run.disabled = false;
-          return result;
+          if (runAll) runAll.disabled = false;
+          return resultsBySession[executionSessionId] || null;
         });
+    }
+
+    function execute() {
+      return runStatements(statementsToRun(false));
     }
 
     var exportBtn = el('exportExcel');
@@ -626,11 +855,54 @@
         });
     }
 
+    // Mark the statement Execute/Ctrl+Enter would run (skipped while selecting,
+    // since the selection is its own cue).
+    function highlightActiveStatement() {
+      var editor = query.aceEditor;
+      if (!editor) {
+        return;
+      }
+      var session = editor.session;
+      if (activeMarker != null) {
+        session.removeMarker(activeMarker);
+        activeMarker = null;
+      }
+      if (editor.getSelectedText()) {
+        return;
+      }
+      var all = splitSqlStatements(editor.getValue());
+      if (!all.length) {
+        return;
+      }
+      var offset = session.doc.positionToIndex(editor.getCursorPosition());
+      var stmt = all[all.length - 1];
+      for (var k = 0; k < all.length; k++) {
+        if (offset >= all[k].start && offset <= all[k].end) {
+          stmt = all[k];
+          break;
+        }
+      }
+      var Range = window.ace.require('ace/range').Range;
+      var s = session.doc.indexToPosition(stmt.start);
+      var e = session.doc.indexToPosition(stmt.end);
+      activeMarker = session.addMarker(
+        new Range(s.row, s.column, e.row, e.column), 'k8s-active-stmt', 'text', false);
+    }
+
     run.addEventListener('click', execute);
+    if (runAll) {
+      runAll.addEventListener('click', function () {
+        runStatements(statementsToRun(true));
+      });
+    }
     exportBtn.addEventListener('click', exportExcel);
     clearResultsBtn.addEventListener('click', clearResults);
     query.addEventListener('input', saveQuery);
     if (query.aceEditor) {
+      query.aceEditor.selection.on('changeCursor', highlightActiveStatement);
+      query.aceEditor.selection.on('changeSelection', highlightActiveStatement);
+      query.aceEditor.session.on('change', highlightActiveStatement);
+      highlightActiveStatement();
       query.aceEditor.commands.addCommand({
         name: 'kudosExecute',
         bindKey: { win: 'Ctrl-Enter', mac: 'Command-Enter' },

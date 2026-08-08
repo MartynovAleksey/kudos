@@ -292,6 +292,38 @@
   transform: none;
   opacity: 1;
 }
+/* The statement Execute/Ctrl+Enter would run (Hue-style cue). */
+.ace_marker-layer .k8s-active-stmt {
+  position: absolute;
+  background: rgba(51, 132, 199, 0.12);
+  border-left: 2px solid #3384c7;
+}
+
+/* Per-statement status strip shown above the grid for multi-statement runs. */
+.k8s-stmt-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.k8s-stmt-chip {
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 8px;
+  border: 1px solid #dddddd;
+  border-radius: 2px;
+  background: #f7f7f7;
+  color: #444444;
+  cursor: pointer;
+}
+.k8s-stmt-chip.active {
+  border-color: #3384c7;
+  background: #eaf3fb;
+}
+.k8s-stmt-chip.k8s-stmt-error {
+  border-color: #d9534f;
+  color: #d9534f;
+}
 
 .k8s-result-scroll {
   max-height: 420px;
