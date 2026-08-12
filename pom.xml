@@ -34,6 +34,7 @@
     <hadoop.version>3.4.2</hadoop.version>
     <ozone.version>2.2.0</ozone.version>
     <trino.version>483</trino.version>
+    <mariadb.version>3.5.9</mariadb.version>
     <!-- CVE-2026-41293/43512/43515 (CRITICAL) + 41284/42498/43513 (HIGH): bump
          the Spring Boot BOM's managed Tomcat past 11.0.21 to the 11.0.22 patch. -->
     <tomcat.version>11.0.22</tomcat.version>
@@ -122,6 +123,11 @@
       <groupId>io.trino</groupId>
       <artifactId>trino-jdbc</artifactId>
       <version>${trino.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.mariadb.jdbc</groupId>
+      <artifactId>mariadb-java-client</artifactId>
+      <version>${mariadb.version}</version>
     </dependency>
     <!-- Streaming .xlsx writer for exporting query results.
          CVE-2025-31672 (MEDIUM) + pulls a fixed commons-compress transitively. -->

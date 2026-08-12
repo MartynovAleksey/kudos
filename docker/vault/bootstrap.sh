@@ -54,6 +54,9 @@ vault policy write kudos - <<'EOF'
 path "pki/issue/kudos" {
   capabilities = ["create", "update"]
 }
+path "kudos/data/starrocks" {
+  capabilities = ["read"]
+}
 EOF
 vault write auth/approle/role/kudos \
   token_policies=kudos token_ttl=1h token_max_ttl=4h \
@@ -62,5 +65,12 @@ vault write auth/approle/role/kudos \
 vault read -field=role_id auth/approle/role/kudos/role-id > /vault/approle/role_id
 vault write -f -field=secret_id auth/approle/role/kudos/secret-id > /vault/approle/secret_id
 chmod 0640 /vault/approle/role_id /vault/approle/secret_id
+
+# The disposable StarRocks account stays in Vault. It is intentionally absent
+# from compose, application YAML and the runtime image.
+vault secrets enable -path=kudos kv-v2 2>/dev/null || true
+vault kv put kudos/starrocks \
+  username=kudos_svc \
+  password="${TEST_STARROCKS_PASSWORD:-KudosStarRocks2026}"
 
 echo "[vault-bootstrap] done; role_id/secret_id written to /vault/approle"

@@ -62,3 +62,15 @@ template {
   contents    = "{{ with secret \"pki/issue/kudos\" \"common_name=trino.test.local\" \"alt_names=trino.test.local\" \"ttl=24h\" }}{{ .Data.private_key }}\n{{ .Data.certificate }}\n{{ .Data.issuing_ca }}{{ end }}"
   destination = "/vault/secrets/trino.pem"
 }
+
+# StarRocks does not support Kerberos. Render its service-account connection
+# string for Spring and the password separately for the one-shot SQL bootstrap.
+template {
+  contents    = "{{ with secret \"kudos/data/starrocks\" }}kudos.cluster.starrocks-url=jdbc:mariadb://starrocks.test.local:9030/?user={{ .Data.data.username }}&password={{ .Data.data.password }}{{ end }}\n"
+  destination = "/vault/secrets/starrocks.properties"
+}
+
+template {
+  contents    = "{{ with secret \"kudos/data/starrocks\" }}{{ .Data.data.password }}{{ end }}"
+  destination = "/vault/secrets/starrocks-password"
+}

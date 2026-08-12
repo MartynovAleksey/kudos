@@ -25,6 +25,8 @@ public record ClusterProperties(
     String kyuubiRestUrl,
     /** JDBC URL for the Kerberos-protected, TLS-enabled Trino coordinator. */
     String trinoUrl,
+    /** JDBC URL for StarRocks; supplied by Vault for the service account. */
+    String starrocksUrl,
     String hbaseRestUrl,
     String ozoneOfsUri,
     String ozoneConfDir,

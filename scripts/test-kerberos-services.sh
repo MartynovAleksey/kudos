@@ -23,6 +23,7 @@ docker_bin="$(command -v docker)"
 compose_bin="${DOCKER_COMPOSE_BIN:-$HOME/.docker/cli-plugins/docker-compose}"
 admin_password="${TEST_ADMIN_PASSWORD:-KudosAdmin2026Secure!}"
 analyst_password="${TEST_ANALYST_PASSWORD:-KudosAnalyst2026Secure!}"
+starrocks_password="${TEST_STARROCKS_PASSWORD:-KudosStarRocks2026}"
 
 run_docker() {
   env DOCKER_CONFIG="$project_root/docker/.docker-config" PATH="/usr/bin:/bin" "$docker_bin" "$@"
@@ -64,6 +65,7 @@ app_resolve=(--resolve "app.test.local:8443:127.0.0.1" --cacert "$app_ca")
 kyuubi_id="$(container_id kyuubi)"
 ozone_id="$(container_id ozone)"
 hbase_id="$(container_id hbase)"
+starrocks_id="$(container_id starrocks)"
 
 run_docker exec -e TEST_ADMIN_PASSWORD="$admin_password" "$freeipa_id" bash -lc '
   set -euo pipefail
@@ -172,6 +174,13 @@ if [[ "$hbase_anonymous_status" != "401" && "$hbase_anonymous_status" != "403" ]
 fi
 echo "PASS HBase REST Gateway requires SPNEGO"
 
+starrocks_output="$(run_docker exec -e STARROCKS_PASSWORD="$starrocks_password" "$starrocks_id" bash -lc '
+  mysql -h starrocks.test.local -P 9030 -ukudos_svc -p"$STARROCKS_PASSWORD" \
+    --batch --skip-column-names -e "SELECT 40 + 2"
+')"
+grep -q '^42$' <<<"$starrocks_output"
+echo "PASS StarRocks MySQL service account SQL"
+
 # Published ports are addressed by IP: resolving "localhost" goes through the
 # macOS resolver, which under heavy container load can block far longer than
 # curl's --max-time and stall an otherwise bounded check.
@@ -229,6 +238,11 @@ app_api "$app_base/api/trino/history" \
   | grep -q 'SELECT count(\*) FROM nation'
 echo "PASS Spring API Trino query history"
 
+app_api -H 'Content-Type: application/json' -X POST "$app_base/api/sql/execute" \
+  -d '{"engine":"starrocks","sql":"SELECT 40 + 2 AS result"}' \
+  | grep -q '"rows":\[\[42\]\]'
+echo "PASS Spring API StarRocks SQL through Vault service account"
+
 # Full HBase browser lifecycle, the way Hue's HBase app drives it: create a
 # table with column families, write and read a row, alter a family, then drop
 # it. A regression in any of these operations fails the run.
@@ -250,8 +264,8 @@ app_api "${hb_json[@]}" -X POST "$app_base/api/hbase/family/add" \
 app_api "$app_base/api/hbase/describe?table=$hb_table" | grep -q '"name":"cf2"'
 
 # Verify the complete mutation path: multiple versions, a binary cell, column
-# deletion, and CSV bulk upload. No temporary files are needed: curl reads the
-# multipart body directly from stdin.
+# deletion, and CSV bulk upload. Temporary files are unnecessary: curl reads
+# the multipart body directly from stdin.
 app_api "${hb_json[@]}" -X POST "$app_base/api/hbase/row" \
   -d "{\"table\":\"$hb_table\",\"row\":\"versions\",\"cells\":{\"cf:a\":\"old\"}}" >/dev/null
 sleep 1

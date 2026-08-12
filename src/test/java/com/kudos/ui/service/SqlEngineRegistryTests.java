@@ -28,15 +28,18 @@ class SqlEngineRegistryTests {
   void resolvesKnownEnginesAndFallsBackToKyuubi() {
     SqlEngine kyuubi = new StubEngine("kyuubi", "Kyuubi Spark SQL", true);
     SqlEngine trino = new StubEngine("trino", "Trino", false);
-    SqlEngineRegistry registry = new SqlEngineRegistry(List.of(kyuubi, trino));
+    SqlEngine starrocks = new StubEngine("starrocks", "StarRocks", false);
+    SqlEngineRegistry registry = new SqlEngineRegistry(List.of(kyuubi, trino, starrocks));
 
     assertThat(registry.get("trino")).isSameAs(trino);
+    assertThat(registry.get("starrocks")).isSameAs(starrocks);
     assertThat(registry.get(null)).isSameAs(kyuubi);
     assertThat(registry.get("unknown")).isSameAs(kyuubi);
     assertThat(registry.available())
         .containsExactly(
             new SqlEngineInfo("kyuubi", "Kyuubi Spark SQL", true),
-            new SqlEngineInfo("trino", "Trino", false));
+            new SqlEngineInfo("trino", "Trino", false),
+            new SqlEngineInfo("starrocks", "StarRocks", false));
   }
 
   private record StubEngine(String id, String displayName, boolean supportsSessions) implements SqlEngine {

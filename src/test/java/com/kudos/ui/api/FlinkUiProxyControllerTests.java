@@ -65,6 +65,7 @@ class FlinkUiProxyControllerTests {
             "",
             "",
             "",
+            "",
             "http://flink-jobmanager",
             "http://flink-history"),
         access) {

@@ -460,6 +460,42 @@ services:
       timeout: 5s
       retries: 30
 
+  # Single-node analytical SQL engine for the editor. StarRocks speaks MySQL
+  # wire protocol and deliberately stays outside the Kerberos data path.
+  starrocks:
+    image: starrocks/allin1-ubuntu:3.5.20
+    platform: linux/amd64
+    hostname: starrocks.test.local
+    ports:
+      - "9030:9030"
+    networks:
+      default:
+        aliases:
+          - starrocks.test.local
+    healthcheck:
+      test: ["CMD-SHELL", "mysql -h 127.0.0.1 -P 9030 -uroot -e 'SHOW FRONTENDS'"]
+      interval: 10s
+      timeout: 10s
+      retries: 36
+      start_period: 45s
+
+  # Applies the least-privileged test account only after both Vault and the FE
+  # are ready. The password is rendered by Vault, never kept in Compose.
+  starrocks-bootstrap:
+    image: starrocks/allin1-ubuntu:3.5.20
+    platform: linux/amd64
+    depends_on:
+      starrocks:
+        condition: service_healthy
+      vault-agent:
+        condition: service_healthy
+    entrypoint: ["bash", "/bootstrap/bootstrap.sh"]
+    volumes:
+      - app-tls:/vault/secrets:ro
+      - ./docker/starrocks/bootstrap.sql:/bootstrap/bootstrap.sql:ro
+      - ./docker/starrocks/bootstrap.sh:/bootstrap/bootstrap.sh:ro
+    restart: "no"
+
   app:
     # Thin distroless runtime built from the pre-built jar in ./dist. Populate
     # ./dist first with Dockerfile.build (run-test-env.sh does this automatically):
@@ -483,6 +519,8 @@ services:
         condition: service_healthy
       trino:
         condition: service_healthy
+      starrocks-bootstrap:
+        condition: service_completed_successfully
       # Wait until the Vault Agent has issued the TLS certificate the app serves.
       vault-agent:
         condition: service_healthy
@@ -508,6 +546,9 @@ services:
       - app-logs:/var/log/kudos
     environment:
       SPRING_CONFIG_ADDITIONAL_LOCATION: file:/etc/kudos/
+      # Vault Agent renders the StarRocks service-account URL here. The value is
+      # not present in any YAML or image layer.
+      SPRING_CONFIG_IMPORT: optional:file:/vault/secrets/starrocks.properties
       HBASE_REST_URL: http://hbase.test.local:8080
       # HTTPS is OFF by default (plain HTTP on 8443) so the browser and tests hit
       # no self-signed-cert errors. Turn TLS on with the Vault cert by exporting

@@ -43,6 +43,9 @@ kudos.cluster:
   # Trino JDBC with KerberosDelegation uses the Subject ticket created at KUDOS login;
   # it never reads a user keytab or credential cache from disk.
   trino-url: ${TRINO_JDBC_URL:}
+  # StarRocks uses a service account and MySQL wire protocol. In the test stand
+  # this value comes from /vault/secrets/starrocks.properties, never from this file.
+  starrocks-url: ${STARROCKS_JDBC_URL:}
   # HBase REST Gateway. The application never opens ZooKeeper or HBase RPC connections.
   hbase-rest-url: ${HBASE_REST_URL:}
   ozone-ofs-uri: ${OZONE_OFS_URI:ofs://omservice/}

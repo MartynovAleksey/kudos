@@ -21,15 +21,13 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.kudos.ui.config.ClusterProperties;
-import java.security.PrivilegedExceptionAction;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
-import java.sql.SQLWarning;
 import java.sql.Statement;
 import org.junit.jupiter.api.Test;
 
-class TrinoServiceTests {
+class StarRocksServiceTests {
 
   @Test
   void executesSelectAndNonSelectStatementsThroughTheSharedResultMapper() throws Exception {
@@ -38,41 +36,26 @@ class TrinoServiceTests {
     ResultSet resultSet = mock(ResultSet.class);
     ResultSetMetaData metadata = mock(ResultSetMetaData.class);
     when(connection.createStatement()).thenReturn(statement);
-    when(statement.execute("SELECT 1")).thenReturn(true);
+    when(statement.execute("SELECT 42")).thenReturn(true);
     when(statement.getResultSet()).thenReturn(resultSet);
     when(resultSet.getMetaData()).thenReturn(metadata);
     when(metadata.getColumnCount()).thenReturn(1);
-    when(metadata.getColumnLabel(1)).thenReturn("one");
+    when(metadata.getColumnLabel(1)).thenReturn("answer");
     when(resultSet.next()).thenReturn(true, false);
-    when(resultSet.getObject(1)).thenReturn(1);
-    when(statement.getWarnings()).thenReturn(new SQLWarning("Trino warning"));
+    when(resultSet.getObject(1)).thenReturn(42);
 
-    TrinoService service = service(connection);
-    assertThat(service.execute("SELECT 1", 10))
-        .isEqualTo(
-            new QueryResult(
-                java.util.List.of("one"),
-                java.util.List.of(java.util.List.of(1)),
-                null,
-                java.util.List.of("Trino warning")));
+    StarRocksService service = service(connection);
+    assertThat(service.execute("SELECT 42", 10))
+        .isEqualTo(new QueryResult(java.util.List.of("answer"), java.util.List.of(java.util.List.of(42)), null));
 
-    when(statement.execute("USE tpch.tiny")).thenReturn(false);
+    when(statement.execute("USE kudos_test")).thenReturn(false);
     when(statement.getUpdateCount()).thenReturn(-1);
-    assertThat(service.execute("USE tpch.tiny", 10).message()).isEqualTo("OK");
+    assertThat(service.execute("USE kudos_test", 10).message()).isEqualTo("OK");
   }
 
-  private static TrinoService service(Connection connection) {
-    KerberosExecutor kerberos =
-        new KerberosExecutor() {
-          @Override
-          public <T> T asLoggedInUser(PrivilegedExceptionAction<T> action) throws Exception {
-            return action.run();
-          }
-        };
-    return new TrinoService(
-        new ClusterProperties("", "", "", "jdbc:trino://test", "", "", "", "", "", "", "", ""),
-        kerberos,
-        new TrinoQueryHistory()) {
+  private static StarRocksService service(Connection connection) {
+    return new StarRocksService(
+        new ClusterProperties("", "", "", "", "jdbc:mariadb://test", "", "", "", "", "", "", "")) {
       @Override
       Connection openConnection() {
         return connection;
