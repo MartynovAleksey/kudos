@@ -1,8 +1,8 @@
 # kudos
 
-`kudos` is a lightweight stateless Spring Boot API for HDFS, Kyuubi/Spark SQL, HBase, and Apache Ozone on behalf of an LDAP-authenticated user.
+`kudos` is a lightweight stateless Spring Boot API for working with HDFS, SQL in Kyuubi/Spark and Trino, HBase, and Apache Ozone on behalf of an LDAP-authenticated user.
 
-The repository also contains a fully containerized single-node test environment with FreeIPA and Kerberos. By default, the environment starts the official Hue image from Docker Hub on port `8082` as a reference environment; its File Browser is connected to the same Kerberos-enabled HDFS as KUDOS.
+The repository also contains a fully containerized single-node test environment with FreeIPA and Kerberos. By default, the environment runs the official Hue image from Docker Hub on port `8082` as a reference environment; its File Browser connects to the same Kerberos-enabled HDFS as KUDOS.
 
 > **Important:** the usernames and passwords below are public demonstration credentials for this repository. They are intended only for the isolated local test environment and must not be used in production.
 
@@ -12,12 +12,13 @@ The application provides:
 
 - LDAP authentication through HTTP Basic;
 - Spark SQL execution through Kerberized Kyuubi over Hive JDBC;
+- SQL execution in Kerberized Trino over JDBC without persistent sessions;
 - HDFS browsing through WebHDFS with SPNEGO;
 - HBase access through the REST Gateway with SPNEGO; the application does not open ZooKeeper or HBase RPC;
 - Apache Ozone browsing through `ofs://` and Kerberos;
 - reference Hue from Docker Hub with a configured Kerberos HDFS File Browser.
 
-The Java UI distinguishes two LDAP roles: `administrator` and `user`. The administrator can see all Spark jobs and the Spark UI; the user can see only applications whose `sparkUser` matches their login and cannot open a shared or another user's `/spark-ui/**` by direct URL. SQL, HDFS, Ozone, and HBase operations run under the user's Kerberos identity, while the corresponding cluster service makes the final data-access decision.
+The Java UI distinguishes two LDAP roles: `administrator` and `user`. The administrator can see all Spark jobs and the Spark UI; the user can see only applications whose `sparkUser` matches their login and cannot open a shared or another user's `/spark-ui/**` directly. SQL, HDFS, Ozone, and HBase operations run under the user's Kerberos identity, while the corresponding cluster service makes the final data-access decision.
 
 ## Three project parts
 
@@ -25,12 +26,11 @@ The project is divided into three independent parts:
 
 | Part | Where | Documentation |
 |-------|-----|--------------|
-| **Test environment** — single-node environment (FreeIPA, HDFS, Kyuubi, HBase, Ozone, Vault) and running the application against it | Docker Compose (`compose.yaml`) | this README (below) |
-| **Image build** — multi-stage build with optional security scans | Docker (`docker/app/Dockerfile`) | [docs/BUILD.md](BUILD.md) |
+| **Test environment** — single-node environment (FreeIPA, HDFS, Kyuubi, Trino, HBase, Ozone, Vault) and running the application against it | Docker Compose (`compose.yaml`) | this README (below) |
+| **Image build** — multi-stage build plus optional security scans | Docker (`docker/app/Dockerfile`) | [docs/BUILD.md](BUILD.md) |
 | **Production deployment** of the ready application outside test mode | Helm (`deploy/helm/kudos`) | [docs/DEPLOY-HELM.md](DEPLOY-HELM.md) |
 
-Design documents for planned new components (SQL in Trino and StarRocks,
-and Flink applications through a proxy) are in [docs/design/](design/README.md).
+Project documents for SQL engines and new components are in [docs/design/](design/README.md).
 
 In production mode, HashiCorp Vault issues the TLS certificate (PKI + AppRole), while configuration and secrets come from external ConfigMaps/Secrets. The same contract (Vault issues the certificate and the Vault Agent sidecar places it in `/vault/secrets`) is reproduced in the test environment through dev-mode Vault.
 
@@ -84,7 +84,7 @@ docker compose ps
 docker compose ps
 ```
 
-The main services should reach the `healthy` state, while `hue-reference` should be `running`. The Java application is created only after successful FreeIPA, Kyuubi, HDFS, HBase, and Ozone health checks.
+The main services should enter the `healthy` state, while `hue-reference` should be `running`. The Java application is created only after successful health checks for FreeIPA, Kyuubi, Trino, HDFS, HBase, and Ozone.
 
 curl --fail --silent --resolve app.test.local:8443:127.0.0.1 \
 
@@ -103,13 +103,13 @@ curl --fail --silent --location http://localhost:8082/ | grep -i hue
 
 ### Reference Hue and HDFS
 
-Open `http://localhost:8082/`: reference Hue uses `docker/hue-reference/hue.ini`, HDFS `core-site.xml`/`hdfs-site.xml`, and a separate `hue-secrets` volume. It contains only the test-only `admin.keytab`, CA, and `krb5.conf`, not service keytabs. To check UI availability and Kerberos HDFS listing from the Hue container:
+Open `http://localhost:8082/`: reference Hue uses `docker/hue-reference/hue.ini`, the HDFS `core-site.xml`/`hdfs-site.xml`, and a separate `hue-secrets` volume. It contains only the test-only `admin.keytab`, CA, and `krb5.conf`, not service keytabs. To check UI availability and Kerberos HDFS listing from the Hue container:
 
 ```bash
 ./scripts/test-hue-hdfs.sh
 ```
 
-This configuration is intended only for the local reference environment; its keytabs and passwords must not be transferred to production.
+This configuration is intended only for the local reference environment; its keytab and passwords must not be transferred to production.
 
 
 
@@ -480,7 +480,7 @@ curl --fail --silent --get "${resolve[@]}" \
 
 ### 8. Official Hue from Docker Hub
 
-Reference Hue does not replace the Java application and does not participate in functional storage tests. It is provided for visual and behavioral comparison with the future UI implementation.
+Reference Hue does not replace the Java application and does not participate in storage functional tests. It is provided for visual and behavioral comparison during further UI implementation.
 
 Open in a browser:
 
@@ -488,13 +488,13 @@ Open in a browser:
 http://localhost:8082/
 ```
 
-Or check HTTP from the terminal:
+Or check HTTP from a terminal:
 
 ```bash
 curl --fail --silent --location http://localhost:8082/ | grep -i hue
 ```
 
-Compose builds a thin image layer from `gethue/hue:latest`. The only change is replacing the Python `polars` wheel with the official `polars-lts-cpu` wheel of the same version, because the regular x86_64 wheel exits with `SIGILL` under Rosetta on Apple Silicon. Hue code, Mako templates, CSS, and JavaScript are not modified.
+Compose builds a thin image layer from `gethue/hue:latest`. The only change is replacing the Python `polars` wheel with the official `polars-lts-cpu` wheel of the same version, because the regular x86_64 wheel exits with `SIGILL` under Rosetta on Apple Silicon. Hue code, Mako templates, CSS, and JavaScript are unchanged.
 
   curl --fail --silent --negotiate -u : -X DELETE "$base/$table/schema" >/dev/null
 
@@ -521,7 +521,7 @@ resolve=(--resolve app.test.local:8443:127.0.0.1 --cacert /tmp/kudos-ca.crt)
 curl --fail --silent "${resolve[@]}" https://app.test.local:8443/actuator/health
 ```
 
-6. Calls to HDFS, Kyuubi, HBase, or Ozone run on behalf of this user; each service applies its own authorization.
+SQL through Kyuubi:
 
 
 curl --fail --silent "${resolve[@]}" \
@@ -563,7 +563,7 @@ For each protected request, Spring Security performs an LDAP bind, then obtains 
 
 ### HTTPS
 
-The application runs only over HTTPS on port `8443`. The certificate for `app.test.local` is issued by **Vault PKI**: dev-mode Vault starts in Compose, `docker/vault/bootstrap.sh` configures the PKI engine and AppRole, and the `vault-agent` sidecar issues the certificate through AppRole and places it as PEM in the shared volume (`/vault/secrets/tls.crt`, `tls.key`, `ca.crt`). The application reads it through the Spring Boot SSL bundle under the `vault` profile (`application-vault.yml`), while `reload-on-update` picks up rotation without a restart. Clients verify the certificate against the Vault CA. From the terminal:
+The application is available only over HTTPS on port `8443`. **Vault PKI** issues the certificate for `app.test.local`: dev-mode Vault starts in Compose, `docker/vault/bootstrap.sh` configures the PKI engine and AppRole, and the `vault-agent` sidecar issues the certificate through AppRole and writes it as PEM files to a shared volume (`/vault/secrets/tls.crt`, `tls.key`, `ca.crt`). The application reads it through the Spring Boot SSL bundle under the `vault` profile (`application-vault.yml`), while `reload-on-update` picks up rotations without a restart. Clients validate the certificate against the Vault CA. From a terminal:
 
 ```bash
 docker compose exec -T vault-agent cat /vault/secrets/ca.crt > /tmp/kudos-ca.crt
@@ -590,7 +590,7 @@ The application does not store its own Kerberos credentials. At login, it obtain
 | `KudosUiApplication.java` | Spring Boot entrypoint. |
 
 Only `krb5.conf` (the `app-secrets` volume) and Vault-issued TLS material (the `app-tls` volume) are mounted into the application container; the cluster service keytabs are never mounted there. Even if the application process is compromised, it has no keytab that could be used to authenticate as a service.
-| `WebConfig.java` | Serves vendored Hue styles and fonts together with custom UI assets. |
+| `WebConfig.java` | Serves vendored Hue styles and fonts together with the UI's own assets. |
 ### Obtaining and storing the Kerberos ticket
 
 **Obtaining the ticket.** The application has no own keytab and obtains the ticket from the user's password—the same exchange with the KDC performed by `kinit`. The logic is in [`KerberosTicketService`](../src/main/java/com/kudos/ui/security/KerberosTicketService.java):
@@ -599,6 +599,8 @@ Only `krb5.conf` (the `app-secrets` volume) and Vault-issued TLS material (the `
 2. An empty `javax.security.auth.Subject` and a `LoginContext` named `kudos` are created over the standard `com.sun.security.auth.module.Krb5LoginModule`. The module is configured programmatically (not through `jaas.conf`) with the following options:
    - `useKeyTab=false`, `storeKey=false` — no keytab is used and keys are not stored;
    - `useTicketCache=false` — the local ticket cache (`/tmp/krb5cc_*`, `KRB5CCNAME`) is neither read nor written: the only login input is the supplied password;
+| `SqlEngine.java` / `SqlEngineRegistry.java` | SQL engine contract and selection of Kyuubi (by default) or Trino. |
+   - `refreshKrb5Config=true` — the configuration is reread on every login.
 4. `context.login()` sends an AS-REQ to the KDC (the address and realm come from `krb5.conf`, whose path is set by `-Djava.security.krb5.conf=/run/secrets-kudos/krb5.conf`). On success, the TGT is placed in the `Subject` as a private credential of type `KerberosTicket`; if the KDC rejects the request, `LoginException` is thrown and application login fails.
 5. `getEndTime()` is read from the TGT as its expiration time; it is returned together with the `Subject` in the `IssuedTicket` record.
 
@@ -610,8 +612,8 @@ Only `krb5.conf` (the `app-secrets` volume) and Vault-issued TLS material (the `
 - The password is not stored: `KerberosAuthentication.getCredentials()` returns `null`. Only the ticket derived from it is stored.
 | --- | --- | --- |
 - Usage: [`KerberosExecutor`](../src/main/java/com/kudos/ui/service/KerberosExecutor.java) takes the `Subject` from the `SecurityContext` and accesses the service through `UserGroupInformation.getUGIFromSubject(subject).doAs(...)`.
-| `POST /api/sql` | Kyuubi SQL, rows as objects | JSON `{"sql":"SELECT 1"}`. |
-| `POST /api/sql/execute` | Kyuubi SQL, columns and rows separately | JSON `{"sql":"SELECT 1"}`, up to 1,000 rows. |
+- Because storage is in-memory/`transient`, the ticket **does not survive an application restart**: after a restart, the user must log in again. The session lifetime is limited by the ticket lifetime, and the ticket is destroyed (`KerberosTicket.destroy()`) on logout or expiration; see “Session lifetime”.
+
 ### Session lifetime
 
 The session must not outlive the ticket: after expiration, all services reject the ticket, and the authenticated user could not do anything anyway. Therefore:
@@ -636,7 +638,7 @@ curl --fail --silent \
 
 
 
-The application serves screens at `https://app.test.local:8443/` that reproduce the forms of reference Hue 4:
+The application serves screens at `https://app.test.local:8443/`, reproducing the reference Hue 4 forms:
 
 
 | --- | --- | --- |
@@ -662,7 +664,7 @@ Every completed request to `/api/**` and `/ui-api/**` is recorded as an audit ev
 
 | `TrinoService.java` | Sessionless SQL execution in Trino using the authenticated user's Kerberos ticket. |
 
-The shell is built from vendored Hue styles (`hue.css`, `cui.css`, `bootstrap2.css`, `login.css`, Font Awesome, and Roboto) in `src/main/resources/hue-upstream/desktop/static`. The Hue 4 left sidebar is styled inside its JavaScript bundle, which is not vendored, so its dimensions and colors are reproduced in `src/main/resources/app-static/kudos.css` from values taken from the reference container. Hue logos and trademarks are not reproduced.
+The shell is built from vendored Hue styles (`hue.css`, `cui.css`, `bootstrap2.css`, `login.css`, Font Awesome, and Roboto) in `src/main/resources/hue-upstream/desktop/static`. The Hue 4 left sidebar is styled inside its JavaScript bundle, which is not vendored, so its dimensions and colors are reproduced in `src/main/resources/app-static/kudos.css` using values measured from the reference container. Hue logos and trademarks are not reproduced.
 
 | `OzoneService.java` | Hadoop `FileSystem` for `ofs://` URIs, listing, and object reads. |
 
@@ -725,13 +727,13 @@ An ordinary user receives only their own jobs from the server; the user filter f
 ofs://ozone.test.local/spark/eventlogs
 ```
 
-The `spark` volume and `eventlogs` bucket are created by `docker/ozone/start-ozone` at startup, and `spark-history` reads the same directory. The Java application displays the application list on `/jobs`, retrieving it from the history server REST API through SPNEGO.
+The `spark` volume and `eventlogs` bucket are created by `docker/ozone/start-ozone` at startup, and `spark-history` reads the same directory. The Java application shows the application list on `/jobs`, retrieving it from the history server REST API through SPNEGO.
 
 
 
 
 
-The application image is built with the multi-stage `docker/app/Dockerfile` (`runtime` stage),
+The application image is built by the multi-stage `docker/app/Dockerfile` (`runtime` stage),
 ```bash
 cd kudos
 [docs/BUILD.md](BUILD.md).
@@ -782,7 +784,7 @@ TEST.LOCAL
 | LDAP/Kerberos user | `analyst` / `analyst@TEST.LOCAL` | `KudosAnalyst2026Secure!` |
 | FreeIPA Directory Manager | `cn=Directory Manager` | `DirectoryManager1` |
 
-`admin` belongs to the `kudos-administrators` LDAP group and receives the `administrator` role; `analyst` receives the `user` role. All these passwords are exposed in `compose.yaml` and the systemd bootstrap unit and are suitable only for the isolated local environment.
+`admin` belongs to the `kudos-administrators` LDAP group and receives the `administrator` role; `analyst` receives the `user` role. These passwords are stored in plain text in `compose.yaml` and the systemd bootstrap unit and are acceptable only for the isolated local environment.
 
 ofs://ozone.test.local/spark/eventlogs
 
@@ -834,7 +836,7 @@ docker/ozone/                    Kerberos Ozone 2.0.0 configuration
 docker/hue-reference/            Thin compatibility layer over Docker Hub Hue
 scripts/run-test-env.sh          Cross-platform environment launcher
 scripts/test-kerberos-services.sh Functional Kerberos data-path tests
-scripts/test-hue-hdfs.sh         Check the reference Hue File Browser and HDFS listing
+scripts/test-hue-hdfs.sh         Check reference Hue File Browser and HDFS listing
 scripts/test-start-cycles.sh      Repeated restart and regression tests
 scripts/hbase-loadgen.sh          Seed HBase at scale to exercise the browser UI
 compose.yaml                     Services, volumes, ports and dependencies
@@ -860,7 +862,7 @@ echo "${DOCKER_DEFAULT_PLATFORM-<not set>}"
 
 ### Docker Desktop Keychain `-67674`
 
-If the Docker CLI cannot access the macOS credential helper, a public image pull may fail with a Keychain error. Project scripts use `docker/.docker-config` without a credential store only for public pulls/builds and do not modify the user's Docker Desktop login.
+If the Docker CLI cannot access the macOS credential helper, a public image pull may fail with a Keychain error. Project scripts use `docker/.docker-config` without a credential store only for public pulls/builds and do not change the user's Docker Desktop login.
 
 | `hbase/hbase.test.local@TEST.LOCAL` | `hbase-hbase.test.local.keytab` | HMaster, RegionServer, and REST Gateway as the HBase service user. |
 

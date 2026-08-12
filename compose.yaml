@@ -62,6 +62,7 @@ services:
         - >-
           systemctl is-active --quiet bootstrap-test-identities.service
           && test -f /shared/HTTP-sparkhistory.test.local.keytab
+          && test -f /shared/trino.keytab
           && test -s /shared/app-tls.p12
           && kinit -kt /shared/admin.keytab admin@TEST.LOCAL
       interval: 10s
@@ -408,6 +409,57 @@ services:
       retries: 24
       start_period: 5s
 
+  # Converts Vault's rotating PEM certificate into the PKCS#12 files expected
+  # by Trino and its JDBC driver. It has no Kerberos material.
+  trino-tls:
+    build:
+      context: ./docker
+      dockerfile: trino-tls/Dockerfile
+    depends_on:
+      vault-agent:
+        condition: service_healthy
+    volumes:
+      - app-tls:/vault/secrets:ro
+      - trino-tls:/tls
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /tls/trino.p12 && test -s /tls/truststore.p12"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 5s
+
+  trino:
+    build:
+      context: ./docker
+      dockerfile: trino/Dockerfile
+    hostname: trino.test.local
+    depends_on:
+      freeipa:
+        condition: service_healthy
+      trino-tls:
+        condition: service_healthy
+    volumes:
+      - kerberos-shared:/shared:ro
+      - trino-tls:/tls:ro
+    environment:
+      # The coordinator calls its own HTTPS discovery endpoint. Its JVM must
+      # trust the CA that Vault used to issue the coordinator certificate.
+      JAVA_TOOL_OPTIONS: >-
+        -Djavax.net.ssl.trustStore=/tls/truststore.p12
+        -Djavax.net.ssl.trustStorePassword=changeit
+        -Djavax.net.ssl.trustStoreType=PKCS12
+    ports:
+      - "8446:8443"
+    networks:
+      default:
+        aliases:
+          - trino.test.local
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ': > /dev/tcp/trino.test.local/8443'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
   app:
     # Thin distroless runtime built from the pre-built jar in ./dist. Populate
     # ./dist first with Dockerfile.build (run-test-env.sh does this automatically):
@@ -429,6 +481,8 @@ services:
         condition: service_healthy
       spark-history:
         condition: service_healthy
+      trino:
+        condition: service_healthy
       # Wait until the Vault Agent has issued the TLS certificate the app serves.
       vault-agent:
         condition: service_healthy
@@ -442,6 +496,7 @@ services:
       # vault-agent sidecar. The `vault` profile points Spring Boot's SSL bundle
       # at /vault/secrets.
       - app-tls:/vault/secrets:ro
+      - trino-tls:/run/trino-tls:ro
       # The ofs:// client needs the cluster's own service principals and
       # addresses; reuse the service configuration instead of restating it.
       - ./docker/ozone:/etc/ozone/conf:ro
@@ -531,3 +586,5 @@ volumes:
   vault-approle:
   # Vault-issued TLS PEM (tls.crt/tls.key/ca.crt) shared from vault-agent to app.
   app-tls:
+  # PKCS#12 material derived from Vault PEM for Trino and its JDBC client.
+  trino-tls:

@@ -55,3 +55,10 @@ template {
   contents    = "{{ with secret \"pki/issue/kudos\" \"common_name=app.test.local\" \"alt_names=app.test.local\" \"ttl=24h\" }}{{ .Data.issuing_ca }}{{ end }}"
   destination = "/vault/secrets/ca.crt"
 }
+
+# One PEM keeps Trino's certificate and private key from the same Vault issue.
+# The trino-tls service converts it to PKCS#12 for Trino and the JDBC truststore.
+template {
+  contents    = "{{ with secret \"pki/issue/kudos\" \"common_name=trino.test.local\" \"alt_names=trino.test.local\" \"ttl=24h\" }}{{ .Data.private_key }}\n{{ .Data.certificate }}\n{{ .Data.issuing_ca }}{{ end }}"
+  destination = "/vault/secrets/trino.pem"
+}

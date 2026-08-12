@@ -21,6 +21,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 
 const source = fs.readFileSync('src/main/resources/app-static/kudos.js', 'utf8');
+const styles = fs.readFileSync('src/main/resources/app-static/kudos.css', 'utf8');
 const start = source.indexOf('    function renderOperations(');
 const end = source.indexOf('\n\n    function rerunOperation(', start);
 assert.notEqual(start, -1, 'Не найдена функция renderOperations');
@@ -201,3 +202,16 @@ assert.match(
   'При открытии редактора результат не восстанавливается'
 );
 console.log('PASS Editor result is retained during tool navigation');
+
+assert.match(source, /data-sql-engine/, 'В редакторе отсутствуют вкладки SQL-движков');
+assert.match(source, /engineTabs\.forEach\(function \(tab\) \{\s+tab\.addEventListener\('click'/,
+  'Вкладки SQL-движков не переключаются по клику');
+assert.match(source, /tab\.parentElement\.classList\.toggle\('active', active\)/,
+  'Активная вкладка SQL-движка не оформляется как вкладка Jobs');
+assert.match(styles, /\.k8s-session-bar\.k8s-hidden\s*\{\s*display:\s*none;/,
+  'Панель Kyuubi-сессий остаётся видимой во вкладке Trino');
+assert.match(source, /UI_API \+ '\/trino\/history'/,
+  'История запросов Trino не загружается');
+assert.match(source, /logsTabItem'\)\.classList\.toggle\('k8s-hidden', logs\.length === 0\)/,
+  'Вкладка логов Trino не зависит от логов драйвера');
+console.log('PASS Editor engine tabs switch with the Jobs tab pattern');

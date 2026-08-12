@@ -40,6 +40,9 @@ kudos.cluster:
   kyuubi-url: ${KYUUBI_JDBC_URL:jdbc:hive2://localhost:10009/default;auth=KERBEROS;principal=kyuubi/_HOST@EXAMPLE.COM}
   # Internal REST API for session telemetry; this is not a browser UI proxy.
   kyuubi-rest-url: ${KYUUBI_REST_URL:http://localhost:10099}
+  # Trino JDBC with KerberosDelegation uses the Subject ticket created at KUDOS login;
+  # it never reads a user keytab or credential cache from disk.
+  trino-url: ${TRINO_JDBC_URL:}
   # HBase REST Gateway. The application never opens ZooKeeper or HBase RPC connections.
   hbase-rest-url: ${HBASE_REST_URL:}
   ozone-ofs-uri: ${OZONE_OFS_URI:ofs://omservice/}

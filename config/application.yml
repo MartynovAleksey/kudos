@@ -56,6 +56,11 @@ kudos:
     # Internal Kyuubi REST endpoint used for session telemetry, never proxied to a browser.
     kyuubi-rest-url: http://kyuubi.test.local:10099
 
+    # Kerberized Trino coordinator. The truststore contains the Vault PKI CA;
+    # KerberosDelegation reuses the logged-in user's in-memory Subject ticket.
+    trino-url: >-
+      jdbc:trino://trino.test.local:8443/tpch/tiny?SSL=true&SSLTrustStorePath=/run/trino-tls/truststore.p12&SSLTrustStorePassword=changeit&SSLTrustStoreType=PKCS12&KerberosRemoteServiceName=HTTP&KerberosUseCanonicalHostname=false&KerberosDelegation=true
+
     # Kerberos-protected HBase REST Gateway; no ZooKeeper or HBase RPC is exposed to Kudos.
     hbase-rest-url: http://hbase.test.local:8080
 

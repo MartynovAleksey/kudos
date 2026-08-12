@@ -56,7 +56,17 @@ class FlinkUiProxyControllerTests {
             new RoleAccess());
     return new FlinkUiProxyController(
         new ClusterProperties(
-            "", "", "", "", "", "", "", "", "http://flink-jobmanager", "http://flink-history"),
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "http://flink-jobmanager",
+            "http://flink-history"),
         access) {
       @Override
       HttpURLConnection open(URL target) {

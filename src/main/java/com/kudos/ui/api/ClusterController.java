@@ -30,9 +30,12 @@ import com.kudos.ui.service.KyuubiSessionInfo;
 import com.kudos.ui.service.KyuubiSessionMonitor;
 import com.kudos.ui.service.OzoneService;
 import com.kudos.ui.service.QueryResult;
+import com.kudos.ui.service.SqlEngineRegistry;
 import com.kudos.ui.service.SparkApplication;
 import com.kudos.ui.service.SparkApplicationAccessService;
 import com.kudos.ui.service.SparkHistoryService;
+import com.kudos.ui.service.TrinoQueryHistory;
+import com.kudos.ui.service.TrinoQueryInfo;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -66,24 +69,30 @@ public class ClusterController {
 
   private final HdfsService hdfs;
   private final KyuubiService kyuubi;
+  private final SqlEngineRegistry sqlEngines;
   private final HbaseService hbase;
   private final OzoneService ozone;
   private final SparkHistoryService sparkHistory;
   private final SparkApplicationAccessService sparkAccess;
+  private final TrinoQueryHistory trinoHistory;
 
   public ClusterController(
       HdfsService hdfs,
       KyuubiService kyuubi,
+      SqlEngineRegistry sqlEngines,
       HbaseService hbase,
       OzoneService ozone,
       SparkHistoryService sparkHistory,
-      SparkApplicationAccessService sparkAccess) {
+      SparkApplicationAccessService sparkAccess,
+      TrinoQueryHistory trinoHistory) {
     this.hdfs = hdfs;
     this.kyuubi = kyuubi;
+    this.sqlEngines = sqlEngines;
     this.hbase = hbase;
     this.ozone = ozone;
     this.sparkHistory = sparkHistory;
     this.sparkAccess = sparkAccess;
+    this.trinoHistory = trinoHistory;
   }
 
   @GetMapping("/spark/applications")
@@ -156,12 +165,25 @@ public class ClusterController {
 
   @PostMapping("/sql")
   List<Map<String, Object>> sql(@Valid @RequestBody SqlRequest request) throws Exception {
-    return kyuubi.query(request.sql());
+    return sqlEngines.get(request.engine()).query(request.sql());
   }
 
   @PostMapping("/sql/execute")
   QueryResult sqlExecute(@Valid @RequestBody SqlRequest request) throws Exception {
-    return kyuubi.execute(request.sql(), MAX_RESULT_ROWS);
+    return sqlEngines.get(request.engine()).execute(request.sql(), MAX_RESULT_ROWS);
+  }
+
+  @GetMapping("/trino/history")
+  List<TrinoQueryInfo> trinoHistory() {
+    return trinoHistory.entries();
+  }
+
+  @GetMapping("/trino/history/{id}/sql")
+  void downloadTrinoSql(@PathVariable String id, HttpServletResponse response) throws Exception {
+    response.setCharacterEncoding(java.nio.charset.StandardCharsets.UTF_8.name());
+    response.setContentType("application/sql; charset=UTF-8");
+    response.setHeader("Content-Disposition", "attachment; filename=\"trino-query.sql\"");
+    response.getWriter().write(trinoHistory.sql(id));
   }
 
   @GetMapping("/sessions")
@@ -213,7 +235,7 @@ public class ClusterController {
   @PostMapping("/sql/export")
   void sqlExport(@Valid @RequestBody SqlRequest request, HttpServletResponse response)
       throws Exception {
-    writeExcel(kyuubi.execute(request.sql(), EXPORT_MAX_ROWS), response);
+    writeExcel(sqlEngines.get(request.engine()).execute(request.sql(), EXPORT_MAX_ROWS), response);
   }
 
   @PostMapping("/sql/export/results")
@@ -399,7 +421,7 @@ public class ClusterController {
     return slash < 0 ? path : path.substring(slash + 1);
   }
 
-  record SqlRequest(@NotBlank String sql) {}
+  record SqlRequest(@NotBlank String sql, String engine) {}
 
   record SessionStartRequest(String name, String sparkParams) {}
 

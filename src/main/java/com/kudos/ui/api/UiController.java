@@ -18,6 +18,7 @@ package com.kudos.ui.api;
 
 import com.kudos.ui.config.FeaturesProperties;
 import com.kudos.ui.service.SparkApplicationAccessService;
+import com.kudos.ui.service.SqlEngineRegistry;
 import org.springframework.stereotype.Controller;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.server.ResponseStatusException;
@@ -36,10 +37,15 @@ public class UiController {
 
   private final FeaturesProperties features;
   private final SparkApplicationAccessService sparkAccess;
+  private final SqlEngineRegistry sqlEngines;
 
-  public UiController(FeaturesProperties features, SparkApplicationAccessService sparkAccess) {
+  public UiController(
+      FeaturesProperties features,
+      SparkApplicationAccessService sparkAccess,
+      SqlEngineRegistry sqlEngines) {
     this.features = features;
     this.sparkAccess = sparkAccess;
+    this.sqlEngines = sqlEngines;
   }
 
   @GetMapping("/login")
@@ -71,6 +77,7 @@ public class UiController {
   @GetMapping("/editor")
   String editor(Model model) {
     model.addAttribute("app", "editor");
+    model.addAttribute("sqlEngines", sqlEngines.available());
     return "editor";
   }
 

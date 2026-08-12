@@ -848,6 +848,9 @@
   margin: 10px 0 0;
   border-bottom: 1px solid #c7ccd1;
 }
+.k8s-session-bar.k8s-hidden {
+  display: none;
+}
 .k8s-session-tabs {
   display: flex;
   align-items: flex-end;

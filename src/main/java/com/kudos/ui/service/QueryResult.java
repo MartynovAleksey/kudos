@@ -23,14 +23,18 @@ import java.util.List;
  * that produces no result set (DDL/DML/SET) carries no columns/rows and a
  * {@code message} acknowledgement instead ("OK" / "N row(s) affected").
  */
-public record QueryResult(List<String> columns, List<List<Object>> rows, String message) {
+public record QueryResult(List<String> columns, List<List<Object>> rows, String message, List<String> logs) {
 
   public QueryResult(List<String> columns, List<List<Object>> rows) {
-    this(columns, rows, null);
+    this(columns, rows, null, List.of());
+  }
+
+  public QueryResult(List<String> columns, List<List<Object>> rows, String message) {
+    this(columns, rows, message, List.of());
   }
 
   /** Acknowledgement for a statement with no result set. */
   public static QueryResult ok(String message) {
-    return new QueryResult(List.of(), List.of(), message);
+    return new QueryResult(List.of(), List.of(), message, List.of());
   }
 }

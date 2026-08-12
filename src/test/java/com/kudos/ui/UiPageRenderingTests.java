@@ -75,6 +75,11 @@ class UiPageRenderingTests {
     assertPageRenders(
         "/editor",
         "Kyuubi Spark SQL",
+        "Trino",
+        "class=\"nav editor-nav k8s-jobs-nav\"",
+        "class=\"k8s-titlebar-tab active\"",
+        "data-sql-engine=\"kyuubi\"",
+        "data-sql-engine=\"trino\"",
         "executeQuery",
         "clearResults",
         "closeAllSessions",
@@ -102,6 +107,7 @@ class UiPageRenderingTests {
         .contains("aria-labelledby=\"logsTab\" aria-hidden=\"true\" hidden")
         .contains("aria-labelledby=\"operationsTab\" aria-hidden=\"true\" hidden")
         .contains("class=\"actions k8s-query-actions\"");
+    assertThat(page).doesNotContain("engineSelect");
   }
 
   @Test

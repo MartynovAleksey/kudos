@@ -23,6 +23,8 @@ public record ClusterProperties(
     String webhdfsUrl,
     String kyuubiUrl,
     String kyuubiRestUrl,
+    /** JDBC URL for the Kerberos-protected, TLS-enabled Trino coordinator. */
+    String trinoUrl,
     String hbaseRestUrl,
     String ozoneOfsUri,
     String ozoneConfDir,

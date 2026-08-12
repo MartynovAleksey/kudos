@@ -22,14 +22,21 @@
   <nav class="navbar hue-title-bar nokids">
     <div class="navbar-inner">
       <div class="container-fluid">
-        <ul class="nav editor-nav">
-          <li class="app-header"><i class="fa fa-fw fa-code"></i> Kyuubi Spark SQL</li>
+        <ul class="nav editor-nav k8s-jobs-nav">
+          <li class="app-header"><i class="fa fa-fw fa-code"></i> Editor</li>
+          <li th:each="engine, stat : ${sqlEngines}" class="k8s-titlebar-tab"
+              th:classappend="${stat.first} ? 'active' : ''">
+            <a href="#queryEditor" role="tab" th:text="${engine.displayName}"
+               th:attr="data-sql-engine=${engine.id},data-supports-sessions=${engine.supportsSessions},aria-selected=${stat.first}">
+              SQL engine
+            </a>
+          </li>
         </ul>
       </div>
     </div>
   </nav>
 
-  <div class="k8s-session-bar">
+  <div id="sessionBar" class="k8s-session-bar">
     <div id="sessionsPanel" class="k8s-session-tabs" role="tablist"></div>
     <button id="newSession" class="k8s-session-add" type="button" title="New session"
             aria-label="New session">+</button>

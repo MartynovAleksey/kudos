@@ -23,7 +23,6 @@ import java.security.PrivilegedActionException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
-import java.sql.ResultSetMetaData;
 import java.sql.Statement;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -45,7 +44,7 @@ import org.springframework.stereotype.Service;
 
 /** Runs Spark SQL through Kyuubi and manages each user's sessions. */
 @Service
-public class KyuubiService {
+public class KyuubiService implements SqlEngine {
 
   private static final int MAX_SESSIONS_PER_USER = 5;
   private static final int MAX_MONITORED_OPERATIONS = 20;
@@ -64,13 +63,29 @@ public class KyuubiService {
 
   // --------------------------------------------------------------- queries
 
+  @Override
+  public String id() {
+    return "kyuubi";
+  }
+
+  @Override
+  public String displayName() {
+    return "Kyuubi Spark SQL";
+  }
+
+  @Override
+  public boolean supportsSessions() {
+    return true;
+  }
+
+  @Override
   public List<Map<String, Object>> query(String sql) throws Exception {
     KyuubiSession session = activeSession();
     if (session != null) {
       synchronized (session) {
         try (Statement statement = session.requireConnection().createStatement();
             ResultSet resultSet = statement.executeQuery(sql)) {
-          return toRows(resultSet);
+          return SqlResults.toRows(resultSet);
         }
       }
     }
@@ -79,12 +94,13 @@ public class KyuubiService {
           try (Connection connection = openKyuubiConnection(properties.kyuubiUrl());
               Statement statement = connection.createStatement();
               ResultSet resultSet = statement.executeQuery(sql)) {
-            return toRows(resultSet);
+            return SqlResults.toRows(resultSet);
           }
         });
   }
 
   /** Same query path, shaped for the editor's result grid. */
+  @Override
   public QueryResult execute(String sql, int maxRows) throws Exception {
     KyuubiSession session = activeSession();
     if (session != null) {
@@ -92,7 +108,7 @@ public class KyuubiService {
         try (Statement statement = session.requireConnection().createStatement()) {
           String operationId = session.beginOperation(sql);
           try {
-            QueryResult result = runStatement(statement, sql, maxRows);
+            QueryResult result = SqlResults.run(statement, sql, maxRows);
             session.finishOperation(operationId, statement, null);
             return result;
           } catch (Exception error) {
@@ -106,26 +122,9 @@ public class KyuubiService {
         () -> {
           try (Connection connection = openKyuubiConnection(properties.kyuubiUrl());
               Statement statement = connection.createStatement()) {
-            return runStatement(statement, sql, maxRows);
+            return SqlResults.run(statement, sql, maxRows);
           }
         });
-  }
-
-  /**
-   * Run a single statement. A statement that yields a result set (SELECT, SHOW,
-   * DESCRIBE …) becomes a grid; one that does not (SET, USE, CREATE, INSERT …)
-   * returns an "OK" / rows-affected acknowledgement instead of failing.
-   */
-  private static QueryResult runStatement(Statement statement, String sql, int maxRows)
-      throws Exception {
-    boolean hasResultSet = statement.execute(sql);
-    if (hasResultSet) {
-      try (ResultSet resultSet = statement.getResultSet()) {
-        return toResult(resultSet, maxRows);
-      }
-    }
-    int updateCount = statement.getUpdateCount();
-    return QueryResult.ok(updateCount >= 0 ? updateCount + " row(s) affected" : "OK");
   }
 
   // -------------------------------------------------------------- sessions
@@ -471,37 +470,6 @@ public class KyuubiService {
     } catch (Exception ignored) {
       return List.of();
     }
-  }
-
-  private static List<Map<String, Object>> toRows(ResultSet resultSet) throws Exception {
-    List<Map<String, Object>> rows = new ArrayList<>();
-    ResultSetMetaData metadata = resultSet.getMetaData();
-    while (resultSet.next()) {
-      Map<String, Object> row = new LinkedHashMap<>();
-      for (int index = 1; index <= metadata.getColumnCount(); index++) {
-        row.put(metadata.getColumnLabel(index), resultSet.getObject(index));
-      }
-      rows.add(row);
-    }
-    return rows;
-  }
-
-  private static QueryResult toResult(ResultSet resultSet, int maxRows) throws Exception {
-    ResultSetMetaData metadata = resultSet.getMetaData();
-    int columnCount = metadata.getColumnCount();
-    List<String> columns = new ArrayList<>(columnCount);
-    for (int index = 1; index <= columnCount; index++) {
-      columns.add(metadata.getColumnLabel(index));
-    }
-    List<List<Object>> rows = new ArrayList<>();
-    while (resultSet.next() && rows.size() < maxRows) {
-      List<Object> row = new ArrayList<>(columnCount);
-      for (int index = 1; index <= columnCount; index++) {
-        row.add(resultSet.getObject(index));
-      }
-      rows.add(row);
-    }
-    return new QueryResult(columns, rows);
   }
 
   private static final class UserSessions {

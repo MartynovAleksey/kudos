@@ -504,6 +504,8 @@
   function initEditor() {
     var run = el('executeQuery');
     var runAll = el('executeAllQuery');
+    var engineTabs = Array.prototype.slice.call(document.querySelectorAll('[data-sql-engine]'));
+    var selectedEngine = engineTabs.length ? engineTabs[0].getAttribute('data-sql-engine') : 'kyuubi';
     var query = createSqlEditor(el('queryField'), el('queryEditor'));
     var results = el('queryResults');
     var activeMarker = null;
@@ -629,6 +631,9 @@
       } else {
         renderEmptyResult();
       }
+      if (selectedEngine === 'trino') {
+        renderTrinoLogs(result);
+      }
     }
 
     function clearResults() {
@@ -752,6 +757,9 @@
       }
       results.appendChild(grid);
       var last = reports[reports.length - 1];
+      if (selectedEngine === 'trino') {
+        renderTrinoLogs(last.ok ? last.result : null);
+      }
       if (last.ok) {
         renderResultInto(grid, last.result);
       } else {
@@ -765,6 +773,7 @@
         return Promise.resolve(null);
       }
       var executionSessionId = activeSessionId;
+      var executionEngine = selectedEngine;
       forgetResult(executionSessionId);
       showOutputTab('results');
       run.disabled = true;
@@ -780,7 +789,7 @@
         return request(UI_API + '/sql/execute', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sql: statements[index].sql })
+          body: JSON.stringify({ sql: statements[index].sql, engine: executionEngine })
         }).then(
           function (result) {
             reports.push({ sql: statements[index].sql, ok: true, result: result });
@@ -797,6 +806,9 @@
         .then(function () { return reports; }, function () { return reports; })
         .then(function () {
           renderReports(executionSessionId, reports);
+          if (executionEngine === 'trino') {
+            loadTrinoHistory();
+          }
           run.disabled = false;
           if (runAll) runAll.disabled = false;
           return resultsBySession[executionSessionId] || null;
@@ -921,6 +933,7 @@
     /* -------------------------------------------------------- sessions */
 
     var sessionsPanel = el('sessionsPanel');
+    var sessionBar = el('sessionBar');
     var newSessionBtn = el('newSession');
     var closeAllBtn = el('closeAllSessions');
     var noSessions = el('noSessions');
@@ -931,7 +944,47 @@
     var sessionMonitorLogs = el('sessionMonitorLogs');
     var knownSessions = [];
 
+    function engineSupportsSessions() {
+      var activeTab = engineTabs.filter(function (tab) {
+        return tab.getAttribute('data-sql-engine') === selectedEngine;
+      })[0];
+      if (!activeTab) {
+        return true;
+      }
+      return activeTab.getAttribute('data-supports-sessions') === 'true';
+    }
+
+    function selectEngine(engine) {
+      selectedEngine = engine || selectedEngine;
+      engineTabs.forEach(function (tab) {
+        var active = tab.getAttribute('data-sql-engine') === selectedEngine;
+        tab.parentElement.classList.toggle('active', active);
+        tab.setAttribute('aria-selected', String(active));
+      });
+      var supportsSessions = engineSupportsSessions();
+      var trino = selectedEngine === 'trino';
+      sessionBar.classList.toggle('k8s-hidden', !supportsSessions);
+      sessionMonitor.classList.toggle('k8s-hidden', !supportsSessions);
+      noSessions.classList.toggle('k8s-hidden', !supportsSessions);
+      el('logsTabItem').classList.toggle('k8s-hidden', !supportsSessions);
+      el('operationsTabItem').classList.toggle('k8s-hidden', !supportsSessions && !trino);
+      el('operationsTab').textContent = trino ? 'History' : 'Session History';
+      if (!supportsSessions) {
+        showOutputTab('results');
+        useSession('engine-' + selectedEngine);
+        if (trino) {
+          loadTrinoHistory();
+        }
+        run.disabled = false;
+        return;
+      }
+      loadSessions();
+    }
+
     function loadSessions() {
+      if (!engineSupportsSessions()) {
+        return;
+      }
       request(UI_API + '/sessions')
         .then(renderSessions)
         .catch(function (error) { showError(sessionsPanel, error); });
@@ -1031,6 +1084,76 @@
           class: 'k8s-link',
           href: UI_API + '/sessions/' + encodeURIComponent(session.id)
             + '/operations/' + encodeURIComponent(operation.id) + '/sql',
+          text: 'Download',
+          title: 'Download SQL file'
+        });
+        actions.appendChild(rerun);
+        actions.appendChild(open);
+        actions.appendChild(download);
+        var actionCell = document.createElement('td');
+        actionCell.appendChild(actions);
+        row.appendChild(actionCell);
+        body.appendChild(row);
+      });
+      table.appendChild(body);
+      scroll.appendChild(table);
+      sessionMonitorOperations.appendChild(scroll);
+      scroll.scrollTop = scrollTop;
+    }
+
+    function renderTrinoLogs(result) {
+      var logs = result && result.logs ? result.logs : [];
+      el('logsTabItem').classList.toggle('k8s-hidden', logs.length === 0);
+      sessionMonitorLogs.textContent = logs.join('\n');
+    }
+
+    function loadTrinoHistory() {
+      request(UI_API + '/trino/history')
+        .then(renderTrinoHistory)
+        .catch(function (error) { showError(sessionMonitorOperations, error); });
+    }
+
+    function renderTrinoHistory(entries) {
+      if (selectedEngine !== 'trino') {
+        return;
+      }
+      var previous = sessionMonitorOperations.querySelector('.k8s-operations-scroll');
+      var scrollTop = previous ? previous.scrollTop : 0;
+      sessionMonitorOperations.innerHTML = '';
+      if (!entries.length) {
+        sessionMonitorOperations.appendChild(text('No Trino queries yet.'));
+        return;
+      }
+      var scroll = element('div', { class: 'k8s-operations-scroll' });
+      var table = element('table', { class: 'table table-condensed table-huedatatable' });
+      var head = document.createElement('thead');
+      var header = document.createElement('tr');
+      ['State', 'Statement', 'Started', 'Error', 'Actions'].forEach(function (label) {
+        header.appendChild(element('th', { text: label }));
+      });
+      head.appendChild(header);
+      table.appendChild(head);
+      var body = document.createElement('tbody');
+      entries.forEach(function (entry) {
+        var row = document.createElement('tr');
+        [entry.state, entry.statement, formatDate(entry.startedAtEpochMs), entry.error || '']
+          .forEach(function (value) { row.appendChild(element('td', { text: value })); });
+        var actions = element('span', { class: 'k8s-row-actions' });
+        var rerun = button('Run', 'k8s-link', function () {
+          query.value = entry.statement;
+          saveQuery();
+          runStatements([{ sql: entry.statement }]);
+        });
+        rerun.title = 'Run this SQL in Trino';
+        var open = button('Open', 'k8s-link', function () {
+          query.value = entry.statement;
+          saveQuery();
+          toast('SQL opened in Query Editor');
+        });
+        open.title = 'Open SQL in Query Editor without running it';
+        var download = element('a', {
+          class: 'k8s-link',
+          href: UI_API + '/trino/history/' + encodeURIComponent(entry.id) + '/sql',
           text: 'Download',
           title: 'Download SQL file'
         });
@@ -1206,7 +1329,13 @@
       });
     });
 
-    loadSessions();
+    engineTabs.forEach(function (tab) {
+      tab.addEventListener('click', function (event) {
+        event.preventDefault();
+        selectEngine(tab.getAttribute('data-sql-engine'));
+      });
+    });
+    selectEngine();
     window.setInterval(loadSessions, 1000);
   }
 

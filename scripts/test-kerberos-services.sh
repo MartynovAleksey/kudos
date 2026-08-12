@@ -220,6 +220,15 @@ echo "PASS Spring API Ozone listing"
 app_api $app_base/api/hbase/tables | grep -q '\['
 echo "PASS Spring API HBase tables"
 
+app_api -H 'Content-Type: application/json' -X POST "$app_base/api/sql/execute" \
+  -d '{"engine":"trino","sql":"SELECT count(*) FROM nation"}' \
+  | grep -q '"rows":\[\[25\]\]'
+echo "PASS Spring API Trino SQL as logged-in Kerberos user"
+
+app_api "$app_base/api/trino/history" \
+  | grep -q 'SELECT count(\*) FROM nation'
+echo "PASS Spring API Trino query history"
+
 # Full HBase browser lifecycle, the way Hue's HBase app drives it: create a
 # table with column families, write and read a row, alter a family, then drop
 # it. A regression in any of these operations fails the run.
@@ -240,7 +249,7 @@ app_api "${hb_json[@]}" -X POST "$app_base/api/hbase/family/add" \
   -d "{\"table\":\"$hb_table\",\"family\":{\"name\":\"cf2\",\"maxVersions\":2}}" >/dev/null
 app_api "$app_base/api/hbase/describe?table=$hb_table" | grep -q '"name":"cf2"'
 
-# Verify the full mutation path: multiple versions, a binary cell, column
+# Verify the complete mutation path: multiple versions, a binary cell, column
 # deletion, and CSV bulk upload. No temporary files are needed: curl reads the
 # multipart body directly from stdin.
 app_api "${hb_json[@]}" -X POST "$app_base/api/hbase/row" \

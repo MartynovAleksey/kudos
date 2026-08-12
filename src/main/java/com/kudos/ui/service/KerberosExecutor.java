@@ -19,6 +19,7 @@ package com.kudos.ui.service;
 import com.kudos.ui.security.KerberosAuthentication;
 import java.security.PrivilegedExceptionAction;
 import javax.security.auth.Subject;
+import javax.security.auth.kerberos.KerberosTicket;
 import jakarta.annotation.PostConstruct;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.security.UserGroupInformation;
@@ -63,6 +64,34 @@ public class KerberosExecutor {
       throw new IllegalStateException(
           "The Kerberos ticket for this session is gone; sign in again");
     }
-    return UserGroupInformation.getUGIFromSubject(subject).doAs(action);
+    return UserGroupInformation.getUGIFromSubject(subjectForClusterCall(subject)).doAs(action);
+  }
+
+  /**
+   * Creates a short-lived Subject for one cluster call with only the user's TGT.
+   *
+   * <p>Kerberos clients add service tickets to the Subject while they run. Keeping those tickets
+   * in the HTTP session makes the next Trino JDBC request fail: its delegated-authentication
+   * implementation accepts exactly one Kerberos ticket. The session Subject is therefore never
+   * used directly for a cluster call.
+   */
+  static Subject subjectForClusterCall(Subject source) {
+    KerberosTicket ticket =
+        source.getPrivateCredentials(KerberosTicket.class).stream()
+            .filter(KerberosExecutor::isTicketGrantingTicket)
+            .findFirst()
+            .orElse(null);
+    if (ticket == null) {
+      return source;
+    }
+
+    Subject isolated = new Subject();
+    isolated.getPrincipals().addAll(source.getPrincipals());
+    isolated.getPrivateCredentials().add(ticket);
+    return isolated;
+  }
+
+  private static boolean isTicketGrantingTicket(KerberosTicket ticket) {
+    return ticket.getServer() != null && ticket.getServer().getName().startsWith("krbtgt/");
   }
 }

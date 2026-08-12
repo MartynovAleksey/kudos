@@ -69,7 +69,7 @@ echo "${IPA_TEST_PASSWORD}" | kinit admin@TEST.LOCAL
 ipa host-add kyuubi.test.local --force || true
 ipa service-add kyuubi/kyuubi.test.local --force || true
 
-for host in hdfs.test.local ozone.test.local hbase.test.local \
+for host in hdfs.test.local ozone.test.local hbase.test.local trino.test.local \
   sparkhistory.test.local flink.test.local; do
   ipa host-add "$host" --force || true
 done
@@ -86,6 +86,7 @@ service_principals=(
   HTTP/ozone.test.local
   hbase/hbase.test.local
   HTTP/hbase.test.local
+  HTTP/trino.test.local
   # The history server reads event logs over Kerberos and serves its own UI
   # and REST API over SPNEGO.
   spark/sparkhistory.test.local
@@ -143,6 +144,10 @@ for principal in "${service_principals[@]}"; do
       -e "${keytab_enctypes}"
   fi
 done
+
+# Trino uses a stable, service-specific filename instead of exposing the
+# generic FreeIPA principal filename in its coordinator configuration.
+install -m 0644 /shared/HTTP-trino.test.local.keytab /shared/trino.keytab
 
 # The Flink containers run as the unprivileged flink user (uid 9999), unlike the
 # other services that read their keytab as root. Make just the Flink keytab
