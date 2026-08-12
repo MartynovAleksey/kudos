@@ -51,4 +51,8 @@ kudos.cluster:
   # The ticket is obtained from the password presented at login, so each request
   # carries the Kerberos identity of the user who made it.
   kerberos-principal: ${KERBEROS_PRINCIPAL_TEMPLATE:{user}@EXAMPLE.COM}
+  # Flink JobManager REST for the Jobs "Running" source; blank disables it.
+  flink-jobmanager-url: ${FLINK_JOBMANAGER_URL:}
+  # Flink History Server, reverse-proxied under /flink-ui for administrators.
+  flink-history-url: ${FLINK_HISTORY_URL:}
 kudos.api.enabled: ${KUDOS_API_ENABLED:true}

@@ -95,8 +95,11 @@ public class UiController {
   }
 
   @GetMapping("/jobs")
-  String jobs(Model model) {
+  String jobs(@RequestParam(required = false) String type, Model model) {
     model.addAttribute("app", "jobs");
+    // The active application-type tab is carried in the URL so a return from a
+    // job detail lands on the same tab instead of the default one.
+    model.addAttribute("activeType", "flink".equals(type) ? "flink" : "spark");
     return "jobs";
   }
 
@@ -114,5 +117,34 @@ public class UiController {
     model.addAttribute("app", "jobs");
     model.addAttribute("applicationId", applicationId);
     return "job";
+  }
+
+  /**
+   * Embeds a Flink job's dashboard inside the KUDOS chrome, mirroring the Spark
+   * job page. {@code scope} selects the proxied upstream: {@code jobmanager} for
+   * a running job, {@code history} for a finished one. Flink jobs are not owned
+   * by a KUDOS user, so this is administrator-only like the proxy itself.
+   */
+  @GetMapping("/flink/{scope}/{jid}")
+  String flinkJob(
+      @PathVariable String scope, @PathVariable String jid, Model model, Authentication authentication) {
+    if (!sparkAccess.isAdministrator(authentication)) {
+      throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+    }
+    if (!scope.equals("jobmanager") && !scope.equals("history")) {
+      throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+    }
+    model.addAttribute("app", "jobs");
+    model.addAttribute("jid", jid);
+    // The Flink dashboard is a hash-routed SPA, so the job path rides in the
+    // fragment; its route segment is "completed" on the History Server and
+    // "running" on the JobManager. The embedded frame carries ?embedded so the
+    // proxy strips Flink's own left sider (the KUDOS chrome already provides
+    // navigation); the new-tab link opens the full standalone dashboard.
+    String state = scope.equals("history") ? "completed" : "running";
+    String deepLink = "#/job/" + state + "/" + jid + "/overview";
+    model.addAttribute("frameUrl", "/flink-ui/" + scope + "/?embedded" + deepLink);
+    model.addAttribute("rawUrl", "/flink-ui/" + scope + "/" + deepLink);
+    return "flink";
   }
 }

@@ -91,8 +91,7 @@ class KyuubiServiceTests {
           }
         };
     ClusterProperties properties =
-        new ClusterProperties(
-            "", "jdbc:kyuubi-test:", "http://kyuubi-rest", "", "", "", "", "");
+        new ClusterProperties("", "jdbc:kyuubi-test:", "http://kyuubi-rest", "", "", "", "", "", "", "");
 
     KyuubiRestClient rest = mock(KyuubiRestClient.class);
     KyuubiService service = new KyuubiService(properties, kerberos, rest);
@@ -150,7 +149,7 @@ class KyuubiServiceTests {
 
     KyuubiService service =
         new KyuubiService(
-            new ClusterProperties("", "jdbc:kyuubi-test:", "", "", "", "", "", ""),
+            new ClusterProperties("", "jdbc:kyuubi-test:", "", "", "", "", "", "", "", ""),
             passthroughKerberos(),
             mock(KyuubiRestClient.class));
     KyuubiSessionInfo started = service.start("history", "");
@@ -186,7 +185,7 @@ class KyuubiServiceTests {
 
     KyuubiService service =
         new KyuubiService(
-            new ClusterProperties("", "jdbc:kyuubi-test:", "", "", "", "", "", ""),
+            new ClusterProperties("", "jdbc:kyuubi-test:", "", "", "", "", "", "", "", ""),
             passthroughKerberos(),
             mock(KyuubiRestClient.class));
     KyuubiSessionInfo started = service.start("temporary", "");

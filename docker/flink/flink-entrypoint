@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Copyright 2026 Aleksey Martynov and contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Wraps the stock Flink entrypoint to give it a Hadoop + Ozone classpath and to
+# wait for the Kerberos material Flink logs in with, so completed-job archives
+# can be written to and read from Ozone.
+set -euo pipefail
+
+export HADOOP_HOME=/opt/hadoop
+export HADOOP_CONF_DIR=/opt/hadoop/etc/hadoop
+# Flink is shipped Hadoop-free; its Hadoop file-system integration needs Hadoop
+# on the classpath, and the plain Ozone filesystem jar (added to this Hadoop)
+# provides ofs://.
+export HADOOP_CLASSPATH="$(/opt/hadoop/bin/hadoop classpath)"
+
+# Flink logs in with this keytab at startup; wait until FreeIPA has issued it and
+# written the shared krb5.conf.
+until test -r /shared/flink-flink.test.local.keytab && test -r /shared/krb5.conf; do
+  sleep 2
+done
+
+exec /docker-entrypoint.sh "$@"

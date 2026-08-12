@@ -23,8 +23,16 @@
   <nav class="navbar hue-title-bar nokids">
     <div class="navbar-inner">
       <div class="container-fluid">
-        <ul class="nav editor-nav">
-          <li class="app-header"><i class="fa fa-fw fa-tasks"></i> Spark Jobs</li>
+        <ul class="nav editor-nav k8s-jobs-nav">
+          <li class="app-header"><i class="fa fa-fw fa-tasks"></i> Jobs</li>
+          <li class="k8s-titlebar-tab" id="sparkJobsTabItem"
+              th:classappend="${activeType == 'flink'} ? '' : 'active'">
+            <a id="sparkJobsTab" href="#sparkJobsPane" role="tab">Spark</a>
+          </li>
+          <li class="k8s-titlebar-tab" id="flinkJobsTabItem"
+              th:classappend="${activeType == 'flink'} ? 'active' : ''">
+            <a id="flinkJobsTab" href="#flinkJobsPane" role="tab">Flink</a>
+          </li>
         </ul>
       </div>
     </div>
@@ -32,64 +40,106 @@
 
   <div class="card card-small">
     <div class="card-body">
-      <div class="k8s-toolbar">
-        <span class="k8s-toolbar-item">
-          <i class="fa fa-fw fa-search muted"></i>
-          <input type="text" id="jobSearch" class="k8s-search"
-                 placeholder="Filter by application, id or start time"/>
-        </span>
 
-        <!-- Only administrators may select another owner's jobs. The server
-             still applies this restriction when a user crafts the parameter. -->
-        <span class="k8s-toolbar-item" th:if="${administrator}">
-          <label for="jobUserFilter" class="muted">User</label>
-          <input type="text" id="jobUserFilter" placeholder="All users"/>
-        </span>
+      <div id="sparkJobsPane" class="tab-pane" role="tabpanel"
+           th:classappend="${activeType == 'flink'} ? '' : 'active'"
+           th:attr="hidden=${activeType == 'flink'} ? 'hidden' : null">
+        <div class="k8s-toolbar">
+          <span class="k8s-toolbar-item">
+            <i class="fa fa-fw fa-search muted"></i>
+            <input type="text" id="jobSearch" class="k8s-search"
+                   placeholder="Filter by application, id or start time"/>
+          </span>
 
-        <span class="k8s-toolbar-item">
-          <label for="jobRange" class="muted">Started</label>
-          <select id="jobRange">
-            <option value="1">Last day</option>
-            <option value="7" selected="selected">Last week</option>
-            <option value="30">Last month</option>
-            <option value="custom">Custom range</option>
-          </select>
-        </span>
+          <!-- Only administrators may select another owner's jobs. The server
+               still applies this restriction when a user crafts the parameter. -->
+          <span class="k8s-toolbar-item" th:if="${administrator}">
+            <label for="jobUserFilter" class="muted">User</label>
+            <input type="text" id="jobUserFilter" placeholder="All users"/>
+          </span>
 
-        <span class="k8s-toolbar-item k8s-hidden" id="jobCustomRange">
-          <label for="jobFrom" class="muted">From</label>
-          <input type="date" id="jobFrom"/>
-          <label for="jobTo" class="muted">To</label>
-          <input type="date" id="jobTo"/>
-        </span>
+          <span class="k8s-toolbar-item">
+            <label for="jobRange" class="muted">Started</label>
+            <select id="jobRange">
+              <option value="1">Last day</option>
+              <option value="7" selected="selected">Last week</option>
+              <option value="30">Last month</option>
+              <option value="custom">Custom range</option>
+            </select>
+          </span>
 
-        <span class="k8s-toolbar-item">
-          <label for="jobPageSize" class="muted">Rows</label>
-          <select id="jobPageSize">
-            <option value="10">10</option>
-            <option value="25" selected="selected">25</option>
-            <option value="50">50</option>
-            <option value="100">100</option>
-          </select>
-        </span>
+          <span class="k8s-toolbar-item k8s-hidden" id="jobCustomRange">
+            <label for="jobFrom" class="muted">From</label>
+            <input type="date" id="jobFrom"/>
+            <label for="jobTo" class="muted">To</label>
+            <input type="date" id="jobTo"/>
+          </span>
 
-        <span class="k8s-toolbar-item">
-          <a id="refreshJobs" href="javascript:void(0)">
-            <i class="fa fa-fw fa-refresh"></i> Refresh
-          </a>
-        </span>
+          <span class="k8s-toolbar-item">
+            <label for="jobPageSize" class="muted">Rows</label>
+            <select id="jobPageSize">
+              <option value="10">10</option>
+              <option value="25" selected="selected">25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+          </span>
+
+          <span class="k8s-toolbar-item">
+            <a id="refreshJobs" href="javascript:void(0)">
+              <i class="fa fa-fw fa-refresh"></i> Refresh
+            </a>
+          </span>
+        </div>
+
+        <div id="runningJobs">
+          <div class="k8s-muted">Loading running applications…</div>
+        </div>
+
+        <h3 class="k8s-jobs-section">Completed</h3>
+        <div id="jobList">
+          <div class="k8s-muted">Loading…</div>
+        </div>
+
+        <div class="k8s-pager" id="jobPager"></div>
       </div>
 
-      <div id="runningJobs">
-        <div class="k8s-muted">Loading running applications…</div>
+      <div id="flinkJobsPane" class="tab-pane" role="tabpanel"
+           th:classappend="${activeType == 'flink'} ? 'active' : ''"
+           th:attr="hidden=${activeType == 'flink'} ? null : 'hidden'">
+        <div class="k8s-toolbar">
+          <span class="k8s-toolbar-item">
+            <i class="fa fa-fw fa-search muted"></i>
+            <input type="text" id="flinkSearch" class="k8s-search"
+                   placeholder="Filter by job, id or start time"/>
+          </span>
+
+          <span class="k8s-toolbar-item">
+            <label for="flinkState" class="muted">State</label>
+            <select id="flinkState">
+              <option value="all" selected="selected">All</option>
+              <option value="running">Running</option>
+              <option value="completed">Completed</option>
+            </select>
+          </span>
+
+          <span class="k8s-toolbar-item">
+            <a id="refreshFlinkJobs" href="javascript:void(0)">
+              <i class="fa fa-fw fa-refresh"></i> Refresh
+            </a>
+          </span>
+        </div>
+
+        <div id="flinkRunning">
+          <div class="k8s-muted">Loading running jobs…</div>
+        </div>
+
+        <h3 class="k8s-jobs-section">Completed</h3>
+        <div id="flinkList">
+          <div class="k8s-muted">Loading…</div>
+        </div>
       </div>
 
-      <h3 class="k8s-jobs-section">Completed</h3>
-      <div id="jobList">
-        <div class="k8s-muted">Loading…</div>
-      </div>
-
-      <div class="k8s-pager" id="jobPager"></div>
     </div>
   </div>
 </div>

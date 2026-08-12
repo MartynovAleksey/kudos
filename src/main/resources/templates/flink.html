@@ -16,7 +16,7 @@
 
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org"
-      th:replace="~{layout :: page('jobs', 'Job', ~{:: #content})}">
+      th:replace="~{layout :: page('jobs', 'Flink', ~{:: #content})}">
 <body>
 <div id="content">
   <nav class="navbar hue-title-bar nokids">
@@ -25,8 +25,8 @@
         <ul class="nav editor-nav">
           <li class="app-header">
             <i class="fa fa-fw fa-tasks"></i>
-            <a th:href="@{/jobs(type='spark')}">Spark Jobs</a>
-            <span th:text="' / ' + ${applicationId}"> / application</span>
+            <a th:href="@{/jobs(type='flink')}">Jobs</a>
+            <span th:text="' / Flink / ' + ${jid}"> / flink</span>
           </li>
         </ul>
       </div>
@@ -34,22 +34,17 @@
   </nav>
 
   <div class="k8s-breadcrumbs">
-    <a th:href="@{/jobs(type='spark')}"><i class="fa fa-fw fa-arrow-left"></i> Back to jobs</a>
-    <a class="k8s-spaced"
-       th:href="@{'/spark-ui/api/v1/applications/' + ${applicationId} + '/logs'}">
-      <i class="fa fa-fw fa-download"></i> Download logs
-    </a>
-    <a class="k8s-spaced" target="_blank"
-       th:href="@{'/spark-ui/history/' + ${applicationId} + '/jobs/'}">
+    <a th:href="@{/jobs(type='flink')}"><i class="fa fa-fw fa-arrow-left"></i> Back to jobs</a>
+    <a class="k8s-spaced" target="_blank" th:href="${rawUrl}">
       <i class="fa fa-fw fa-external-link"></i> Open in a new tab
     </a>
   </div>
 
-  <!-- The Spark UI itself, proxied through this application so it is served
-       from the same origin and behind the same session. -->
-  <iframe id="sparkUi" class="k8s-spark-frame"
-          th:src="@{'/spark-ui/history/' + ${applicationId} + '/jobs/'}"
-          title="Spark UI"></iframe>
+  <!-- The Flink dashboard, proxied through this application so it is served from
+       the same origin and behind the same session, framed in the KUDOS chrome. -->
+  <iframe id="flinkUi" class="k8s-spark-frame"
+          th:src="${frameUrl}"
+          title="Flink UI"></iframe>
 </div>
 </body>
 </html>

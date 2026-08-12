@@ -242,6 +242,102 @@ services:
       timeout: 5s
       retries: 30
 
+  # Flink session cluster (JobManager + TaskManager) and History Server. Only a
+  # reference source for the Jobs "Running" section and the /flink-ui proxy — the
+  # application never depends on it, so a missing Flink leaves the Jobs screen
+  # working. The official flink image is multi-arch, so it runs natively on both
+  # Intel and Apple Silicon. Completed jobs are archived to Kerberized Ozone
+  # (ofs://ozone.test.local/flink/completed-jobs), the same store Spark uses, and
+  # the History Server reads them back from there — see docker/flink/Dockerfile.
+  flink-jobmanager:
+    build:
+      context: ./docker
+      dockerfile: flink/Dockerfile
+    image: kudos-flink:latest
+    hostname: flink-jobmanager.test.local
+    command: jobmanager
+    depends_on:
+      freeipa:
+        condition: service_healthy
+      ozone:
+        condition: service_healthy
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager.test.local
+        jobmanager.archive.fs.dir: ofs://ozone.test.local/flink/completed-jobs
+        rest.address: 0.0.0.0
+        rest.bind-address: 0.0.0.0
+        security.kerberos.login.keytab: /shared/flink-flink.test.local.keytab
+        security.kerberos.login.principal: flink/flink.test.local@TEST.LOCAL
+        security.kerberos.login.use-ticket-cache: false
+        env.java.opts.all: -Djava.security.krb5.conf=/shared/krb5.conf
+    volumes:
+      - kerberos-shared:/shared:ro
+    ports:
+      - "8081:8081"
+    networks:
+      default:
+        aliases:
+          - flink-jobmanager.test.local
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "bash -c ': > /dev/tcp/flink-jobmanager.test.local/8081'"
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  flink-taskmanager:
+    image: kudos-flink:latest
+    command: taskmanager
+    depends_on:
+      flink-jobmanager:
+        condition: service_healthy
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager.test.local
+        taskmanager.numberOfTaskSlots: 2
+    volumes:
+      - kerberos-shared:/shared:ro
+    networks:
+      - default
+
+  flink-history:
+    image: kudos-flink:latest
+    hostname: flink-history.test.local
+    command: history-server
+    depends_on:
+      flink-jobmanager:
+        condition: service_healthy
+      ozone:
+        condition: service_healthy
+    environment:
+      FLINK_PROPERTIES: |
+        historyserver.web.address: 0.0.0.0
+        historyserver.web.port: 8082
+        historyserver.archive.fs.dir: ofs://ozone.test.local/flink/completed-jobs
+        historyserver.archive.fs.refresh-interval: 5000
+        security.kerberos.login.keytab: /shared/flink-flink.test.local.keytab
+        security.kerberos.login.principal: flink/flink.test.local@TEST.LOCAL
+        security.kerberos.login.use-ticket-cache: false
+        env.java.opts.all: -Djava.security.krb5.conf=/shared/krb5.conf
+    volumes:
+      - kerberos-shared:/shared:ro
+    ports:
+      # Host 8082 is taken by the reference Hue, so publish the History Server on 8083.
+      - "8083:8082"
+    networks:
+      default:
+        aliases:
+          - flink-history.test.local
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "bash -c ': > /dev/tcp/flink-history.test.local/8082'"
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
   # HashiCorp Vault (dev mode) — issues the application's TLS certificate from
   # its PKI engine. Ephemeral and auto-unsealed; reconfigured on every up by
   # vault-bootstrap. This mirrors production, where the certificate is issued by

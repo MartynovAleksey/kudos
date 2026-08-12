@@ -30,8 +30,9 @@ class SparkApplicationAccessServiceTests {
 
   private final SparkHistoryService history = mock(SparkHistoryService.class);
   private final KyuubiService kyuubi = mock(KyuubiService.class);
+  private final FlinkService flink = mock(FlinkService.class);
   private final SparkApplicationAccessService access =
-      new SparkApplicationAccessService(history, kyuubi, new RoleAccess());
+      new SparkApplicationAccessService(history, kyuubi, flink, new RoleAccess());
 
   @Test
   void userGetsOnlyOwnApplicationsEvenWhenPassingAnotherUserFilter() throws Exception {
@@ -69,6 +70,33 @@ class SparkApplicationAccessServiceTests {
     when(kyuubi.runningApplications()).thenReturn(List.of(running));
 
     assertThat(access.applications(user("analyst"), 500, null, null)).containsExactly(running);
+  }
+
+  @Test
+  void flinkTabKeepsFlinkJobsOutOfTheSparkList() throws Exception {
+    SparkApplication engine = application("kyuubi-analyst", "analyst", false);
+    when(history.applications(500, null)).thenReturn(List.of());
+    when(kyuubi.runningApplicationsForAllUsers()).thenReturn(List.of(engine));
+    when(flink.runningApplications())
+        .thenReturn(List.of(new SparkApplication("flink-abc", "wordcount", "", "", "", 0, false, "Flink job")));
+
+    // The Spark applications list never contains Flink jobs; they have their own tab.
+    assertThat(access.applications(administrator(), 500, null, null)).containsExactly(engine);
+  }
+
+  @Test
+  void administratorGetsRunningAndCompletedFlinkJobs() throws Exception {
+    SparkApplication running = new SparkApplication("flink-run", "stream", "", "", "", 0, false, "Flink job");
+    SparkApplication done = new SparkApplication("flink-done", "batch", "", "", "", 0, true, "Flink job");
+    when(flink.runningApplications()).thenReturn(List.of(running));
+    when(flink.completedApplications()).thenReturn(List.of(done));
+
+    assertThat(access.flinkApplications(administrator())).containsExactly(running, done);
+  }
+
+  @Test
+  void usersGetNoFlinkJobs() throws Exception {
+    assertThat(access.flinkApplications(user("analyst"))).isEmpty();
   }
 
   private static SparkApplication application(String id, String user, boolean completed) {

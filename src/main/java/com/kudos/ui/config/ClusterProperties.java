@@ -28,4 +28,8 @@ public record ClusterProperties(
     String ozoneConfDir,
     String sparkHistoryUrl,
     /** Template for the user's own principal; no service keytab is ever used. */
-    String kerberosPrincipal) {}
+    String kerberosPrincipal,
+    /** Flink JobManager REST base; blank disables the Flink running-jobs source. */
+    String flinkJobmanagerUrl,
+    /** Flink History Server base, reverse-proxied under {@code /flink-ui}. */
+    String flinkHistoryUrl) {}

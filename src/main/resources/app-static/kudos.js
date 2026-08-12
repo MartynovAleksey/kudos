@@ -2292,6 +2292,58 @@
     var pageSize = el('jobPageSize');
     var refresh = el('refreshJobs');
     var userFilter = el('jobUserFilter');
+    var flinkSearch = el('flinkSearch');
+    var flinkState = el('flinkState');
+
+    // Filters persist per application type so returning from a job detail keeps
+    // them, instead of resetting to the default screen. The active tab itself is
+    // carried in the URL (?type=), which the server also reads to render the
+    // right tab first — so there is no flash on load.
+    var SPARK_KEY = 'kudos.jobs.spark';
+    var FLINK_KEY = 'kudos.jobs.flink';
+    function readStore(key) {
+      try {
+        return JSON.parse(sessionStorage.getItem(key)) || {};
+      } catch (error) {
+        return {};
+      }
+    }
+    function writeStore(key, value) {
+      try {
+        sessionStorage.setItem(key, JSON.stringify(value));
+      } catch (error) {
+        // Storage may be unavailable (private mode); filters just won't persist.
+      }
+    }
+    function saveSpark() {
+      writeStore(SPARK_KEY, {
+        search: search.value,
+        user: userFilter ? userFilter.value : '',
+        range: range.value,
+        from: from.value,
+        to: to.value,
+        pageSize: pageSize.value
+      });
+    }
+    function restoreSpark() {
+      var s = readStore(SPARK_KEY);
+      if (s.search != null) search.value = s.search;
+      if (userFilter && s.user != null) userFilter.value = s.user;
+      if (s.range) range.value = s.range;
+      if (s.from) from.value = s.from;
+      if (s.to) to.value = s.to;
+      if (s.pageSize) pageSize.value = s.pageSize;
+      var isCustom = range.value === 'custom';
+      customRange.className = isCustom ? 'k8s-toolbar-item' : 'k8s-toolbar-item k8s-hidden';
+    }
+    function saveFlink() {
+      writeStore(FLINK_KEY, { search: flinkSearch.value, state: flinkState.value });
+    }
+    function restoreFlink() {
+      var f = readStore(FLINK_KEY);
+      if (f.search != null) flinkSearch.value = f.search;
+      if (f.state) flinkState.value = f.state;
+    }
 
     // Newest run first is the useful default, matching how the history server
     // itself orders the list.
@@ -2607,14 +2659,19 @@
 
     search.addEventListener('input', function () {
       state.page = 1;
+      saveSpark();
       renderRunning();
       render();
     });
     if (userFilter) {
-      userFilter.addEventListener('change', load);
+      userFilter.addEventListener('change', function () {
+        saveSpark();
+        load();
+      });
     }
     pageSize.addEventListener('change', function () {
       state.page = 1;
+      saveSpark();
       render();
     });
     range.addEventListener('change', function () {
@@ -2624,13 +2681,214 @@
         from.value = isoDaysAgo(7);
         to.value = isoDaysAgo(0);
       }
+      saveSpark();
       load();
     });
-    from.addEventListener('change', load);
-    to.addEventListener('change', render);
+    from.addEventListener('change', function () {
+      saveSpark();
+      load();
+    });
+    to.addEventListener('change', function () {
+      saveSpark();
+      render();
+    });
     refresh.addEventListener('click', load);
 
-    load();
+    // ---- Spark / Flink tabs ----
+    // Flink jobs carry a different attribute set (no owner or Spark version) and
+    // their UI lives behind the /flink-ui proxy, so they get their own tab rather
+    // than being mixed into the Spark list.
+    var sparkTab = el('sparkJobsTab');
+    var flinkTab = el('flinkJobsTab');
+    var sparkPane = el('sparkJobsPane');
+    var flinkPane = el('flinkJobsPane');
+    var flinkRunning = el('flinkRunning');
+    var flinkListEl = el('flinkList');
+    var refreshFlink = el('refreshFlinkJobs');
+    var flinkLoaded = false;
+    var sparkLoaded = false;
+
+    function showJobsTab(name) {
+      var spark = name === 'spark';
+      el('sparkJobsTabItem').classList.toggle('active', spark);
+      el('flinkJobsTabItem').classList.toggle('active', !spark);
+      sparkPane.classList.toggle('active', spark);
+      flinkPane.classList.toggle('active', !spark);
+      sparkPane.hidden = !spark;
+      flinkPane.hidden = spark;
+      sparkTab.setAttribute('aria-selected', String(spark));
+      flinkTab.setAttribute('aria-selected', String(!spark));
+      // Keep the active tab in the URL so a refresh or a return from a job
+      // detail stays on it, without reloading the page.
+      try {
+        var url = new URL(window.location.href);
+        url.searchParams.set('type', name);
+        window.history.replaceState({}, '', url);
+      } catch (error) {
+        // history/URL unavailable — the tab still switches, just not bookmarkable.
+      }
+      // Each tab fetches its data the first time it is shown.
+      if (spark && !sparkLoaded) {
+        sparkLoaded = true;
+        load();
+      }
+      if (!spark && !flinkLoaded) {
+        flinkLoaded = true;
+        loadFlink();
+      }
+    }
+    sparkTab.addEventListener('click', function (event) {
+      event.preventDefault();
+      showJobsTab('spark');
+    });
+    flinkTab.addEventListener('click', function (event) {
+      event.preventDefault();
+      showJobsTab('flink');
+    });
+
+    // Open the job's Flink dashboard framed in the KUDOS chrome. Running jobs use
+    // the live JobManager, finished ones the History Server.
+    function flinkUiHref(application) {
+      var jid = application.id.replace(/^flink-/, '');
+      var scope = application.completed ? 'history' : 'jobmanager';
+      return '/flink/' + scope + '/' + encodeURIComponent(jid);
+    }
+
+    function flinkTable(applications) {
+      var table = document.createElement('table');
+      table.className = 'table table-condensed table-huedatatable';
+      var head = document.createElement('thead');
+      var headRow = document.createElement('tr');
+      ['', 'Job', 'ID', 'Started', 'Duration'].forEach(function (label) {
+        var th = document.createElement('th');
+        th.appendChild(text(label));
+        headRow.appendChild(th);
+      });
+      head.appendChild(headRow);
+      table.appendChild(head);
+      var body = document.createElement('tbody');
+      applications.forEach(function (application) {
+        var icon = document.createElement('i');
+        icon.className =
+          'fa fa-fw ' +
+          (application.completed ? 'fa-check-circle k8s-ok' : 'fa-spinner k8s-running');
+        icon.title = application.completed ? 'Completed' : 'Running';
+        var name = document.createElement('a');
+        name.href = flinkUiHref(application);
+        name.appendChild(text(application.name));
+        var id = document.createElement('a');
+        id.href = flinkUiHref(application);
+        id.appendChild(text(application.id));
+        var row = document.createElement('tr');
+        [icon, name, id, formatStart(application), formatDuration(application.durationMillis)].forEach(
+          function (cell) {
+            var td = document.createElement('td');
+            if (cell instanceof Node) {
+              td.appendChild(cell);
+            } else {
+              td.appendChild(text(cell));
+            }
+            row.appendChild(td);
+          }
+        );
+        body.appendChild(row);
+      });
+      table.appendChild(body);
+      return table;
+    }
+
+    function renderFlinkSection(container, title, applications, emptyText) {
+      container.innerHTML = '';
+      var heading = document.createElement('h3');
+      heading.className = 'k8s-jobs-section';
+      heading.appendChild(text(title + ' (' + applications.length + ')'));
+      container.appendChild(heading);
+      if (applications.length) {
+        container.appendChild(flinkTable(applications));
+      } else {
+        var empty = document.createElement('div');
+        empty.className = 'k8s-muted';
+        empty.appendChild(text(emptyText));
+        container.appendChild(empty);
+      }
+    }
+
+    // The Flink filter is applied client-side over the fetched list: a text
+    // needle over job/id/started, plus a running/completed state selector.
+    var flinkApps = [];
+    function matchesFlink(application) {
+      var wanted = flinkState.value;
+      if (wanted === 'running' && application.completed) {
+        return false;
+      }
+      if (wanted === 'completed' && !application.completed) {
+        return false;
+      }
+      var needle = flinkSearch.value.trim().toLowerCase();
+      if (!needle) {
+        return true;
+      }
+      return [application.name, application.id, formatStart(application)]
+        .join(' ')
+        .toLowerCase()
+        .indexOf(needle) !== -1;
+    }
+
+    function renderFlink() {
+      var visible = flinkApps.filter(matchesFlink);
+      renderFlinkSection(
+        flinkRunning,
+        'Running',
+        visible.filter(function (application) {
+          return !application.completed;
+        }),
+        'No running Flink jobs.'
+      );
+      var completed = visible.filter(function (application) {
+        return application.completed;
+      });
+      flinkListEl.innerHTML = '';
+      if (completed.length) {
+        flinkListEl.appendChild(flinkTable(completed));
+      } else {
+        var empty = document.createElement('div');
+        empty.className = 'k8s-muted';
+        empty.appendChild(text('No completed Flink jobs.'));
+        flinkListEl.appendChild(empty);
+      }
+    }
+
+    function loadFlink() {
+      flinkRunning.innerHTML = '<div class="k8s-muted">Loading running jobs…</div>';
+      flinkListEl.innerHTML = '<div class="k8s-muted">Loading…</div>';
+      request(UI_API + '/flink/applications')
+        .then(function (applications) {
+          flinkApps = applications;
+          renderFlink();
+        })
+        .catch(function (error) {
+          showError(flinkListEl, error);
+        });
+    }
+    flinkSearch.addEventListener('input', function () {
+      saveFlink();
+      renderFlink();
+    });
+    flinkState.addEventListener('change', function () {
+      saveFlink();
+      renderFlink();
+    });
+    if (refreshFlink) {
+      refreshFlink.addEventListener('click', loadFlink);
+    }
+
+    // Restore each tab's saved filters, then open the tab named in the URL (the
+    // server already rendered it active), which triggers its first load.
+    restoreSpark();
+    restoreFlink();
+    var initialType =
+      new URLSearchParams(window.location.search).get('type') === 'flink' ? 'flink' : 'spark';
+    showJobsTab(initialType);
   }
 
   function pad(value) {

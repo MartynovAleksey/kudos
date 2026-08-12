@@ -141,7 +141,7 @@ class UiPageRenderingTests {
   @Test
   @WithMockUser(username = "admin", authorities = "ROLE_ADMINISTRATOR")
   void jobsBrowserRenders() throws Exception {
-    assertPageRenders("/jobs", "Spark Jobs", "jobList", "jobPager", "jobRange");
+    assertPageRenders("/jobs", "flinkJobsTab", "jobList", "jobPager", "jobRange");
   }
 
   @Test
@@ -165,6 +165,26 @@ class UiPageRenderingTests {
         "/jobs/local-1234567890",
         "/spark-ui/history/local-1234567890/jobs/",
         "/spark-ui/api/v1/applications/local-1234567890/logs");
+  }
+
+  @Test
+  @WithMockUser(username = "admin", authorities = "ROLE_ADMINISTRATOR")
+  void flinkJobEmbedsTheProxiedUiInTheKudosChrome() throws Exception {
+    assertPageRenders(
+        "/flink/jobmanager/abc123", "/flink-ui/jobmanager/?embedded#/job/running/abc123/overview");
+  }
+
+  @Test
+  @WithMockUser(username = "admin", authorities = "ROLE_ADMINISTRATOR")
+  void completedFlinkJobDeepLinksToTheHistoryRoute() throws Exception {
+    assertPageRenders(
+        "/flink/history/abc123", "/flink-ui/history/?embedded#/job/completed/abc123/overview");
+  }
+
+  @Test
+  @WithMockUser("some.analyst")
+  void userCannotOpenAFlinkJob() throws Exception {
+    mockMvc.perform(get("/flink/history/abc123")).andExpect(status().isForbidden());
   }
 
   private void assertPageRenders(String path, String... expected) throws Exception {

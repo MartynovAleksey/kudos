@@ -26,6 +26,7 @@ import com.kudos.ui.security.RoleAccess;
 import com.kudos.ui.service.SparkApplication;
 import com.kudos.ui.service.SparkApplicationAccessService;
 import com.kudos.ui.service.SparkHistoryService;
+import com.kudos.ui.service.FlinkService;
 import com.kudos.ui.service.KyuubiService;
 import java.io.ByteArrayInputStream;
 import java.net.HttpURLConnection;
@@ -49,9 +50,11 @@ class SparkUiProxyControllerTests {
     when(upstream.getResponseCode()).thenReturn(200);
     when(upstream.getInputStream())
         .thenReturn(new ByteArrayInputStream("spark-ui".getBytes(StandardCharsets.UTF_8)));
-    var access = new SparkApplicationAccessService(history, mock(KyuubiService.class), new RoleAccess());
+    var access =
+        new SparkApplicationAccessService(
+            history, mock(KyuubiService.class), mock(FlinkService.class), new RoleAccess());
     return new SparkUiProxyController(
-        new ClusterProperties("", "", "", "", "", "", "http://spark-history", ""), access) {
+        new ClusterProperties("", "", "", "", "", "", "http://spark-history", "", "", ""), access) {
       @Override
       HttpURLConnection open(URL target) {
         return upstream;

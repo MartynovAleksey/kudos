@@ -96,6 +96,11 @@ public class ClusterController {
     return sparkAccess.applications(authentication, limit, minDate, user);
   }
 
+  @GetMapping("/flink/applications")
+  List<SparkApplication> flinkApplications(Authentication authentication) throws Exception {
+    return sparkAccess.flinkApplications(authentication);
+  }
+
   @GetMapping("/hdfs")
   String hdfs(@RequestParam(defaultValue = "/") String path) throws Exception {
     return hdfs.list(path);

@@ -176,6 +176,76 @@
   color: #0b7fad;
 }
 
+/* Keep every tool's title bar the same height as the editor and jobs bars. The
+   file/Ozone/HBase browsers add action buttons after the title; as a full-width
+   block the title ul pushed them onto a second row, making the bar taller. One
+   flex row keeps the title/tabs at the left and the buttons at the right, at the
+   reference height. */
+.hue-title-bar .navbar-inner .container-fluid {
+  display: flex;
+  align-items: center;
+}
+/* The Bootstrap clearfix ::before/::after pseudo-elements would otherwise count
+   as flex items and, together with the right-pushed buttons, spread the title
+   and buttons to the centre. Drop them so only the real children remain. */
+.hue-title-bar .navbar-inner .container-fluid::before,
+.hue-title-bar .navbar-inner .container-fluid::after {
+  content: none;
+}
+.hue-title-bar .navbar-inner .container-fluid > .pull-right {
+  margin-left: auto;
+  padding: 0;
+}
+
+/* Application-type tabs in the jobs title bar, matching Hue's job browser: the
+   title and every tab share one 40px row; an inactive tab is Hue blue with no
+   background, the active one is dark text on a light-grey box that fills the
+   row. The full .hue-title-bar .navbar-inner prefix is needed to outrank Hue's
+   own `.navbar .navbar-inner ul.nav li a` padding, which otherwise makes the
+   tabs overflow the row and sit lower than the title. */
+.hue-title-bar .navbar-inner .k8s-jobs-nav {
+  display: flex;
+  align-items: stretch;
+  height: 49px;
+  margin: 0;
+  padding: 0;
+}
+.hue-title-bar .navbar-inner .k8s-jobs-nav > li {
+  float: none;
+  list-style: none;
+  display: flex;
+  margin: 0;
+}
+.hue-title-bar .navbar-inner .k8s-jobs-nav .app-header {
+  display: flex;
+  align-items: center;
+  height: 49px;
+  margin: 0 12px 0 0;
+  padding: 0;
+}
+.hue-title-bar .navbar-inner .k8s-jobs-nav .k8s-titlebar-tab > a {
+  display: flex;
+  align-items: center;
+  height: 49px;
+  line-height: normal;
+  margin: 0;
+  padding: 0 15px;
+  color: #0b7fad;
+  font-weight: 400;
+  text-decoration: none;
+  border: 0;
+  border-radius: 0;
+}
+.hue-title-bar .navbar-inner .k8s-jobs-nav .k8s-titlebar-tab > a:hover {
+  background: #f4f5f6;
+  color: #0b7fad;
+}
+.hue-title-bar .navbar-inner .k8s-jobs-nav .k8s-titlebar-tab.active > a {
+  color: #424242;
+  background: #f1efef;
+  cursor: default;
+}
+
 /* Filter bar and pager of the jobs screen. */
 .k8s-toolbar {
   display: flex;
@@ -423,6 +493,17 @@
 
 .k8s-ticket-timer .fa {
   color: #29a7de;
+}
+
+.k8s-ticket-user {
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.k8s-ticket-divider {
+  width: 1px;
+  height: 14px;
+  background-color: rgba(255, 255, 255, 0.2);
 }
 
 .k8s-ticket-label {
@@ -887,17 +968,17 @@
 .k8s-query-actions #exportExcel {
   margin-left: auto;
 }
-.resultsContainer .k8s-output-tabs {
+.k8s-output-tabs {
   display: flex;
   margin: 0;
   padding: 0 0 0 8px;
   border-bottom: 1px solid #d6d8db;
 }
-.resultsContainer .k8s-output-tabs > li {
+.k8s-output-tabs > li {
   margin: 0 2px -1px 0;
   list-style: none;
 }
-.resultsContainer .k8s-output-tabs > li > a {
+.k8s-output-tabs > li > a {
   display: block;
   padding: 8px 16px;
   color: #5a656d;
@@ -906,7 +987,7 @@
   border-radius: 5px 5px 0 0;
   text-decoration: none;
 }
-.resultsContainer .k8s-output-tabs > li.active > a {
+.k8s-output-tabs > li.active > a {
   color: #0b7fad;
   background: #fff;
   border-bottom-color: #fff;

@@ -60,6 +60,13 @@ ozone sh bucket create /spark/eventlogs 2>/dev/null || true
 ozone sh bucket info /spark/eventlogs >/dev/null
 touch /data/ozone/.eventlogs-ready
 
+# Flink completed-job archives live in Ozone too: the JobManager writes them and
+# the History Server reads them, both as the flink principal. Grant that identity
+# ownership of the volume so it can create archive files under the bucket.
+ozone sh volume create /flink --user=flink 2>/dev/null || true
+ozone sh bucket create /flink/completed-jobs 2>/dev/null || true
+ozone sh bucket info /flink/completed-jobs >/dev/null
+
 stop_ozone() {
   ozone --daemon stop datanode
   ozone --daemon stop om

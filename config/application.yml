@@ -74,6 +74,12 @@ kudos:
     # the application stores no keytab and holds no identity of its own.
     kerberos-principal: "{user}@TEST.LOCAL"
 
+    # Flink JobManager REST for the Jobs "Running" source; blank disables it.
+    flink-jobmanager-url: http://flink-jobmanager.test.local:8081
+
+    # Flink History Server, reverse-proxied under /flink-ui for administrators.
+    flink-history-url: http://flink-history.test.local:8082
+
   # UI-level settings.
   ui:
     # Optional HTML shown as a banner across the top of every screen (like Hue's

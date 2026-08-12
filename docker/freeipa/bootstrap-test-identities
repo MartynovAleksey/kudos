@@ -70,7 +70,7 @@ ipa host-add kyuubi.test.local --force || true
 ipa service-add kyuubi/kyuubi.test.local --force || true
 
 for host in hdfs.test.local ozone.test.local hbase.test.local \
-  sparkhistory.test.local; do
+  sparkhistory.test.local flink.test.local; do
   ipa host-add "$host" --force || true
 done
 
@@ -90,6 +90,9 @@ service_principals=(
   # and REST API over SPNEGO.
   spark/sparkhistory.test.local
   HTTP/sparkhistory.test.local
+  # Flink JobManager and History Server write and read completed-job archives in
+  # Ozone under this identity.
+  flink/flink.test.local
 )
 
 for principal in "${service_principals[@]}"; do
@@ -140,6 +143,13 @@ for principal in "${service_principals[@]}"; do
       -e "${keytab_enctypes}"
   fi
 done
+
+# The Flink containers run as the unprivileged flink user (uid 9999), unlike the
+# other services that read their keytab as root. Make just the Flink keytab
+# world-readable so Flink can log in. Test-only realm; see README security notes.
+if test -s /shared/flink-flink.test.local.keytab; then
+  chmod 0644 /shared/flink-flink.test.local.keytab
+fi
 
 cat > /shared/krb5.conf <<'EOF'
 [libdefaults]

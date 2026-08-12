@@ -28,12 +28,14 @@ public class SparkApplicationAccessService {
 
   private final SparkHistoryService history;
   private final KyuubiService kyuubi;
+  private final FlinkService flink;
   private final RoleAccess roles;
 
   public SparkApplicationAccessService(
-      SparkHistoryService history, KyuubiService kyuubi, RoleAccess roles) {
+      SparkHistoryService history, KyuubiService kyuubi, FlinkService flink, RoleAccess roles) {
     this.history = history;
     this.kyuubi = kyuubi;
+    this.flink = flink;
     this.roles = roles;
   }
 
@@ -47,6 +49,20 @@ public class SparkApplicationAccessService {
                 .stream(),
             history.applications(Math.clamp(limit, 1, 5_000), minDate).stream())
         .filter(application -> filter == null || filter.isBlank() || filter.equals(application.user()))
+        .toList();
+  }
+
+  /**
+   * Flink jobs (running plus finished) for the separate Flink tab on the Jobs
+   * screen. Flink jobs carry no submitting user, so ownership cannot be checked
+   * per application; the list is therefore shown to administrators only.
+   */
+  public List<SparkApplication> flinkApplications(Authentication authentication) {
+    if (!roles.isAdministrator(authentication)) {
+      return List.of();
+    }
+    return Stream.concat(
+            flink.runningApplications().stream(), flink.completedApplications().stream())
         .toList();
   }
 

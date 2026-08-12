@@ -57,8 +57,13 @@ public class WebConfig implements WebMvcConfigurer {
         .addResourceLocations("classpath:/hue-upstream/desktop/static/")
         .setCacheControl(CacheControl.maxAge(Duration.ofDays(7)).cachePublic());
     registry
+        // The application's own CSS/JS/assets are not content-hashed, so a
+        // long max-age would leave browsers on a stale build (visual defects)
+        // for up to that window after a deploy. no-cache keeps them cached but
+        // revalidated on every load: unchanged files answer 304 from
+        // Last-Modified, a new build is picked up immediately.
         .addResourceHandler("/static/app/**")
         .addResourceLocations("classpath:/app-static/")
-        .setCacheControl(CacheControl.maxAge(Duration.ofHours(1)).cachePublic());
+        .setCacheControl(CacheControl.noCache());
   }
 }
