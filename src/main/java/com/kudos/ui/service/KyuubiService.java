@@ -41,10 +41,13 @@ import org.apache.hive.service.rpc.thrift.TSessionHandle;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.context.annotation.Primary;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /** Runs Spark SQL through Kyuubi and manages each user's sessions. */
 @Service
-public class KyuubiService implements SqlEngine {
+@Primary
+public class KyuubiService implements KyuubiSqlEngine {
 
   private static final int MAX_SESSIONS_PER_USER = 5;
   private static final int MAX_MONITORED_OPERATIONS = 20;
@@ -52,25 +55,53 @@ public class KyuubiService implements SqlEngine {
   private final ClusterProperties properties;
   private final KerberosExecutor kerberos;
   private final KyuubiRestClient rest;
+  private final SqlQueryHistory history;
+  private final String engineId;
+  private final String engineName;
+  private final String engineType;
   private final Map<String, UserSessions> byUser = new ConcurrentHashMap<>();
 
+  @Autowired
   public KyuubiService(
-      ClusterProperties properties, KerberosExecutor kerberos, KyuubiRestClient rest) {
+      ClusterProperties properties,
+      KerberosExecutor kerberos,
+      KyuubiRestClient rest,
+      SqlQueryHistory history) {
+    this(properties, kerberos, rest, history, "kyuubi", "Kyuubi Spark SQL", "SPARK_SQL");
+  }
+
+  /** Convenience constructor for focused tests outside Spring's application context. */
+  public KyuubiService(ClusterProperties properties, KerberosExecutor kerberos, KyuubiRestClient rest) {
+    this(properties, kerberos, rest, new SqlQueryHistory(), "kyuubi", "Kyuubi Spark SQL", "SPARK_SQL");
+  }
+
+  protected KyuubiService(
+      ClusterProperties properties,
+      KerberosExecutor kerberos,
+      KyuubiRestClient rest,
+      SqlQueryHistory history,
+      String engineId,
+      String engineName,
+      String engineType) {
     this.properties = properties;
     this.kerberos = kerberos;
     this.rest = rest;
+    this.history = history;
+    this.engineId = engineId;
+    this.engineName = engineName;
+    this.engineType = engineType;
   }
 
   // --------------------------------------------------------------- queries
 
   @Override
   public String id() {
-    return "kyuubi";
+    return engineId;
   }
 
   @Override
   public String displayName() {
-    return "Kyuubi Spark SQL";
+    return engineName;
   }
 
   @Override
@@ -80,51 +111,76 @@ public class KyuubiService implements SqlEngine {
 
   @Override
   public List<Map<String, Object>> query(String sql) throws Exception {
+    String historyId = history.start(id(), sql);
     KyuubiSession session = activeSession();
-    if (session != null) {
-      synchronized (session) {
-        try (Statement statement = session.requireConnection().createStatement();
-            ResultSet resultSet = statement.executeQuery(sql)) {
-          return SqlResults.toRows(resultSet);
+    try {
+      if (session != null) {
+        synchronized (session) {
+          try (Statement statement = session.requireConnection().createStatement();
+              ResultSet resultSet = statement.executeQuery(sql)) {
+            List<Map<String, Object>> rows = SqlResults.toRows(resultSet);
+            history.finish(id(), historyId, queryLogs(statement));
+            return rows;
+          }
         }
       }
+      return kerberos.asLoggedInUser(
+          () -> {
+            try (Connection connection = openKyuubiConnection(perQueryUrl());
+                Statement statement = connection.createStatement();
+                ResultSet resultSet = statement.executeQuery(sql)) {
+              List<Map<String, Object>> rows = SqlResults.toRows(resultSet);
+              history.finish(id(), historyId, queryLogs(statement));
+              return rows;
+            }
+          });
+    } catch (Exception error) {
+      history.fail(id(), historyId, error);
+      throw error;
     }
-    return kerberos.asLoggedInUser(
-        () -> {
-          try (Connection connection = openKyuubiConnection(properties.kyuubiUrl());
-              Statement statement = connection.createStatement();
-              ResultSet resultSet = statement.executeQuery(sql)) {
-            return SqlResults.toRows(resultSet);
-          }
-        });
   }
 
   /** Same query path, shaped for the editor's result grid. */
   @Override
   public QueryResult execute(String sql, int maxRows) throws Exception {
+    String historyId = history.start(id(), sql);
     KyuubiSession session = activeSession();
-    if (session != null) {
-      synchronized (session) {
-        try (Statement statement = session.requireConnection().createStatement()) {
-          String operationId = session.beginOperation(sql);
-          try {
+    try {
+      if (session != null) {
+        synchronized (session) {
+          String operationId = null;
+          try (Statement statement = session.requireConnection().createStatement()) {
+            operationId = session.beginOperation(sql);
             QueryResult result = SqlResults.run(statement, sql, maxRows);
             session.finishOperation(operationId, statement, null);
-            return result;
+            QueryResult withLogs =
+                new QueryResult(result.columns(), result.rows(), result.message(), queryLogs(statement));
+            history.finish(id(), historyId, withLogs.logs());
+            session.rememberResult(withLogs);
+            return withLogs;
           } catch (Exception error) {
-            session.finishOperation(operationId, statement, error);
+            if (operationId != null) {
+              session.finishOperation(operationId, null, error);
+            }
             throw error;
           }
         }
       }
+      return kerberos.asLoggedInUser(
+          () -> {
+            try (Connection connection = openKyuubiConnection(perQueryUrl());
+                Statement statement = connection.createStatement()) {
+              QueryResult result = SqlResults.run(statement, sql, maxRows);
+              QueryResult withLogs =
+                  new QueryResult(result.columns(), result.rows(), result.message(), queryLogs(statement));
+              history.finish(id(), historyId, withLogs.logs());
+              return withLogs;
+            }
+          });
+    } catch (Exception error) {
+      history.fail(id(), historyId, error);
+      throw error;
     }
-    return kerberos.asLoggedInUser(
-        () -> {
-          try (Connection connection = openKyuubiConnection(properties.kyuubiUrl());
-              Statement statement = connection.createStatement()) {
-            return SqlResults.run(statement, sql, maxRows);
-          }
-        });
   }
 
   // -------------------------------------------------------------- sessions
@@ -211,9 +267,24 @@ public class KyuubiService implements SqlEngine {
       restarted = new KyuubiSession(id, existing.name, params);
       user.sessions.put(id, restarted);
     }
-    closeAsync(existing);
+    close(existing);
     launch(restarted, authentication);
     return restarted.toInfo(id.equals(user.activeId));
+  }
+
+  @Override
+  public QueryResult lastResult(String id) {
+    KyuubiSession session = session(id);
+    return session == null ? null : session.lastResult();
+  }
+
+  @Override
+  public void clearResult(String id) {
+    KyuubiSession session = session(id);
+    if (session == null) {
+      throw new IllegalArgumentException("No such session");
+    }
+    session.clearResult();
   }
 
   public void activate(String id) {
@@ -224,6 +295,16 @@ public class KyuubiService implements SqlEngine {
     synchronized (user) {
       if (user.sessions.containsKey(id)) {
         user.activeId = id;
+      }
+    }
+  }
+
+  @Override
+  public void deactivate() {
+    UserSessions user = byUser.get(currentUser());
+    if (user != null) {
+      synchronized (user) {
+        user.activeId = null;
       }
     }
   }
@@ -286,7 +367,7 @@ public class KyuubiService implements SqlEngine {
       Connection connection =
           kerberos.asLoggedInUser(
               () -> openKyuubiConnection(sessionUrl(session.sparkParams, engineId)));
-      session.attach(connection, kyuubiSessionId(connection));
+      session.attach(connection, kyuubiSessionId(connection), engineName);
       if (session.stopped) {
         close(session);
         return;
@@ -350,8 +431,10 @@ public class KyuubiService implements SqlEngine {
 
   /** Appends CONNECTION share level and the user's Spark params to the base URL. */
   private String sessionUrl(String sparkParams, String engineId) {
-    StringBuilder confs = new StringBuilder("kyuubi.engine.share.level=CONNECTION");
+    StringBuilder confs =
+        new StringBuilder("kyuubi.engine.share.level=CONNECTION;kyuubi.engine.type=").append(engineType);
     boolean driverOptionsSet = false;
+    boolean eventLogEnabledSet = false;
     if (sparkParams != null) {
       for (String line : sparkParams.split("\\r?\\n")) {
         String trimmed = line.trim();
@@ -367,19 +450,30 @@ public class KyuubiService implements SqlEngine {
         }
         String key = trimmed.substring(0, separator).trim();
         String value = trimmed.substring(separator + 1).trim();
-        if (key.equals("spark.driver.extraJavaOptions")) {
+        if ("SPARK_SQL".equals(engineType) && key.equals("spark.driver.extraJavaOptions")) {
           value += " -Dderby.system.home=/tmp/kudos-metastore-" + engineId;
           driverOptionsSet = true;
+        }
+        if ("SPARK_SQL".equals(engineType) && key.equals("spark.eventLog.enabled")) {
+          eventLogEnabledSet = true;
         }
         confs.append(';').append(key).append('=').append(value);
       }
     }
-    if (!driverOptionsSet) {
+    if ("SPARK_SQL".equals(engineType) && !eventLogEnabledSet) {
+      // The app keeps the caller's Kerberos ticket in memory; Spark's child process cannot use it.
+      confs.append(";spark.eventLog.enabled=false");
+    }
+    if ("SPARK_SQL".equals(engineType) && !driverOptionsSet) {
       confs
           .append(";spark.driver.extraJavaOptions=-Dderby.system.home=/tmp/kudos-metastore-")
           .append(engineId);
     }
     return properties.kyuubiUrl() + "?" + confs;
+  }
+
+  private String perQueryUrl() {
+    return sessionUrl("", UUID.randomUUID().toString());
   }
 
   private static String kyuubiSessionId(Connection connection) throws Exception {
@@ -490,6 +584,7 @@ public class KyuubiService implements SqlEngine {
     private volatile KyuubiRestClient.Snapshot lastSnapshot;
     private volatile List<KyuubiOperationInfo> operations = List.of();
     private volatile List<String> logs = List.of();
+    private volatile QueryResult lastResult;
 
     private KyuubiSession(String id, String name, String sparkParams) {
       this.id = id;
@@ -497,11 +592,11 @@ public class KyuubiService implements SqlEngine {
       this.sparkParams = sparkParams;
     }
 
-    private void attach(Connection connection, String kyuubiSessionId) {
+    private void attach(Connection connection, String kyuubiSessionId, String engineName) {
       this.connection = connection;
       this.kyuubiSessionId = kyuubiSessionId;
       this.state = State.ENGINE_STARTING;
-      this.message = "Kyuubi session opened; starting Spark engine";
+      this.message = "Kyuubi session opened; starting " + engineName + " engine";
     }
 
     private void ready() {
@@ -630,6 +725,18 @@ public class KyuubiService implements SqlEngine {
       if (!fetched.isEmpty()) {
         logs = fetched;
       }
+    }
+
+    private QueryResult lastResult() {
+      return lastResult;
+    }
+
+    private void rememberResult(QueryResult result) {
+      lastResult = result;
+    }
+
+    private void clearResult() {
+      lastResult = null;
     }
 
     private KyuubiSessionInfo toInfo(boolean active) {

@@ -27,7 +27,9 @@ import com.kudos.ui.service.SparkApplication;
 import com.kudos.ui.service.SparkApplicationAccessService;
 import com.kudos.ui.service.SparkHistoryService;
 import com.kudos.ui.service.FlinkService;
+import com.kudos.ui.service.KyuubiFlinkService;
 import com.kudos.ui.service.KyuubiService;
+import com.kudos.ui.service.SqlQueryHistory;
 import java.io.ByteArrayInputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -52,7 +54,12 @@ class SparkUiProxyControllerTests {
         .thenReturn(new ByteArrayInputStream("spark-ui".getBytes(StandardCharsets.UTF_8)));
     var access =
         new SparkApplicationAccessService(
-            history, mock(KyuubiService.class), mock(FlinkService.class), new RoleAccess());
+            history,
+            mock(KyuubiService.class),
+            mock(KyuubiFlinkService.class),
+            mock(SqlQueryHistory.class),
+            mock(FlinkService.class),
+            new RoleAccess());
     return new SparkUiProxyController(
         new ClusterProperties(
             "", "", "", "", "", "", "", "", "http://spark-history", "", "", ""), access) {

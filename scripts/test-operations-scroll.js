@@ -89,6 +89,7 @@ const context = {
   encodeURIComponent,
   element: (tagName, attributes) => new Element(tagName, attributes),
   formatDate: () => '',
+  sessionApi: (path) => '/ui-api/sessions' + path,
   text: (value) => ({ textContent: String(value) }),
   button: (label) => new Element('button', { text: label }),
   query: { value: '' },
@@ -161,6 +162,14 @@ const sessionTabs = source.slice(sessionsStart, sessionsEnd);
 assert.doesNotMatch(sessionTabs, /kyuubiSessionId|k8s-session-id/,
   'Идентификатор Kyuubi не должен отображаться в имени вкладки');
 assert.match(sessionTabs, /k8s-session-indicator/, 'На вкладке нет индикатора состояния');
+assert.match(sessionTabs, /perQueryTab\.addEventListener\('click', deactivateSession\)/,
+  'Вкладка per-query не переключается по всей площади');
+assert.match(sessionTabs, /tab\.addEventListener\('click', function \(\) \{ activateSession\(session\); \}\)/,
+  'Вкладка сессии не переключается по всей площади');
+assert.match(sessionTabs, /event\.stopPropagation\(\);\s+restartSession\(session\);/,
+  'Перезапуск сессии должен оставаться отдельным действием');
+assert.match(sessionTabs, /button\('Restart', 'k8s-session-tab-action k8s-session-tab-restart'/,
+  'На вкладке нет явной кнопки перезапуска');
 console.log('PASS Session tabs show a status indicator without session ID');
 
 const resultStart = source.indexOf('    function storedResult(');
@@ -203,6 +212,20 @@ assert.match(
 );
 console.log('PASS Editor result is retained during tool navigation');
 
+assert.match(source, /function loadSessionResult\(session\)/,
+  'Нет восстановления результата Kyuubi-сессии после возврата в Editor');
+assert.match(source, /loadSessionResult\(active\);/,
+  'Сохранённый сервером результат не загружается для активной Kyuubi-сессии');
+assert.match(source, /\/result'\), \{ method: 'DELETE' \}/,
+  'Очистка результата не удаляет сохранённый результат Kyuubi-сессии');
+console.log('PASS Completed Kyuubi result is restored after navigation');
+
+assert.match(styles, /\.k8s-session-perquery \.k8s-session-tab-label\s*\{\s*width: 100%;[\s\S]*pointer-events: none;/,
+  'Область клика per-query не растянута на всю вкладку');
+assert.match(styles, /\.k8s-session-tab\s*\{[\s\S]*cursor: pointer;/,
+  'Вкладка сессии не обозначена как целиком кликабельная');
+console.log('PASS Session tab click targets cover the entire tab');
+
 assert.match(source, /data-sql-engine/, 'В редакторе отсутствуют вкладки SQL-движков');
 assert.match(source, /engineTabs\.forEach\(function \(tab\) \{\s+tab\.addEventListener\('click'/,
   'Вкладки SQL-движков не переключаются по клику');
@@ -210,8 +233,8 @@ assert.match(source, /tab\.parentElement\.classList\.toggle\('active', active\)/
   'Активная вкладка SQL-движка не оформляется как вкладка Jobs');
 assert.match(styles, /\.k8s-session-bar\.k8s-hidden\s*\{\s*display:\s*none;/,
   'Панель Kyuubi-сессий остаётся видимой во вкладке Trino');
-assert.match(source, /UI_API \+ '\/trino\/history'/,
-  'История запросов Trino не загружается');
-assert.match(source, /logsTabItem'\)\.classList\.toggle\('k8s-hidden', logs\.length === 0\)/,
-  'Вкладка логов Trino не зависит от логов драйвера');
+assert.match(source, /UI_API \+ '\/sql\/history\?engine=' \+ encodeURIComponent\(engine\)/,
+  'История запросов SQL-движка не загружается');
+assert.match(source, /logsTabItem'\)\.classList\.toggle\('k8s-hidden', !supportsSessions && !hasHistory\)/,
+  'Вкладка логов не скрывается только для движков без логов');
 console.log('PASS Editor engine tabs switch with the Jobs tab pattern');

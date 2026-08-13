@@ -72,7 +72,7 @@ class TrinoServiceTests {
     return new TrinoService(
         new ClusterProperties("", "", "", "jdbc:trino://test", "", "", "", "", "", "", "", ""),
         kerberos,
-        new TrinoQueryHistory()) {
+        new SqlQueryHistory()) {
       @Override
       Connection openConnection() {
         return connection;

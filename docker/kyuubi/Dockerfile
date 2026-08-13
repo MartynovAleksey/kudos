@@ -18,6 +18,8 @@
 # The Ozone filesystem jar is taken from the same Ozone build the stack runs,
 # so the ofs:// client and the servers can never drift apart.
 FROM apache/ozone:2.0.0 AS ozone
+FROM apache/hadoop:3.4.2 AS hadoop
+FROM flink:1.20 AS flink
 
 FROM apache/kyuubi:1.10.1-spark
 
@@ -41,14 +43,27 @@ COPY --from=ozone \
   /opt/hadoop/share/ozone/lib/ozone-filesystem-hadoop3-client-2.0.0.jar \
   /tmp/ozone-filesystem-hadoop3.jar
 COPY ozone/ozone-site.xml /tmp/ozone-site.xml
+COPY --from=flink /opt/flink /opt/flink
+COPY --from=hadoop /opt/hadoop /opt/hadoop
 RUN set -eux; \
     spark_home="$(echo /opt/kyuubi/externals/spark-*-bin-hadoop3)"; \
     test -d "$spark_home/jars"; \
     mv /tmp/ozone-filesystem-hadoop3.jar "$spark_home/jars/"; \
-    cp /tmp/ozone-site.xml /opt/kyuubi/conf/core-site.xml "$spark_home/conf/"; \
+    cp /tmp/ozone-site.xml /opt/kyuubi/conf/core-site.xml; \
+    cp /tmp/ozone-site.xml "$spark_home/conf/"; \
+    cp /tmp/ozone-site.xml /opt/flink/conf/; \
     rm -f /tmp/ozone-site.xml; \
+    sed -i 's/^    address: localhost$/    address: flink-jobmanager.test.local/' /opt/flink/conf/config.yaml; \
+    sed -i 's/^  address: 0.0.0.0$/  address: flink-jobmanager.test.local/' /opt/flink/conf/config.yaml; \
+    sed -i '/^rest:$/a\  port: 8081' /opt/flink/conf/config.yaml; \
+    mkdir -p /opt/kyuubi/externals/engines/flink/scala-2.12; \
+    ln -s /opt/flink/lib /opt/kyuubi/externals/engines/flink/scala-2.12/jars; \
     chmod 0755 /opt/kyuubi/bin/start-kerberos-kyuubi; \
-    chown -R 10009:root /opt/kyuubi/conf "$spark_home/conf" "$spark_home/jars"
+    chown -R 10009:root /opt/kyuubi/conf "$spark_home/conf" "$spark_home/jars" /opt/flink /opt/hadoop
 
 USER 10009
+ENV FLINK_HOME=/opt/flink
+ENV HADOOP_HOME=/opt/hadoop
+ENV HADOOP_CONF_DIR=/opt/hadoop/etc/hadoop
+ENV FLINK_HADOOP_CLASSPATH=/opt/hadoop/share/hadoop/common/*:/opt/hadoop/share/hadoop/common/lib/*:/opt/hadoop/share/hadoop/hdfs/*:/opt/hadoop/share/hadoop/hdfs/lib/*:/opt/hadoop/share/hadoop/yarn/*:/opt/hadoop/share/hadoop/yarn/lib/*:/opt/hadoop/share/hadoop/mapreduce/*:/opt/hadoop/share/hadoop/mapreduce/lib/*
 ENTRYPOINT ["/opt/kyuubi/bin/start-kerberos-kyuubi"]

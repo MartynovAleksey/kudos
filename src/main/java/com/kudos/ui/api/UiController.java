@@ -129,13 +129,14 @@ public class UiController {
   /**
    * Embeds a Flink job's dashboard inside the KUDOS chrome, mirroring the Spark
    * job page. {@code scope} selects the proxied upstream: {@code jobmanager} for
-   * a running job, {@code history} for a finished one. Flink jobs are not owned
-   * by a KUDOS user, so this is administrator-only like the proxy itself.
+   * a running job, {@code history} for a finished one. Kyuubi FLINK_SQL jobs use
+   * the job-id stored in that user's query history; standalone jobs remain
+   * administrator-only.
    */
   @GetMapping("/flink/{scope}/{jid}")
   String flinkJob(
       @PathVariable String scope, @PathVariable String jid, Model model, Authentication authentication) {
-    if (!sparkAccess.isAdministrator(authentication)) {
+    if (!sparkAccess.canOpenFlinkJob(authentication, jid)) {
       throw new ResponseStatusException(HttpStatus.FORBIDDEN);
     }
     if (!scope.equals("jobmanager") && !scope.equals("history")) {

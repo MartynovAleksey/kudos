@@ -82,6 +82,8 @@ services:
       # Engines write their event logs to Ozone from the first query onwards.
       ozone:
         condition: service_healthy
+      flink-jobmanager:
+        condition: service_healthy
     volumes:
       - kerberos-shared:/shared:ro
     ports:
@@ -297,7 +299,9 @@ services:
     environment:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager.test.local
-        taskmanager.numberOfTaskSlots: 2
+        # Kyuubi FLINK_SQL keeps two slots while the session engine is active;
+        # reserve two more for the query job itself.
+        taskmanager.numberOfTaskSlots: 4
     volumes:
       - kerberos-shared:/shared:ro
     networks:

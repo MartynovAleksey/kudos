@@ -28,6 +28,10 @@ public interface SqlEngine {
 
   boolean supportsSessions();
 
+  default boolean supportsHistory() {
+    return false;
+  }
+
   QueryResult execute(String sql, int maxRows) throws Exception;
 
   List<Map<String, Object>> query(String sql) throws Exception;

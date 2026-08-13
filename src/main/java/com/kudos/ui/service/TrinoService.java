@@ -34,10 +34,10 @@ public class TrinoService implements SqlEngine {
 
   private final ClusterProperties properties;
   private final KerberosExecutor kerberos;
-  private final TrinoQueryHistory history;
+  private final SqlQueryHistory history;
 
   public TrinoService(
-      ClusterProperties properties, KerberosExecutor kerberos, TrinoQueryHistory history) {
+      ClusterProperties properties, KerberosExecutor kerberos, SqlQueryHistory history) {
     this.properties = properties;
     this.kerberos = kerberos;
     this.history = history;
@@ -59,18 +59,23 @@ public class TrinoService implements SqlEngine {
   }
 
   @Override
+  public boolean supportsHistory() {
+    return true;
+  }
+
+  @Override
   public QueryResult execute(String sql, int maxRows) throws Exception {
     return kerberos.asLoggedInUser(
         () -> {
-          String historyId = history.start(sql);
+          String historyId = history.start(id(), sql);
           try (Connection connection = openConnection();
               Statement statement = connection.createStatement()) {
             QueryResult result = SqlResults.run(statement, sql, maxRows);
             List<String> logs = warnings(statement);
-            history.finish(historyId, logs);
+            history.finish(id(), historyId, logs);
             return new QueryResult(result.columns(), result.rows(), result.message(), logs);
           } catch (Exception error) {
-            history.fail(historyId, error);
+            history.fail(id(), historyId, error);
             throw error;
           }
         });

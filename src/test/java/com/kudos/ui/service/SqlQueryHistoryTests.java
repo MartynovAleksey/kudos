@@ -24,7 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
-class TrinoQueryHistoryTests {
+class SqlQueryHistoryTests {
 
   @AfterEach
   void clearSecurityContext() {
@@ -32,23 +32,25 @@ class TrinoQueryHistoryTests {
   }
 
   @Test
-  void keepsQueriesAndWarningsForTheAuthenticatedUser() {
-    TrinoQueryHistory history = new TrinoQueryHistory();
+  void keepsLogsAndCompactsConsecutiveQueriesPerUserAndEngine() {
+    SqlQueryHistory history = new SqlQueryHistory();
     SecurityContextHolder.getContext()
         .setAuthentication(new UsernamePasswordAuthenticationToken("alice", "n/a"));
 
-    String id = history.start("SELECT 1");
-    history.finish(id, List.of("Trino warning"));
+    String first = history.start("trino", "SELECT 1");
+    history.finish("trino", first, List.of("Trino warning"));
+    String second = history.start("trino", " SELECT   1 ");
+    history.finish("trino", second, List.of());
 
-    TrinoQueryInfo entry = history.entries().getFirst();
-    assertThat(entry.id()).isEqualTo(id);
-    assertThat(entry.statement()).isEqualTo("SELECT 1");
-    assertThat(entry.state()).isEqualTo("FINISHED");
-    assertThat(entry.logs()).containsExactly("Trino warning");
-    assertThat(history.sql(id)).isEqualTo("SELECT 1");
+    SqlQueryInfo entry = history.entries("trino").getFirst();
+    assertThat(entry.id()).isEqualTo(second);
+    assertThat(entry.executionCount()).isEqualTo(2);
+    assertThat(entry.logs()).isEmpty();
+    assertThat(history.sql("trino", second)).isEqualTo(" SELECT   1 ");
+    assertThat(history.entries("starrocks")).isEmpty();
 
     SecurityContextHolder.getContext()
         .setAuthentication(new UsernamePasswordAuthenticationToken("bob", "n/a"));
-    assertThat(history.entries()).isEmpty();
+    assertThat(history.entries("trino")).isEmpty();
   }
 }

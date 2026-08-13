@@ -22,7 +22,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.kudos.ui.service.SparkApplication;
+import com.kudos.ui.service.FlinkService;
 import com.kudos.ui.service.SparkHistoryService;
+import com.kudos.ui.service.KyuubiFlinkService;
 import com.kudos.ui.service.KyuubiService;
 import java.util.List;
 import java.util.Optional;
@@ -47,6 +49,8 @@ class JobsRoleIntegrationTests {
 
   @MockitoBean SparkHistoryService history;
   @MockitoBean KyuubiService kyuubi;
+  @MockitoBean KyuubiFlinkService kyuubiFlink;
+  @MockitoBean FlinkService flink;
 
   @Test
   void userCannotUseAHandCraftedOwnerFilterAndCanOpenOnlyOwnJob() throws Exception {
@@ -104,6 +108,18 @@ class JobsRoleIntegrationTests {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$[0].id").value("completed"))
         .andExpect(jsonPath("$[0].completed").value(true));
+  }
+
+  @Test
+  void userSeesOwnLiveKyuubiFlinkEngine() throws Exception {
+    SparkApplication engine = application("kyuubi-flink-analyst", "analyst", false);
+    when(kyuubiFlink.runningApplications()).thenReturn(List.of(engine));
+
+    mockMvc
+        .perform(get("/ui-api/flink/applications").session(session("analyst", "ROLE_USER")))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$[0].id").value("kyuubi-flink-analyst"))
+        .andExpect(jsonPath("$[0].user").value("analyst"));
   }
 
   private static SparkApplication application(String id, String user, boolean completed) {

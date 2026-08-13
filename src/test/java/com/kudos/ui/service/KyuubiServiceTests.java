@@ -134,6 +134,9 @@ class KyuubiServiceTests {
                 assertTrue(
                     url.contains(
                         "spark.driver.extraJavaOptions=-Dderby.system.home=/tmp/kudos-metastore-")));
+    urls
+        .getAllValues()
+        .forEach(url -> assertTrue(url.contains("spark.eventLog.enabled=false")));
   }
 
   @Test
@@ -148,12 +151,14 @@ class KyuubiServiceTests {
         .setAuthentication(
             new UsernamePasswordAuthenticationToken("analyst", "", List.of()));
 
+    SqlQueryHistory history = new SqlQueryHistory();
     KyuubiService service =
         new KyuubiService(
             new ClusterProperties(
                 "", "jdbc:kyuubi-test:", "", "", "", "", "", "", "", "", "", ""),
             passthroughKerberos(),
-            mock(KyuubiRestClient.class));
+            mock(KyuubiRestClient.class),
+            history);
     KyuubiSessionInfo started = service.start("history", "");
     awaitReady(service, started.id());
 
@@ -165,6 +170,10 @@ class KyuubiServiceTests {
     service.execute(" SELECT 42 ", 10);
     service.execute("SELECT   42", 10);
 
+    assertEquals(List.of(List.of(42)), service.lastResult(started.id()).rows());
+    service.clearResult(started.id());
+    assertEquals(null, service.lastResult(started.id()));
+
     KyuubiOperationInfo operation = service.monitor(started.id()).operations().getFirst();
     assertEquals(1, service.monitor(started.id()).operations().size());
     assertEquals(2, operation.executionCount());
@@ -173,6 +182,8 @@ class KyuubiServiceTests {
     service.executeOperation(started.id(), operation.id(), 10);
     KyuubiOperationInfo rerun = service.monitor(started.id()).operations().getFirst();
     assertEquals(3, rerun.executionCount());
+    assertEquals("FINISHED", history.entries("kyuubi").getFirst().state());
+    assertEquals(3, history.entries("kyuubi").getFirst().executionCount());
   }
 
   @Test
@@ -198,6 +209,61 @@ class KyuubiServiceTests {
 
     assertTrue(service.sessions().isEmpty());
     assertTrue(service.runningApplications().isEmpty());
+  }
+
+  @Test
+  void restartClosesTheOldEngineBeforeOpeningTheReplacement() throws Exception {
+    HiveConnection oldConnection = connection(UUID.randomUUID());
+    HiveConnection replacementConnection = connection(UUID.randomUUID());
+    driver = mock(Driver.class);
+    when(driver.connect(any(), any())).thenReturn(oldConnection, replacementConnection);
+    DriverManager.registerDriver(driver);
+    SecurityContextHolder.getContext()
+        .setAuthentication(new UsernamePasswordAuthenticationToken("analyst", "", List.of()));
+
+    KyuubiService service =
+        new KyuubiService(
+            new ClusterProperties(
+                "", "jdbc:kyuubi-test:", "", "", "", "", "", "", "", "", "", ""),
+            passthroughKerberos(),
+            mock(KyuubiRestClient.class));
+    KyuubiSessionInfo started = service.start("restart", "");
+    awaitReady(service, started.id());
+
+    KyuubiSessionInfo restarted = service.restart(started.id(), "spark.executor.cores=2");
+    KyuubiSessionInfo ready = awaitReady(service, restarted.id());
+
+    assertEquals(started.id(), restarted.id());
+    assertEquals("spark.executor.cores=2", ready.sparkParams());
+    verify(oldConnection).close();
+  }
+
+  @Test
+  void flinkSessionsUseTheFlinkSqlEngineAndCanSwitchBackToPerQueryMode() throws Exception {
+    HiveConnection connection = connection(UUID.randomUUID());
+    driver = mock(Driver.class);
+    when(driver.connect(any(), any())).thenReturn(connection);
+    DriverManager.registerDriver(driver);
+    SecurityContextHolder.getContext()
+        .setAuthentication(new UsernamePasswordAuthenticationToken("analyst", "", List.of()));
+
+    KyuubiFlinkService service =
+        new KyuubiFlinkService(
+            new ClusterProperties(
+                "", "jdbc:kyuubi-test:", "", "", "", "", "", "", "", "", "", ""),
+            passthroughKerberos(),
+            mock(KyuubiRestClient.class));
+    KyuubiSessionInfo started = service.start("flink", "parallelism.default=2");
+    awaitReady(service, started.id());
+    service.deactivate();
+    service.execute("SELECT 1", 10);
+
+    assertFalse(service.sessions().getFirst().active());
+    ArgumentCaptor<String> url = ArgumentCaptor.forClass(String.class);
+    verify(driver, times(2)).connect(url.capture(), any());
+    url.getAllValues().forEach(value -> assertTrue(value.contains("kyuubi.engine.type=FLINK_SQL")));
+    assertFalse(url.getAllValues().getLast().contains("spark.driver.extraJavaOptions"));
+    assertFalse(url.getAllValues().getLast().contains("spark.eventLog.enabled"));
   }
 
   private static KerberosExecutor passthroughKerberos() {

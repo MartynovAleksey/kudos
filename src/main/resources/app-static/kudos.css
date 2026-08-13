@@ -861,6 +861,7 @@
 .k8s-session-tab {
   display: flex;
   align-items: center;
+  position: relative;
   max-width: 260px;
   height: 32px;
   padding: 0 5px 0 10px;
@@ -869,6 +870,7 @@
   border-radius: 7px 7px 0 0;
   background: #e9ecef;
   color: #394047;
+  cursor: pointer;
 }
 .k8s-session-tab.k8s-session-active {
   height: 34px;
@@ -884,6 +886,10 @@
   cursor: pointer;
 }
 .k8s-session-tab-label {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
   min-width: 45px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -891,10 +897,23 @@
   text-align: left;
   font-weight: 500;
 }
+.k8s-session-perquery {
+  min-width: 58px;
+  padding: 0;
+}
+.k8s-session-perquery .k8s-session-tab-label {
+  width: 100%;
+  min-width: 0;
+  pointer-events: none;
+}
 
 .k8s-session-tab-action {
   padding: 4px;
   color: #6a7278;
+}
+.k8s-session-tab-restart {
+  font-size: 12px;
+  font-weight: 500;
 }
 .k8s-session-tab-action:hover {
   color: #0b7fad;

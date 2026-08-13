@@ -20,7 +20,9 @@ import com.kudos.ui.config.ClusterProperties;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
+import java.sql.SQLWarning;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Service;
@@ -30,9 +32,11 @@ import org.springframework.stereotype.Service;
 public class StarRocksService implements SqlEngine {
 
   private final ClusterProperties properties;
+  private final SqlQueryHistory history;
 
-  public StarRocksService(ClusterProperties properties) {
+  public StarRocksService(ClusterProperties properties, SqlQueryHistory history) {
     this.properties = properties;
+    this.history = history;
   }
 
   @Override
@@ -51,10 +55,22 @@ public class StarRocksService implements SqlEngine {
   }
 
   @Override
+  public boolean supportsHistory() {
+    return true;
+  }
+
+  @Override
   public QueryResult execute(String sql, int maxRows) throws Exception {
     // StarRocks has no Kerberos support; API audit retains the logged-in user identity.
+    String historyId = history.start(id(), sql);
     try (Connection connection = openConnection(); Statement statement = connection.createStatement()) {
-      return SqlResults.run(statement, sql, maxRows);
+      QueryResult result = SqlResults.run(statement, sql, maxRows);
+      List<String> logs = warnings(statement);
+      history.finish(id(), historyId, logs);
+      return new QueryResult(result.columns(), result.rows(), result.message(), logs);
+    } catch (Exception error) {
+      history.fail(id(), historyId, error);
+      throw error;
     }
   }
 
@@ -74,5 +90,17 @@ public class StarRocksService implements SqlEngine {
     }
     Class.forName("org.mariadb.jdbc.Driver");
     return DriverManager.getConnection(properties.starrocksUrl());
+  }
+
+  private static List<String> warnings(Statement statement) {
+    List<String> logs = new ArrayList<>();
+    try {
+      for (SQLWarning warning = statement.getWarnings(); warning != null; warning = warning.getNextWarning()) {
+        logs.add(warning.getMessage());
+      }
+    } catch (Exception ignored) {
+      // Query results stay available even when the driver cannot expose optional warnings.
+    }
+    return List.copyOf(logs);
   }
 }

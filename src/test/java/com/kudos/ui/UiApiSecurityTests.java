@@ -21,15 +21,18 @@ import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.kudos.ui.service.HdfsService;
 import com.kudos.ui.service.KyuubiService;
+import com.kudos.ui.service.QueryResult;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -101,6 +104,26 @@ class UiApiSecurityTests {
                 .content("{\"id\":\"session-1\"}"))
         .andExpect(status().isOk());
     verify(kyuubi).stop("session-1");
+  }
+
+  @Test
+  void sessionResultCanBeRestoredAndCleared() throws Exception {
+    MockHttpSession session = session();
+    given(kyuubi.lastResult("session-1"))
+        .willReturn(new QueryResult(List.of("answer"), List.of(List.of(42))));
+
+    mockMvc
+        .perform(get("/ui-api/sessions/session-1/result").session(session))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.rows[0][0]").value(42));
+
+    mockMvc
+        .perform(delete("/ui-api/sessions/session-1/result").session(session))
+        .andExpect(status().isForbidden());
+    mockMvc
+        .perform(delete("/ui-api/sessions/session-1/result").session(session).with(csrf()))
+        .andExpect(status().isOk());
+    verify(kyuubi).clearResult("session-1");
   }
 
   @Test

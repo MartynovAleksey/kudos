@@ -16,6 +16,15 @@
 
 package com.kudos.ui.service;
 
-/** Safe editor-facing description of a registered SQL engine. */
-public record SqlEngineInfo(
-    String id, String displayName, boolean supportsSessions, boolean supportsHistory) {}
+import java.util.List;
+
+/** One completed or failed query of a sessionless SQL engine. */
+public record SqlQueryInfo(
+    String id,
+    String statement,
+    String state,
+    long startedAtEpochMs,
+    long completedAtEpochMs,
+    String error,
+    int executionCount,
+    List<String> logs) {}

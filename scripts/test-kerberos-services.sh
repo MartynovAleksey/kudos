@@ -264,8 +264,8 @@ app_api "${hb_json[@]}" -X POST "$app_base/api/hbase/family/add" \
 app_api "$app_base/api/hbase/describe?table=$hb_table" | grep -q '"name":"cf2"'
 
 # Verify the complete mutation path: multiple versions, a binary cell, column
-# deletion, and CSV bulk upload. Temporary files are unnecessary: curl reads
-# the multipart body directly from stdin.
+# deletion, and CSV bulk upload. No temporary files are needed: curl reads the
+# multipart body directly from stdin.
 app_api "${hb_json[@]}" -X POST "$app_base/api/hbase/row" \
   -d "{\"table\":\"$hb_table\",\"row\":\"versions\",\"cells\":{\"cf:a\":\"old\"}}" >/dev/null
 sleep 1
@@ -329,8 +329,8 @@ app_api -H 'Content-Type: application/json' \
   | grep -q '42'
 echo "PASS Spring API Kyuubi SQL"
 
-# The SQL above started a Spark engine, so its event log must have reached
-# Ozone and, once the history server picks it up, the jobs endpoint.
+# The earlier Kerberos Kyuubi JDBC query started a Spark engine, so its event
+# log must have reached Ozone and, once the history server picks it up, the jobs endpoint.
 run_docker exec "$ozone_id" bash -lc '
   set -euo pipefail
   export KRB5_CONFIG=/shared/krb5.conf

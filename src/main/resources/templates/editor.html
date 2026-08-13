@@ -27,7 +27,7 @@
           <li th:each="engine, stat : ${sqlEngines}" class="k8s-titlebar-tab"
               th:classappend="${stat.first} ? 'active' : ''">
             <a href="#queryEditor" role="tab" th:text="${engine.displayName}"
-               th:attr="data-sql-engine=${engine.id},data-supports-sessions=${engine.supportsSessions},aria-selected=${stat.first}">
+               th:attr="data-sql-engine=${engine.id},data-supports-sessions=${engine.supportsSessions},data-supports-history=${engine.supportsHistory},aria-selected=${stat.first}">
               SQL engine
             </a>
           </li>

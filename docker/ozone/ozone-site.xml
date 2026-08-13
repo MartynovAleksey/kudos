@@ -48,16 +48,27 @@
     <name>ozone.server.default.replication</name>
     <value>1</value>
   </property>
-  <!-- The server default above does not reach clients. Writers such as the
-       Spark engines pick RATIS/THREE otherwise, which a single-datanode stand
-       cannot satisfy: "Required 3. Found 1." -->
+  <property>
+    <name>ozone.server.default.replication.type</name>
+    <value>STAND_ALONE</value>
+  </property>
+  <!-- Docker Desktop has a small writable virtual disk. A test archive is only
+       a few kilobytes, so allocating the production 5 GB container rejects all
+       writes when less than 5 GB remain available. -->
+  <property>
+    <name>ozone.scm.container.size</name>
+    <value>256MB</value>
+  </property>
+  <!-- A one-DataNode test stand must not create a Raft data pipeline: after a
+       DataNode restart its old RATIS/ONE pipeline can no longer accept archive
+       writes. Stand-alone containers are sufficient for test event archives. -->
   <property>
     <name>ozone.replication</name>
     <value>1</value>
   </property>
   <property>
     <name>ozone.replication.type</name>
-    <value>RATIS</value>
+    <value>STAND_ALONE</value>
   </property>
   <property>
     <name>ozone.scm.names</name>

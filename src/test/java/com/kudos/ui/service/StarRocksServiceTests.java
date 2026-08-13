@@ -55,7 +55,8 @@ class StarRocksServiceTests {
 
   private static StarRocksService service(Connection connection) {
     return new StarRocksService(
-        new ClusterProperties("", "", "", "", "jdbc:mariadb://test", "", "", "", "", "", "", "")) {
+        new ClusterProperties("", "", "", "", "jdbc:mariadb://test", "", "", "", "", "", "", ""),
+        new SqlQueryHistory()) {
       @Override
       Connection openConnection() {
         return connection;

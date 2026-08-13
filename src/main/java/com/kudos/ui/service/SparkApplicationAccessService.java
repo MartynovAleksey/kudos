@@ -17,7 +17,10 @@
 package com.kudos.ui.service;
 
 import com.kudos.ui.security.RoleAccess;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Optional;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -26,15 +29,27 @@ import org.springframework.stereotype.Service;
 @Service
 public class SparkApplicationAccessService {
 
+  private static final Pattern FLINK_JOB_ID =
+      Pattern.compile("Submitting job '.*?' \\(([0-9a-f]{32})\\)");
+
   private final SparkHistoryService history;
   private final KyuubiService kyuubi;
+  private final KyuubiFlinkService kyuubiFlink;
+  private final SqlQueryHistory sqlHistory;
   private final FlinkService flink;
   private final RoleAccess roles;
 
   public SparkApplicationAccessService(
-      SparkHistoryService history, KyuubiService kyuubi, FlinkService flink, RoleAccess roles) {
+      SparkHistoryService history,
+      KyuubiService kyuubi,
+      KyuubiFlinkService kyuubiFlink,
+      SqlQueryHistory sqlHistory,
+      FlinkService flink,
+      RoleAccess roles) {
     this.history = history;
     this.kyuubi = kyuubi;
+    this.kyuubiFlink = kyuubiFlink;
+    this.sqlHistory = sqlHistory;
     this.flink = flink;
     this.roles = roles;
   }
@@ -53,17 +68,56 @@ public class SparkApplicationAccessService {
   }
 
   /**
-   * Flink jobs (running plus finished) for the separate Flink tab on the Jobs
-   * screen. Flink jobs carry no submitting user, so ownership cannot be checked
-   * per application; the list is therefore shown to administrators only.
+   * Kyuubi Flink engines plus standalone Flink jobs for the separate Flink tab.
+   * Kyuubi engines retain their KUDOS owner and are visible to that user; standalone
+   * Flink jobs do not report an owner and remain administrator-only.
    */
   public List<SparkApplication> flinkApplications(Authentication authentication) {
-    if (!roles.isAdministrator(authentication)) {
-      return List.of();
+    boolean administrator = roles.isAdministrator(authentication);
+    List<SparkApplication> kyuubiEngines =
+        administrator
+            ? kyuubiFlink.runningApplicationsForAllUsers()
+            : kyuubiFlink.runningApplications();
+    List<SparkApplication> kyuubiQueries =
+        administrator
+            ? sqlHistory.entriesForAllUsers("kyuubi-flink").stream()
+                .map(entry -> kyuubiQuery(entry.user(), entry.query()))
+                .toList()
+            : sqlHistory.entries("kyuubi-flink").stream()
+                .map(query -> kyuubiQuery(roles.username(authentication), query))
+                .toList();
+    if (!administrator) {
+      return Stream.concat(kyuubiEngines.stream(), kyuubiQueries.stream()).toList();
     }
-    return Stream.concat(
-            flink.runningApplications().stream(), flink.completedApplications().stream())
-        .toList();
+    LinkedHashMap<String, SparkApplication> applications = new LinkedHashMap<>();
+    Stream.concat(
+            Stream.concat(kyuubiEngines.stream(), kyuubiQueries.stream()),
+            Stream.concat(flink.runningApplications().stream(), flink.completedApplications().stream()))
+        .forEach(application -> applications.putIfAbsent(application.id(), application));
+    return List.copyOf(applications.values());
+  }
+
+  private static SparkApplication kyuubiQuery(String user, SqlQueryInfo query) {
+    boolean completed = !"RUNNING".equals(query.state());
+    long finishedAt = completed ? query.completedAtEpochMs() : 0;
+    return new SparkApplication(
+        flinkJobId(query).map(jobId -> "flink-" + jobId).orElse("kyuubi-flink-query-" + query.id()),
+        query.statement(),
+        user,
+        java.time.Instant.ofEpochMilli(query.startedAtEpochMs()).toString(),
+        finishedAt == 0 ? "" : java.time.Instant.ofEpochMilli(finishedAt).toString(),
+        finishedAt == 0 ? 0 : Math.max(0, finishedAt - query.startedAtEpochMs()),
+        completed,
+        "Kyuubi Flink SQL query");
+  }
+
+  /** Returns the real Flink job identifier emitted by the Kyuubi FLINK_SQL engine. */
+  private static Optional<String> flinkJobId(SqlQueryInfo query) {
+    return query.logs().stream()
+        .map(FLINK_JOB_ID::matcher)
+        .filter(java.util.regex.Matcher::find)
+        .map(matcher -> matcher.group(1))
+        .findFirst();
   }
 
   public boolean canView(Authentication authentication, String applicationId) throws Exception {
@@ -75,6 +129,26 @@ public class SparkApplicationAccessService {
         .application(applicationId)
         .map(application -> user.equals(application.user()))
         .orElse(false);
+  }
+
+  /** Grants a user access only when the Flink job-id was recorded for their Kyuubi query. */
+  public boolean canOpenFlinkJob(Authentication authentication, String jobId) {
+    if (roles.isAdministrator(authentication)) {
+      return true;
+    }
+    return sqlHistory.entries("kyuubi-flink").stream()
+        .flatMap(query -> flinkJobId(query).stream())
+        .anyMatch(jobId::equals);
+  }
+
+  /**
+   * Flink assets omit the job-id. An owner may therefore open the live JobManager overview while
+   * their Kyuubi FLINK_SQL engine exists, or the History UI after a query recorded its real id.
+   */
+  public boolean canUseFlinkUi(Authentication authentication) {
+    return roles.isAdministrator(authentication)
+        || !kyuubiFlink.runningApplications().isEmpty()
+        || sqlHistory.entries("kyuubi-flink").stream().anyMatch(query -> flinkJobId(query).isPresent());
   }
 
   public boolean isAdministrator(Authentication authentication) {

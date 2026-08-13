@@ -30,9 +30,11 @@ class SparkApplicationAccessServiceTests {
 
   private final SparkHistoryService history = mock(SparkHistoryService.class);
   private final KyuubiService kyuubi = mock(KyuubiService.class);
+  private final KyuubiFlinkService kyuubiFlink = mock(KyuubiFlinkService.class);
+  private final SqlQueryHistory sqlHistory = mock(SqlQueryHistory.class);
   private final FlinkService flink = mock(FlinkService.class);
   private final SparkApplicationAccessService access =
-      new SparkApplicationAccessService(history, kyuubi, flink, new RoleAccess());
+      new SparkApplicationAccessService(history, kyuubi, kyuubiFlink, sqlHistory, flink, new RoleAccess());
 
   @Test
   void userGetsOnlyOwnApplicationsEvenWhenPassingAnotherUserFilter() throws Exception {
@@ -85,18 +87,63 @@ class SparkApplicationAccessServiceTests {
   }
 
   @Test
-  void administratorGetsRunningAndCompletedFlinkJobs() throws Exception {
+  void administratorGetsKyuubiAndStandaloneFlinkJobs() throws Exception {
+    SparkApplication engine = application("kyuubi-flink-analyst", "analyst", false);
+    SqlQueryInfo query = new SqlQueryInfo("query-1", "SELECT 1", "FINISHED", 1_000, 2_000, "", 1, List.of());
     SparkApplication running = new SparkApplication("flink-run", "stream", "", "", "", 0, false, "Flink job");
     SparkApplication done = new SparkApplication("flink-done", "batch", "", "", "", 0, true, "Flink job");
+    when(kyuubiFlink.runningApplicationsForAllUsers()).thenReturn(List.of(engine));
+    when(sqlHistory.entriesForAllUsers("kyuubi-flink"))
+        .thenReturn(List.of(new SqlQueryHistory.OwnedEntry("analyst", query)));
     when(flink.runningApplications()).thenReturn(List.of(running));
     when(flink.completedApplications()).thenReturn(List.of(done));
 
-    assertThat(access.flinkApplications(administrator())).containsExactly(running, done);
+    assertThat(access.flinkApplications(administrator()))
+        .extracting(SparkApplication::id)
+        .containsExactly("kyuubi-flink-analyst", "kyuubi-flink-query-query-1", "flink-run", "flink-done");
   }
 
   @Test
-  void usersGetNoFlinkJobs() throws Exception {
-    assertThat(access.flinkApplications(user("analyst"))).isEmpty();
+  void userGetsOwnKyuubiFlinkEngineButNotStandaloneFlinkJobs() throws Exception {
+    SparkApplication engine = application("kyuubi-flink-analyst", "analyst", false);
+    SqlQueryInfo query = new SqlQueryInfo("query-1", "SELECT 1", "FINISHED", 1_000, 2_000, "", 1, List.of());
+    when(kyuubiFlink.runningApplications()).thenReturn(List.of(engine));
+    when(sqlHistory.entries("kyuubi-flink")).thenReturn(List.of(query));
+
+    assertThat(access.flinkApplications(user("analyst")))
+        .extracting(SparkApplication::id)
+        .containsExactly("kyuubi-flink-analyst", "kyuubi-flink-query-query-1");
+  }
+
+  @Test
+  void ownerCanOpenLiveFlinkOverviewWhileKyuubiEngineIsRunning() {
+    when(kyuubiFlink.runningApplications())
+        .thenReturn(List.of(application("kyuubi-flink-analyst", "analyst", false)));
+
+    assertThat(access.canUseFlinkUi(user("analyst"))).isTrue();
+  }
+
+  @Test
+  void kyuubiFlinkQueryUsesRecordedJobIdAndGrantsItsOwnerAccess() {
+    String jobId = "0123456789abcdef0123456789abcdef";
+    SqlQueryInfo query =
+        new SqlQueryInfo(
+            "query-1",
+            "SELECT 1",
+            "FINISHED",
+            1_000,
+            2_000,
+            "",
+            1,
+            List.of("Submitting job 'SELECT 1' (" + jobId + ")."));
+    when(sqlHistory.entries("kyuubi-flink")).thenReturn(List.of(query));
+
+    assertThat(access.flinkApplications(user("analyst")))
+        .extracting(SparkApplication::id)
+        .containsExactly("flink-" + jobId);
+    assertThat(access.canOpenFlinkJob(user("analyst"), jobId)).isTrue();
+    assertThat(access.canOpenFlinkJob(user("analyst"), "fedcba9876543210fedcba9876543210")).isFalse();
+    assertThat(access.canUseFlinkUi(user("analyst"))).isTrue();
   }
 
   private static SparkApplication application(String id, String user, boolean completed) {

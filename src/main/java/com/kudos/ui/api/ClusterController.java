@@ -25,7 +25,7 @@ import com.kudos.ui.service.HbaseRow;
 import com.kudos.ui.service.HbaseService;
 import com.kudos.ui.service.HbaseTableInfo;
 import com.kudos.ui.service.HdfsService;
-import com.kudos.ui.service.KyuubiService;
+import com.kudos.ui.service.KyuubiSqlEngine;
 import com.kudos.ui.service.KyuubiSessionInfo;
 import com.kudos.ui.service.KyuubiSessionMonitor;
 import com.kudos.ui.service.OzoneService;
@@ -34,8 +34,8 @@ import com.kudos.ui.service.SqlEngineRegistry;
 import com.kudos.ui.service.SparkApplication;
 import com.kudos.ui.service.SparkApplicationAccessService;
 import com.kudos.ui.service.SparkHistoryService;
-import com.kudos.ui.service.TrinoQueryHistory;
-import com.kudos.ui.service.TrinoQueryInfo;
+import com.kudos.ui.service.SqlQueryHistory;
+import com.kudos.ui.service.SqlQueryInfo;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -43,6 +43,8 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import java.util.List;
 import java.util.Map;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -68,31 +70,28 @@ public class ClusterController {
   private static final int EXPORT_MAX_ROWS = 100_000;
 
   private final HdfsService hdfs;
-  private final KyuubiService kyuubi;
   private final SqlEngineRegistry sqlEngines;
   private final HbaseService hbase;
   private final OzoneService ozone;
   private final SparkHistoryService sparkHistory;
   private final SparkApplicationAccessService sparkAccess;
-  private final TrinoQueryHistory trinoHistory;
+  private final SqlQueryHistory sqlHistory;
 
   public ClusterController(
       HdfsService hdfs,
-      KyuubiService kyuubi,
       SqlEngineRegistry sqlEngines,
       HbaseService hbase,
       OzoneService ozone,
       SparkHistoryService sparkHistory,
       SparkApplicationAccessService sparkAccess,
-      TrinoQueryHistory trinoHistory) {
+      SqlQueryHistory sqlHistory) {
     this.hdfs = hdfs;
-    this.kyuubi = kyuubi;
     this.sqlEngines = sqlEngines;
     this.hbase = hbase;
     this.ozone = ozone;
     this.sparkHistory = sparkHistory;
     this.sparkAccess = sparkAccess;
-    this.trinoHistory = trinoHistory;
+    this.sqlHistory = sqlHistory;
   }
 
   @GetMapping("/spark/applications")
@@ -173,63 +172,90 @@ public class ClusterController {
     return sqlEngines.get(request.engine()).execute(request.sql(), MAX_RESULT_ROWS);
   }
 
-  @GetMapping("/trino/history")
-  List<TrinoQueryInfo> trinoHistory() {
-    return trinoHistory.entries();
+  @GetMapping("/sql/history")
+  List<SqlQueryInfo> sqlHistory(@RequestParam String engine) {
+    return sqlHistory.entries(engine);
   }
 
-  @GetMapping("/trino/history/{id}/sql")
-  void downloadTrinoSql(@PathVariable String id, HttpServletResponse response) throws Exception {
+  @GetMapping("/sql/history/{id}/sql")
+  void downloadSqlHistory(
+      @RequestParam String engine, @PathVariable String id, HttpServletResponse response) throws Exception {
     response.setCharacterEncoding(java.nio.charset.StandardCharsets.UTF_8.name());
     response.setContentType("application/sql; charset=UTF-8");
-    response.setHeader("Content-Disposition", "attachment; filename=\"trino-query.sql\"");
-    response.getWriter().write(trinoHistory.sql(id));
+    response.setHeader("Content-Disposition", "attachment; filename=\"query.sql\"");
+    response.getWriter().write(sqlHistory.sql(engine, id));
   }
 
   @GetMapping("/sessions")
-  List<KyuubiSessionInfo> sessions() {
-    return kyuubi.sessions();
+  List<KyuubiSessionInfo> sessions(@RequestParam(defaultValue = "kyuubi") String engine) {
+    return kyuubiEngine(engine).sessions();
   }
 
   @GetMapping("/sessions/{id}/monitor")
-  KyuubiSessionMonitor sessionMonitor(@PathVariable String id) {
-    return kyuubi.monitor(id);
+  KyuubiSessionMonitor sessionMonitor(
+      @RequestParam(defaultValue = "kyuubi") String engine, @PathVariable String id) {
+    return kyuubiEngine(engine).monitor(id);
+  }
+
+  @GetMapping("/sessions/{id}/result")
+  ResponseEntity<QueryResult> sessionResult(
+      @RequestParam(defaultValue = "kyuubi") String engine, @PathVariable String id) {
+    QueryResult result = kyuubiEngine(engine).lastResult(id);
+    return result == null ? ResponseEntity.noContent().build() : ResponseEntity.ok(result);
+  }
+
+  @DeleteMapping("/sessions/{id}/result")
+  void clearSessionResult(
+      @RequestParam(defaultValue = "kyuubi") String engine, @PathVariable String id) {
+    kyuubiEngine(engine).clearResult(id);
   }
 
   @PostMapping("/sessions/{id}/operations/{operationId}/execute")
-  QueryResult executeOperation(@PathVariable String id, @PathVariable String operationId) throws Exception {
-    return kyuubi.executeOperation(id, operationId, MAX_RESULT_ROWS);
+  QueryResult executeOperation(
+      @RequestParam(defaultValue = "kyuubi") String engine,
+      @PathVariable String id,
+      @PathVariable String operationId)
+      throws Exception {
+    return kyuubiEngine(engine).executeOperation(id, operationId, MAX_RESULT_ROWS);
   }
 
   @GetMapping("/sessions/{id}/operations/{operationId}/sql")
   void downloadOperationSql(
-      @PathVariable String id, @PathVariable String operationId, HttpServletResponse response)
+      @RequestParam(defaultValue = "kyuubi") String engine,
+      @PathVariable String id,
+      @PathVariable String operationId,
+      HttpServletResponse response)
       throws Exception {
     response.setCharacterEncoding(java.nio.charset.StandardCharsets.UTF_8.name());
     response.setContentType("application/sql; charset=UTF-8");
     response.setHeader("Content-Disposition", "attachment; filename=\"kyuubi-operation.sql\"");
-    response.getWriter().write(kyuubi.operationSql(id, operationId));
+    response.getWriter().write(kyuubiEngine(engine).operationSql(id, operationId));
   }
 
   @PostMapping("/sessions/start")
   KyuubiSessionInfo startSession(@Valid @RequestBody SessionStartRequest request) throws Exception {
-    return kyuubi.start(request.name(), request.sparkParams());
+    return kyuubiEngine(request.engine()).start(request.name(), request.engineParams());
   }
 
   @PostMapping("/sessions/stop")
   void stopSession(@Valid @RequestBody SessionRequest request) {
-    kyuubi.stop(request.id());
+    kyuubiEngine(request.engine()).stop(request.id());
   }
 
   @PostMapping("/sessions/restart")
   KyuubiSessionInfo restartSession(@Valid @RequestBody SessionRestartRequest request)
       throws Exception {
-    return kyuubi.restart(request.id(), request.sparkParams());
+    return kyuubiEngine(request.engine()).restart(request.id(), request.engineParams());
   }
 
   @PostMapping("/sessions/activate")
   void activateSession(@Valid @RequestBody SessionRequest request) {
-    kyuubi.activate(request.id());
+    kyuubiEngine(request.engine()).activate(request.id());
+  }
+
+  @PostMapping("/sessions/deactivate")
+  void deactivateSession(@RequestBody SessionEngineRequest request) {
+    kyuubiEngine(request.engine()).deactivate();
   }
 
   @PostMapping("/sql/export")
@@ -250,6 +276,13 @@ public class ClusterController {
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     response.setHeader("Content-Disposition", "attachment; filename=\"query-results.xlsx\"");
     ExcelResults.write(result, response.getOutputStream());
+  }
+
+  private KyuubiSqlEngine kyuubiEngine(String engine) {
+    if (sqlEngines.get(engine) instanceof KyuubiSqlEngine kyuubiEngine) {
+      return kyuubiEngine;
+    }
+    throw new IllegalArgumentException("SQL engine does not support Kyuubi sessions: " + engine);
   }
 
   @GetMapping("/hbase/tables")
@@ -423,11 +456,13 @@ public class ClusterController {
 
   record SqlRequest(@NotBlank String sql, String engine) {}
 
-  record SessionStartRequest(String name, String sparkParams) {}
+  record SessionStartRequest(String name, String engineParams, String engine) {}
 
-  record SessionRequest(@NotBlank String id) {}
+  record SessionRequest(@NotBlank String id, String engine) {}
 
-  record SessionRestartRequest(@NotBlank String id, String sparkParams) {}
+  record SessionRestartRequest(@NotBlank String id, String engineParams, String engine) {}
+
+  record SessionEngineRequest(String engine) {}
 
   record PathRequest(@NotBlank String path) {}
 

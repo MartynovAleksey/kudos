@@ -18,12 +18,28 @@ package com.kudos.ui.service;
 
 import java.util.List;
 
-/** One completed or failed Trino statement kept for the current KUDOS user. */
-public record TrinoQueryInfo(
-    String id,
-    String statement,
-    String state,
-    long startedAtEpochMs,
-    long completedAtEpochMs,
-    String error,
-    List<String> logs) {}
+/** SQL engine backed by user-managed Kyuubi sessions. */
+public interface KyuubiSqlEngine extends SqlEngine {
+
+  List<KyuubiSessionInfo> sessions();
+
+  KyuubiSessionMonitor monitor(String id);
+
+  KyuubiSessionInfo start(String name, String engineParams);
+
+  void stop(String id);
+
+  KyuubiSessionInfo restart(String id, String engineParams);
+
+  QueryResult lastResult(String id);
+
+  void clearResult(String id);
+
+  void activate(String id);
+
+  void deactivate();
+
+  QueryResult executeOperation(String sessionId, String operationId, int maxRows) throws Exception;
+
+  String operationSql(String sessionId, String operationId);
+}

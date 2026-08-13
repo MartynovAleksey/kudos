@@ -27,19 +27,22 @@ class SqlEngineRegistryTests {
   @Test
   void resolvesKnownEnginesAndFallsBackToKyuubi() {
     SqlEngine kyuubi = new StubEngine("kyuubi", "Kyuubi Spark SQL", true);
+    SqlEngine flink = new StubEngine("kyuubi-flink", "Kyuubi Flink SQL", true);
     SqlEngine trino = new StubEngine("trino", "Trino", false);
     SqlEngine starrocks = new StubEngine("starrocks", "StarRocks", false);
-    SqlEngineRegistry registry = new SqlEngineRegistry(List.of(kyuubi, trino, starrocks));
+    SqlEngineRegistry registry = new SqlEngineRegistry(List.of(kyuubi, flink, trino, starrocks));
 
     assertThat(registry.get("trino")).isSameAs(trino);
+    assertThat(registry.get("kyuubi-flink")).isSameAs(flink);
     assertThat(registry.get("starrocks")).isSameAs(starrocks);
     assertThat(registry.get(null)).isSameAs(kyuubi);
     assertThat(registry.get("unknown")).isSameAs(kyuubi);
     assertThat(registry.available())
         .containsExactly(
-            new SqlEngineInfo("kyuubi", "Kyuubi Spark SQL", true),
-            new SqlEngineInfo("trino", "Trino", false),
-            new SqlEngineInfo("starrocks", "StarRocks", false));
+            new SqlEngineInfo("kyuubi", "Kyuubi Spark SQL", true, false),
+            new SqlEngineInfo("kyuubi-flink", "Kyuubi Flink SQL", true, false),
+            new SqlEngineInfo("trino", "Trino", false, false),
+            new SqlEngineInfo("starrocks", "StarRocks", false, false));
   }
 
   private record StubEngine(String id, String displayName, boolean supportsSessions) implements SqlEngine {

@@ -631,14 +631,18 @@
       } else {
         renderEmptyResult();
       }
-      if (selectedEngine === 'trino') {
-        renderTrinoLogs(result);
+      if (engineSupportsHistory()) {
+        renderQueryLogs(result);
       }
     }
 
     function clearResults() {
       forgetResult(activeSessionId);
       renderEmptyResult();
+      if (engineSupportsSessions() && activeSessionId.indexOf('perquery-') !== 0) {
+        request(sessionApi('/' + encodeURIComponent(activeSessionId) + '/result'), { method: 'DELETE' })
+          .catch(function (error) { toast(error.message || String(error)); });
+      }
     }
 
     function useSession(sessionId) {
@@ -757,8 +761,8 @@
       }
       results.appendChild(grid);
       var last = reports[reports.length - 1];
-      if (selectedEngine === 'trino') {
-        renderTrinoLogs(last.ok ? last.result : null);
+      if (engineSupportsHistory()) {
+        renderQueryLogs(last.ok ? last.result : null);
       }
       if (last.ok) {
         renderResultInto(grid, last.result);
@@ -806,8 +810,8 @@
         .then(function () { return reports; }, function () { return reports; })
         .then(function () {
           renderReports(executionSessionId, reports);
-          if (executionEngine === 'trino') {
-            loadTrinoHistory();
+          if (engineSupportsHistory(executionEngine)) {
+            loadQueryHistory(executionEngine);
           }
           run.disabled = false;
           if (runAll) runAll.disabled = false;
@@ -934,6 +938,7 @@
 
     var sessionsPanel = el('sessionsPanel');
     var sessionBar = el('sessionBar');
+    var sessionMonitor = el('sessionMonitor');
     var newSessionBtn = el('newSession');
     var closeAllBtn = el('closeAllSessions');
     var noSessions = el('noSessions');
@@ -954,6 +959,18 @@
       return activeTab.getAttribute('data-supports-sessions') === 'true';
     }
 
+    function engineSupportsHistory(engine) {
+      var id = engine || selectedEngine;
+      var activeTab = engineTabs.filter(function (tab) {
+        return tab.getAttribute('data-sql-engine') === id;
+      })[0];
+      return activeTab && activeTab.getAttribute('data-supports-history') === 'true';
+    }
+
+    function sessionApi(path) {
+      return UI_API + '/sessions' + path + '?engine=' + encodeURIComponent(selectedEngine);
+    }
+
     function selectEngine(engine) {
       selectedEngine = engine || selectedEngine;
       engineTabs.forEach(function (tab) {
@@ -962,18 +979,19 @@
         tab.setAttribute('aria-selected', String(active));
       });
       var supportsSessions = engineSupportsSessions();
-      var trino = selectedEngine === 'trino';
+      var hasHistory = engineSupportsHistory();
       sessionBar.classList.toggle('k8s-hidden', !supportsSessions);
       sessionMonitor.classList.toggle('k8s-hidden', !supportsSessions);
       noSessions.classList.toggle('k8s-hidden', !supportsSessions);
-      el('logsTabItem').classList.toggle('k8s-hidden', !supportsSessions);
-      el('operationsTabItem').classList.toggle('k8s-hidden', !supportsSessions && !trino);
-      el('operationsTab').textContent = trino ? 'History' : 'Session History';
+      el('logsTabItem').classList.toggle('k8s-hidden', !supportsSessions && !hasHistory);
+      el('operationsTabItem').classList.toggle('k8s-hidden', !supportsSessions && !hasHistory);
+      el('operationsTab').textContent = hasHistory ? 'History' : 'Session History';
       if (!supportsSessions) {
         showOutputTab('results');
         useSession('engine-' + selectedEngine);
-        if (trino) {
-          loadTrinoHistory();
+        if (hasHistory) {
+          renderQueryLogs(null);
+          loadQueryHistory(selectedEngine);
         }
         run.disabled = false;
         return;
@@ -985,7 +1003,7 @@
       if (!engineSupportsSessions()) {
         return;
       }
-      request(UI_API + '/sessions')
+      request(sessionApi(''))
         .then(renderSessions)
         .catch(function (error) { showError(sessionsPanel, error); });
     }
@@ -1009,7 +1027,7 @@
         sessionMonitorLogs.textContent = 'No operation logs yet.';
         return;
       }
-      request(UI_API + '/sessions/' + encodeURIComponent(session.id) + '/monitor')
+      request(sessionApi('/' + encodeURIComponent(session.id) + '/monitor'))
         .then(function (monitor) {
           if (activeSessionId !== session.id) {
             return;
@@ -1037,6 +1055,25 @@
         .catch(function (error) {
           sessionMonitorWarning.classList.remove('k8s-hidden');
           sessionMonitorWarning.textContent = error.message || String(error);
+        });
+    }
+
+    function loadSessionResult(session) {
+      if (!session || resultsBySession[session.id] || storedResult(session.id)) {
+        return;
+      }
+      request(sessionApi('/' + encodeURIComponent(session.id) + '/result'))
+        .then(function (result) {
+          if (!result) {
+            return;
+          }
+          rememberResult(session.id, result);
+          if (activeSessionId === session.id) {
+            renderResult(result);
+          }
+        })
+        .catch(function () {
+          // The editor remains usable when a completed result is no longer available.
         });
     }
 
@@ -1082,8 +1119,8 @@
         open.title = 'Open SQL in Query Editor without running it';
         var download = element('a', {
           class: 'k8s-link',
-          href: UI_API + '/sessions/' + encodeURIComponent(session.id)
-            + '/operations/' + encodeURIComponent(operation.id) + '/sql',
+          href: sessionApi('/' + encodeURIComponent(session.id) + '/operations/'
+            + encodeURIComponent(operation.id) + '/sql'),
           text: 'Download',
           title: 'Download SQL file'
         });
@@ -1101,34 +1138,33 @@
       scroll.scrollTop = scrollTop;
     }
 
-    function renderTrinoLogs(result) {
+    function renderQueryLogs(result) {
       var logs = result && result.logs ? result.logs : [];
-      el('logsTabItem').classList.toggle('k8s-hidden', logs.length === 0);
-      sessionMonitorLogs.textContent = logs.join('\n');
+      sessionMonitorLogs.textContent = logs.join('\n') || 'No query logs yet.';
     }
 
-    function loadTrinoHistory() {
-      request(UI_API + '/trino/history')
-        .then(renderTrinoHistory)
+    function loadQueryHistory(engine) {
+      request(UI_API + '/sql/history?engine=' + encodeURIComponent(engine))
+        .then(renderQueryHistory)
         .catch(function (error) { showError(sessionMonitorOperations, error); });
     }
 
-    function renderTrinoHistory(entries) {
-      if (selectedEngine !== 'trino') {
+    function renderQueryHistory(entries) {
+      if (!engineSupportsHistory()) {
         return;
       }
       var previous = sessionMonitorOperations.querySelector('.k8s-operations-scroll');
       var scrollTop = previous ? previous.scrollTop : 0;
       sessionMonitorOperations.innerHTML = '';
       if (!entries.length) {
-        sessionMonitorOperations.appendChild(text('No Trino queries yet.'));
+        sessionMonitorOperations.appendChild(text('No queries yet.'));
         return;
       }
       var scroll = element('div', { class: 'k8s-operations-scroll' });
       var table = element('table', { class: 'table table-condensed table-huedatatable' });
       var head = document.createElement('thead');
       var header = document.createElement('tr');
-      ['State', 'Statement', 'Started', 'Error', 'Actions'].forEach(function (label) {
+      ['State', 'Statement', 'Runs', 'Started', 'Error', 'Actions'].forEach(function (label) {
         header.appendChild(element('th', { text: label }));
       });
       head.appendChild(header);
@@ -1136,7 +1172,8 @@
       var body = document.createElement('tbody');
       entries.forEach(function (entry) {
         var row = document.createElement('tr');
-        [entry.state, entry.statement, formatDate(entry.startedAtEpochMs), entry.error || '']
+        [entry.state, entry.statement, String(entry.executionCount || 1),
+          formatDate(entry.startedAtEpochMs), entry.error || '']
           .forEach(function (value) { row.appendChild(element('td', { text: value })); });
         var actions = element('span', { class: 'k8s-row-actions' });
         var rerun = button('Run', 'k8s-link', function () {
@@ -1144,7 +1181,7 @@
           saveQuery();
           runStatements([{ sql: entry.statement }]);
         });
-        rerun.title = 'Run this SQL in Trino';
+        rerun.title = 'Run this SQL again';
         var open = button('Open', 'k8s-link', function () {
           query.value = entry.statement;
           saveQuery();
@@ -1153,7 +1190,8 @@
         open.title = 'Open SQL in Query Editor without running it';
         var download = element('a', {
           class: 'k8s-link',
-          href: UI_API + '/trino/history/' + encodeURIComponent(entry.id) + '/sql',
+          href: UI_API + '/sql/history/' + encodeURIComponent(entry.id) + '/sql?engine='
+            + encodeURIComponent(selectedEngine),
           text: 'Download',
           title: 'Download SQL file'
         });
@@ -1177,8 +1215,8 @@
       showOutputTab('results');
       results.innerHTML = '<div class="k8s-muted">Executing saved SQL…</div>';
       request(
-        UI_API + '/sessions/' + encodeURIComponent(session.id) + '/operations/'
-          + encodeURIComponent(operation.id) + '/execute',
+        sessionApi('/' + encodeURIComponent(session.id) + '/operations/'
+          + encodeURIComponent(operation.id) + '/execute'),
         { method: 'POST' }
       )
         .then(function (result) {
@@ -1200,13 +1238,13 @@
       if (session.active) {
         return;
       }
-      send(UI_API + '/sessions/activate', { id: session.id })
+      send(UI_API + '/sessions/activate', { id: session.id, engine: selectedEngine })
         .then(loadSessions)
         .catch(function (error) { toast(error.message || String(error)); });
     }
 
     function closeSession(session) {
-      send(UI_API + '/sessions/stop', { id: session.id })
+      send(UI_API + '/sessions/stop', { id: session.id, engine: selectedEngine })
         .then(function () {
           forgetQuery(session.id);
           forgetResult(session.id);
@@ -1218,30 +1256,49 @@
     function renderSessions(sessions) {
       knownSessions = sessions;
       sessionsPanel.innerHTML = '';
-      noSessions.classList.toggle('k8s-hidden', sessions.length > 0);
+      noSessions.classList.add('k8s-hidden');
       closeAllBtn.disabled = sessions.length === 0;
       var active = sessions.filter(function (session) { return session.active; })[0];
-      useSession(active ? active.id : 'default');
+      useSession(active ? active.id : 'perquery-' + selectedEngine);
       run.disabled = Boolean(active && active.state !== 'READY');
       loadMonitor(active);
-      if (!sessions.length) {
-        return;
+      loadSessionResult(active);
+      var perQuery = element('span', { class: 'k8s-session-tab-label' });
+      var perQueryTab = element('div', {
+        class: 'k8s-session-tab k8s-session-perquery' + (active ? '' : ' k8s-session-active'),
+        title: 'Per-query mode',
+        role: 'tab',
+        tabindex: '0',
+        'aria-selected': String(!active)
+      }, [perQuery]);
+      function deactivateSession() {
+        send(UI_API + '/sessions/deactivate', { engine: selectedEngine })
+          .then(loadSessions)
+          .catch(function (error) { toast(error.message || String(error)); });
       }
+      perQueryTab.addEventListener('click', deactivateSession);
+      perQueryTab.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          deactivateSession();
+        }
+      });
+      perQuery.title = 'Run each query in a new Kyuubi connection';
+      perQuery.setAttribute('aria-label', 'Per-query mode');
+      sessionsPanel.appendChild(perQueryTab);
       sessions.forEach(function (session) {
         var params = session.sparkParams
           ? session.sparkParams.replace(/\r?\n/g, ', ')
           : 'cluster defaults';
-        var label = button(session.name, 'k8s-session-tab-label', function () {
-          activateSession(session);
-        });
-        label.setAttribute('role', 'tab');
-        label.setAttribute('aria-selected', String(session.active));
-        var restart = button('⚙', 'k8s-session-tab-action', function () {
+        var label = element('button', { type: 'button', class: 'k8s-session-tab-label', text: session.name });
+        var restart = button('Restart', 'k8s-session-tab-action k8s-session-tab-restart', function (event) {
+          event.stopPropagation();
           restartSession(session);
         });
         restart.title = 'Restart session';
         restart.setAttribute('aria-label', 'Restart session ' + session.name);
-        var close = button('×', 'k8s-session-tab-action k8s-session-tab-close', function () {
+        var close = button('×', 'k8s-session-tab-action k8s-session-tab-close', function (event) {
+          event.stopPropagation();
           closeSession(session);
         });
         close.title = 'Close session';
@@ -1266,6 +1323,16 @@
             close
           ]
         );
+        tab.setAttribute('role', 'tab');
+        tab.setAttribute('tabindex', '0');
+        tab.setAttribute('aria-selected', String(session.active));
+        tab.addEventListener('click', function () { activateSession(session); });
+        tab.addEventListener('keydown', function (event) {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            activateSession(session);
+          }
+        });
         sessionsPanel.appendChild(tab);
       });
     }
@@ -1275,12 +1342,15 @@
       if (session) {
         name.disabled = true;
       }
+      var isFlink = selectedEngine === 'kyuubi-flink';
       var params = element('textarea', {
         class: 'k8s-input k8s-textarea',
-        placeholder: 'One per line, e.g.\nspark.executor.memory=2g\nspark.executor.cores=2'
+        placeholder: isFlink
+          ? 'One per line, e.g.\nparallelism.default=2\ntable.exec.resource.default-parallelism=2'
+          : 'One per line, e.g.\nspark.executor.memory=2g\nspark.executor.cores=2'
       });
       params.value = session ? session.sparkParams || '' : '';
-      var body = element('div', {}, [field('Name', name), field('Spark parameters', params)]);
+      var body = element('div', {}, [field('Name', name), field('Engine parameters', params)]);
       openModal(title, body, [
         { label: 'Cancel', action: function (h) { h.close(); } },
         {
@@ -1290,8 +1360,8 @@
             h.close();
             toast('Starting session (launching engine)…');
             var payload = session
-              ? { id: session.id, sparkParams: params.value }
-              : { name: name.value, sparkParams: params.value };
+              ? { id: session.id, engineParams: params.value, engine: selectedEngine }
+              : { name: name.value, engineParams: params.value, engine: selectedEngine };
             send(url, payload)
               .then(function () { toast('Session starting'); loadSessions(); })
               .catch(function (error) { toast(error.message || String(error)); loadSessions(); });
@@ -1317,7 +1387,7 @@
       confirmModal('Close all Kyuubi sessions?', function () {
         Promise.all(
           knownSessions.map(function (session) {
-            return send(UI_API + '/sessions/stop', { id: session.id });
+            return send(UI_API + '/sessions/stop', { id: session.id, engine: selectedEngine });
           })
         )
           .then(function () {
@@ -2883,6 +2953,13 @@
       return '/flink/' + scope + '/' + encodeURIComponent(jid);
     }
 
+    // A Kyuubi FLINK_SQL session is an engine rather than a JobManager job. Its
+    // running row therefore opens the live JobManager overview; individual
+    // query rows keep their links to the exact job detail.
+    function flinkEngineUiHref() {
+      return '/flink-ui/jobmanager/?embedded';
+    }
+
     function flinkTable(applications) {
       var table = document.createElement('table');
       table.className = 'table table-condensed table-huedatatable';
@@ -2902,11 +2979,14 @@
           'fa fa-fw ' +
           (application.completed ? 'fa-check-circle k8s-ok' : 'fa-spinner k8s-running');
         icon.title = application.completed ? 'Completed' : 'Running';
+        // Kyuubi FLINK_SQL sessions link to the live JobManager overview. Query
+        // rows carry their actual flink-<job-id> from Kyuubi's execution logs.
+        var kyuubiEngine = application.id.indexOf('kyuubi-') === 0;
         var name = document.createElement('a');
-        name.href = flinkUiHref(application);
+        name.href = kyuubiEngine ? flinkEngineUiHref() : flinkUiHref(application);
         name.appendChild(text(application.name));
         var id = document.createElement('a');
-        id.href = flinkUiHref(application);
+        id.href = kyuubiEngine ? flinkEngineUiHref() : flinkUiHref(application);
         id.appendChild(text(application.id));
         var row = document.createElement('tr');
         [icon, name, id, formatStart(application), formatDuration(application.durationMillis)].forEach(

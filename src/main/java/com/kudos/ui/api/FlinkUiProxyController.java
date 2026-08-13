@@ -38,8 +38,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
  * Serves the Flink History Server's web UI from this application, behind the same
  * session and origin as the rest of the screens. Mirrors {@link SparkUiProxyController}.
  *
- * <p>Unlike Spark applications, Flink jobs are not owned by a KUDOS user, so this
- * proxy is administrator-only rather than per-application.
+ * <p>Standalone Flink jobs remain administrator-only. A user who ran a Kyuubi
+ * FLINK_SQL query may open the Flink UI because KUDOS recorded its real job-id.
  *
  * <p>Known ceiling: the Flink dashboard is an Angular single-page app that, unlike
  * Spark, does not honour {@code X-Forwarded-Context}. The History Server serves
@@ -68,7 +68,7 @@ public class FlinkUiProxyController {
   @GetMapping("/**")
   void proxy(HttpServletRequest request, HttpServletResponse response, Authentication authentication)
       throws Exception {
-    if (!sparkAccess.isAdministrator(authentication)) {
+    if (!sparkAccess.canUseFlinkUi(authentication)) {
       response.sendError(HttpServletResponse.SC_FORBIDDEN);
       return;
     }
