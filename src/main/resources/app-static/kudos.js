@@ -22,9 +22,161 @@
   'use strict';
 
   var UI_API = '/ui-api';
+  var UI_PREFERENCES_KEY_PREFIX = 'kudos.ui-preferences.v1.';
+  var UI_TOOLS = ['editor', 'files', 'ozone', 'hbase', 'jobs'];
 
   function el(id) {
     return document.getElementById(id);
+  }
+
+  function uiPreferencesKey() {
+    var user = document.body.getAttribute('data-ui-user') || 'anonymous';
+    return UI_PREFERENCES_KEY_PREFIX + user;
+  }
+
+  function uiStorage() {
+    try {
+      return window.localStorage;
+    } catch (ignored) {
+      return null;
+    }
+  }
+
+  function defaultUiPreferences() {
+    var tools = {};
+    UI_TOOLS.forEach(function (tool) { tools[tool] = true; });
+    return { mode: 'old', theme: 'system', tools: tools };
+  }
+
+  function loadUiPreferences() {
+    var defaults = defaultUiPreferences();
+    var storage = uiStorage();
+    if (!storage) {
+      return defaults;
+    }
+    try {
+      var parsed = JSON.parse(storage.getItem(uiPreferencesKey()) || '{}');
+      defaults.mode = parsed.mode === 'modern' ? 'modern' : 'old';
+      defaults.theme = ['light', 'dark', 'system'].indexOf(parsed.theme) >= 0 ? parsed.theme : 'system';
+      UI_TOOLS.forEach(function (tool) {
+        if (parsed.tools && typeof parsed.tools[tool] === 'boolean') {
+          defaults.tools[tool] = parsed.tools[tool];
+        }
+      });
+    } catch (ignored) {
+      // Invalid or unavailable browser storage must leave the safe defaults intact.
+    }
+    return defaults;
+  }
+
+  function saveUiPreferences(preferences) {
+    var storage = uiStorage();
+    if (!storage) {
+      return;
+    }
+    try {
+      storage.setItem(uiPreferencesKey(), JSON.stringify(preferences));
+    } catch (ignored) {
+      // Private browsing or a full storage quota only disables persistence.
+    }
+  }
+
+  function eachUiNode(selector, callback) {
+    Array.prototype.forEach.call(document.querySelectorAll(selector), callback);
+  }
+
+  function initUiPreferences() {
+    var body = document.body;
+    var preferences = loadUiPreferences();
+    var settingsButton = el('uiSettingsButton');
+    var settingsPanel = el('uiSettingsPanel');
+    var closeButton = el('uiSettingsClose');
+    var resetButton = el('uiSettingsReset');
+    var systemTheme = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+
+    function applyPreferences() {
+      body.setAttribute('data-ui-mode', preferences.mode);
+      body.setAttribute('data-ui-theme', preferences.theme);
+      body.setAttribute('data-ui-system-theme', systemTheme && systemTheme.matches ? 'dark' : 'light');
+      document.documentElement.style.colorScheme = preferences.theme === 'system' ? 'light dark' : preferences.theme;
+      eachUiNode('[data-ui-tool]', function (item) {
+        var tool = item.getAttribute('data-ui-tool');
+        item.hidden = preferences.tools[tool] === false;
+      });
+      eachUiNode('[data-ui-mode-choice]', function (choice) {
+        choice.setAttribute('aria-pressed', String(choice.getAttribute('data-ui-mode-choice') === preferences.mode));
+      });
+      eachUiNode('[data-ui-theme-choice]', function (choice) {
+        choice.setAttribute('aria-pressed', String(choice.getAttribute('data-ui-theme-choice') === preferences.theme));
+      });
+      UI_TOOLS.forEach(function (tool) {
+        var setting = document.querySelector('[data-ui-tool-setting="' + tool + '"]');
+        var control = document.querySelector('[data-ui-tool-choice="' + tool + '"]');
+        var available = document.querySelector('[data-ui-tool="' + tool + '"]') !== null;
+        if (setting) {
+          setting.hidden = !available;
+        }
+        if (control) {
+          control.checked = preferences.tools[tool] !== false;
+        }
+      });
+    }
+
+    function persistAndApply() {
+      saveUiPreferences(preferences);
+      applyPreferences();
+    }
+
+    if (settingsButton && settingsPanel) {
+      settingsButton.addEventListener('click', function () {
+        settingsPanel.hidden = !settingsPanel.hidden;
+        settingsButton.setAttribute('aria-expanded', String(!settingsPanel.hidden));
+      });
+    }
+    if (closeButton && settingsPanel && settingsButton) {
+      closeButton.addEventListener('click', function () {
+        settingsPanel.hidden = true;
+        settingsButton.setAttribute('aria-expanded', 'false');
+        settingsButton.focus();
+      });
+    }
+    eachUiNode('[data-ui-mode-choice]', function (choice) {
+      choice.addEventListener('click', function () {
+        preferences.mode = choice.getAttribute('data-ui-mode-choice');
+        persistAndApply();
+      });
+    });
+    eachUiNode('[data-ui-theme-choice]', function (choice) {
+      choice.addEventListener('click', function () {
+        preferences.theme = choice.getAttribute('data-ui-theme-choice');
+        persistAndApply();
+      });
+    });
+    eachUiNode('[data-ui-tool-choice]', function (control) {
+      control.addEventListener('change', function () {
+        preferences.tools[control.getAttribute('data-ui-tool-choice')] = control.checked;
+        persistAndApply();
+      });
+    });
+    if (resetButton) {
+      resetButton.addEventListener('click', function () {
+        preferences = defaultUiPreferences();
+        persistAndApply();
+      });
+    }
+    if (systemTheme) {
+      var onSystemThemeChange = function () {
+        if (preferences.theme === 'system') {
+          applyPreferences();
+        }
+      };
+      if (systemTheme.addEventListener) {
+        systemTheme.addEventListener('change', onSystemThemeChange);
+      } else {
+        systemTheme.addListener(onSystemThemeChange);
+      }
+    }
+    applyPreferences();
   }
 
   function text(value) {
@@ -3159,6 +3311,7 @@
   });
 
   document.addEventListener('DOMContentLoaded', function () {
+    initUiPreferences();
     initTicketTimer();
     var app = document.body.getAttribute('data-app');
     if (app === 'editor') {

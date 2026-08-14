@@ -96,6 +96,37 @@ class UiPageRenderingTests {
 
   @Test
   @WithMockUser(username = "admin", authorities = "ROLE_ADMINISTRATOR")
+  void sharedChromeKeepsTheToolOrderAndProvidesUserInterfaceSettings() throws Exception {
+    String page =
+        mockMvc.perform(get("/editor")).andExpect(status().isOk()).andReturn().getResponse()
+            .getContentAsString();
+
+    assertThat(page)
+        .contains("data-ui-mode=\"old\"")
+        .contains("data-ui-theme=\"system\"")
+        .contains("data-ui-user=\"admin\"")
+        .contains("/static/app/brand/logo-mark.png")
+        .contains("id=\"uiSettingsPanel\"")
+        .contains("data-ui-mode-choice=\"modern\"")
+        .contains("data-ui-theme-choice=\"system\"")
+        .contains("id=\"uiSettingsReset\"");
+    assertToolOrder(page, "editor", "files", "ozone", "hbase", "jobs");
+  }
+
+  @Test
+  @WithMockUser(username = "admin", authorities = "ROLE_ADMINISTRATOR")
+  void editorAndJobsKeepTheirExistingTabAnchors() throws Exception {
+    String editor = mockMvc.perform(get("/editor")).andExpect(status().isOk()).andReturn().getResponse()
+        .getContentAsString();
+    String jobs = mockMvc.perform(get("/jobs")).andExpect(status().isOk()).andReturn().getResponse()
+        .getContentAsString();
+
+    assertThat(editor).contains("id=\"sessionBar\"", "id=\"resultsTab\"", "id=\"logsTab\"", "id=\"operationsTab\"");
+    assertThat(jobs).contains("id=\"sparkJobsTab\"", "id=\"flinkJobsTab\"", "id=\"runningJobs\"", "id=\"flinkRunning\"");
+  }
+
+  @Test
+  @WithMockUser(username = "admin", authorities = "ROLE_ADMINISTRATOR")
   void editorKeepsMonitoringAboveTheQueryAndOutputInsideSeparateTabs() throws Exception {
     String page =
         mockMvc.perform(get("/editor")).andExpect(status().isOk()).andReturn().getResponse()
@@ -214,6 +245,15 @@ class UiPageRenderingTests {
             .andExpect(content().string(org.hamcrest.Matchers.containsString("page-content")));
     for (String fragment : expected) {
       result.andExpect(content().string(org.hamcrest.Matchers.containsString(fragment)));
+    }
+  }
+
+  private static void assertToolOrder(String page, String... tools) {
+    int previous = -1;
+    for (String tool : tools) {
+      int index = page.indexOf("data-ui-tool=\"" + tool + "\"");
+      assertThat(index).isGreaterThan(previous);
+      previous = index;
     }
   }
 }

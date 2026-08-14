@@ -35,7 +35,8 @@
   <link rel="stylesheet" th:href="@{/static/app/kudos.css}"/>
   <script th:src="@{/static/app/kudos.js}" defer="defer"></script>
 </head>
-<body th:attr="data-app=${app}">
+<body data-ui-mode="old" data-ui-theme="system" data-ui-system-theme="light"
+      th:attr="data-app=${app},data-ui-user=${#authentication.name}">
 <div class="hue-page">
   <div class="sidebar sidebar-collapsed">
     <div class="sidebar-header">
@@ -44,35 +45,35 @@
       </a>
     </div>
     <nav class="sidebar-body">
-      <div class="sidebar-accordion-item" th:if="${features.editor}"
+      <div class="sidebar-accordion-item" data-ui-tool="editor" th:if="${features.editor}"
            th:classappend="${app == 'editor'} ? ' sidebar-active'">
         <a class="sidebar-sidebar-item" th:href="@{/editor}" title="Editor" aria-label="Editor">
           <div class="sidebar-sidebar-item-icon"><i class="fa fa-fw fa-code"></i></div>
           <span>Editor</span>
         </a>
       </div>
-      <div class="sidebar-accordion-item" th:if="${features.files}"
+      <div class="sidebar-accordion-item" data-ui-tool="files" th:if="${features.files}"
            th:classappend="${app == 'filebrowser'} ? ' sidebar-active'">
         <a class="sidebar-sidebar-item" th:href="@{/filebrowser}" title="Files" aria-label="Files">
           <div class="sidebar-sidebar-item-icon"><i class="fa fa-fw fa-files-o"></i></div>
           <span>Files</span>
         </a>
       </div>
-      <div class="sidebar-accordion-item" th:if="${features.ozone}"
+      <div class="sidebar-accordion-item" data-ui-tool="ozone" th:if="${features.ozone}"
            th:classappend="${app == 'ozone'} ? ' sidebar-active'">
         <a class="sidebar-sidebar-item" th:href="@{/ozone}" title="Ozone" aria-label="Ozone">
           <div class="sidebar-sidebar-item-icon"><i class="fa fa-fw fa-cloud"></i></div>
           <span>Ozone</span>
         </a>
       </div>
-      <div class="sidebar-accordion-item" th:if="${features.hbase}"
+      <div class="sidebar-accordion-item" data-ui-tool="hbase" th:if="${features.hbase}"
            th:classappend="${app == 'hbase'} ? ' sidebar-active'">
         <a class="sidebar-sidebar-item" th:href="@{/hbase}" title="HBase" aria-label="HBase">
           <div class="sidebar-sidebar-item-icon"><i class="fa fa-fw fa-database"></i></div>
           <span>HBase</span>
         </a>
       </div>
-      <div class="sidebar-accordion-item" th:if="${features.jobs}"
+      <div class="sidebar-accordion-item" data-ui-tool="jobs" th:if="${features.jobs}"
            th:classappend="${app == 'jobs'} ? ' sidebar-active'">
         <a class="sidebar-sidebar-item" th:href="@{/jobs}" title="Jobs" aria-label="Jobs">
           <div class="sidebar-sidebar-item-icon"><i class="fa fa-fw fa-tasks"></i></div>
@@ -88,7 +89,12 @@
         </a>
       </div>
     </nav>
-    <div class="sidebar-footer">
+  <div class="sidebar-footer">
+      <button id="uiSettingsButton" class="sidebar-sidebar-item sidebar-settings-button" type="button"
+              title="Interface settings" aria-label="Interface settings" aria-controls="uiSettingsPanel" aria-expanded="false">
+        <div class="sidebar-sidebar-item-icon"><i class="fa fa-fw fa-cog"></i></div>
+        <span>Settings</span>
+      </button>
       <div class="sidebar-accordion-item">
         <a class="sidebar-sidebar-item" th:href="@{/logout}" title="Sign out" aria-label="Sign out">
           <div class="sidebar-sidebar-item-icon"><i class="fa fa-fw fa-sign-out"></i></div>
@@ -108,7 +114,38 @@
       <div class="page-content" th:insert="${content}"></div>
     </div>
   </div>
-</div>
+  </div>
+  <aside id="uiSettingsPanel" class="k8s-ui-settings" role="dialog" aria-label="Interface settings" hidden>
+    <div class="k8s-ui-settings-header">
+      <strong>Interface settings</strong>
+      <button id="uiSettingsClose" class="k8s-ui-settings-close" type="button" aria-label="Close settings">×</button>
+    </div>
+    <fieldset class="k8s-ui-settings-group">
+      <legend>Appearance</legend>
+      <div class="k8s-ui-choice-group">
+        <button type="button" data-ui-mode-choice="old" aria-pressed="true">Old</button>
+        <button type="button" data-ui-mode-choice="modern" aria-pressed="false">Modern</button>
+      </div>
+    </fieldset>
+    <fieldset class="k8s-ui-settings-group">
+      <legend>Theme</legend>
+      <div class="k8s-ui-choice-group">
+        <button type="button" data-ui-theme-choice="light" aria-pressed="false">Light</button>
+        <button type="button" data-ui-theme-choice="dark" aria-pressed="false">Dark</button>
+        <button type="button" data-ui-theme-choice="system" aria-pressed="true">System</button>
+      </div>
+      <p class="k8s-ui-theme-preview" aria-live="polite"></p>
+    </fieldset>
+    <fieldset class="k8s-ui-settings-group">
+      <legend>Visible tools</legend>
+      <label data-ui-tool-setting="editor"><input type="checkbox" data-ui-tool-choice="editor" checked="checked"/> Editor</label>
+      <label data-ui-tool-setting="files"><input type="checkbox" data-ui-tool-choice="files" checked="checked"/> Files</label>
+      <label data-ui-tool-setting="ozone"><input type="checkbox" data-ui-tool-choice="ozone" checked="checked"/> Ozone</label>
+      <label data-ui-tool-setting="hbase"><input type="checkbox" data-ui-tool-choice="hbase" checked="checked"/> HBase</label>
+      <label data-ui-tool-setting="jobs"><input type="checkbox" data-ui-tool-choice="jobs" checked="checked"/> Jobs</label>
+    </fieldset>
+    <button id="uiSettingsReset" class="btn btn-small" type="button">Restore defaults</button>
+  </aside>
 <!-- Kerberos ticket countdown. Seeded with the seconds the server had left, so
      it stays correct regardless of any offset in the browser's own clock. At
      zero the script signs the user out. -->
