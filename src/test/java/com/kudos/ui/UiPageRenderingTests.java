@@ -187,6 +187,12 @@ class UiPageRenderingTests {
 
   @Test
   @WithMockUser(username = "admin", authorities = "ROLE_ADMINISTRATOR")
+  void runningKyuubiFlinkEngineEmbedsTheJobManagerInTheKudosChrome() throws Exception {
+    assertPageRenders("/flink/jobmanager", "/flink-ui/jobmanager/?embedded");
+  }
+
+  @Test
+  @WithMockUser(username = "admin", authorities = "ROLE_ADMINISTRATOR")
   void completedFlinkJobDeepLinksToTheHistoryRoute() throws Exception {
     assertPageRenders(
         "/flink/history/abc123", "/flink-ui/history/?embedded#/job/completed/abc123/overview");

@@ -155,4 +155,17 @@ public class UiController {
     model.addAttribute("rawUrl", "/flink-ui/" + scope + "/" + deepLink);
     return "flink";
   }
+
+  /** Embeds the live JobManager overview for a running Kyuubi Flink engine. */
+  @GetMapping("/flink/jobmanager")
+  String flinkJobManager(Model model, Authentication authentication) {
+    if (!sparkAccess.canUseFlinkUi(authentication)) {
+      throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+    }
+    model.addAttribute("app", "jobs");
+    model.addAttribute("jid", "running");
+    model.addAttribute("frameUrl", "/flink-ui/jobmanager/?embedded");
+    model.addAttribute("rawUrl", "/flink-ui/jobmanager/");
+    return "flink";
+  }
 }

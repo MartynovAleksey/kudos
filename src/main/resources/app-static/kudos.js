@@ -2957,7 +2957,7 @@
     // running row therefore opens the live JobManager overview; individual
     // query rows keep their links to the exact job detail.
     function flinkEngineUiHref() {
-      return '/flink-ui/jobmanager/?embedded';
+      return '/flink/jobmanager';
     }
 
     function flinkTable(applications) {

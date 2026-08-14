@@ -52,6 +52,7 @@ RUN set -eux; \
     cp /tmp/ozone-site.xml /opt/kyuubi/conf/core-site.xml; \
     cp /tmp/ozone-site.xml "$spark_home/conf/"; \
     cp /tmp/ozone-site.xml /opt/flink/conf/; \
+    cp /tmp/ozone-site.xml /opt/hadoop/etc/hadoop/core-site.xml; \
     rm -f /tmp/ozone-site.xml; \
     sed -i 's/^    address: localhost$/    address: flink-jobmanager.test.local/' /opt/flink/conf/config.yaml; \
     sed -i 's/^  address: 0.0.0.0$/  address: flink-jobmanager.test.local/' /opt/flink/conf/config.yaml; \

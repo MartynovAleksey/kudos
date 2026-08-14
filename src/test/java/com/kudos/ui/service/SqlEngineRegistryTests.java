@@ -17,6 +17,7 @@
 package com.kudos.ui.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 import java.util.List;
 import java.util.Map;
@@ -43,6 +44,17 @@ class SqlEngineRegistryTests {
             new SqlEngineInfo("kyuubi-flink", "Kyuubi Flink SQL", true, false),
             new SqlEngineInfo("trino", "Trino", false, false),
             new SqlEngineInfo("starrocks", "StarRocks", false, false));
+  }
+
+  @Test
+  void keepsKyuubiSparkAndFlinkMocksDistinctDuringContextStartup() {
+    KyuubiService spark = mock(KyuubiService.class);
+    KyuubiFlinkService flink = mock(KyuubiFlinkService.class);
+
+    SqlEngineRegistry registry = new SqlEngineRegistry(List.of(spark, flink));
+
+    assertThat(registry.get("kyuubi")).isSameAs(spark);
+    assertThat(registry.get("kyuubi-flink")).isSameAs(flink);
   }
 
   private record StubEngine(String id, String displayName, boolean supportsSessions) implements SqlEngine {

@@ -136,7 +136,7 @@ class KyuubiServiceTests {
                         "spark.driver.extraJavaOptions=-Dderby.system.home=/tmp/kudos-metastore-")));
     urls
         .getAllValues()
-        .forEach(url -> assertTrue(url.contains("spark.eventLog.enabled=false")));
+        .forEach(url -> assertFalse(url.contains("spark.eventLog.enabled=false")));
   }
 
   @Test

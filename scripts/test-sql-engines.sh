@@ -27,6 +27,7 @@ app_ca="$(mktemp)"
 session_cookie="$(mktemp)"
 csrf_token=""
 spark_session_id=""
+spark_engine_session_id=""
 flink_session_id=""
 
 run_docker() {
@@ -134,16 +135,41 @@ test_kyuubi_engine() {
     flink_session_id="$session_id"
   fi
   wait_for_session "$engine" "$session_id"
+  if [[ "$engine" == "kyuubi" ]]; then
+    spark_engine_session_id="$(ui_api "$app_base/ui-api/sessions?engine=kyuubi" \
+      | grep -o "\"id\":\"$session_id\"[^}]*" \
+      | sed -n 's/.*"kyuubiSessionId":"\([^"]*\)".*/\1/p')"
+    [[ -n "$spark_engine_session_id" ]]
+  fi
   run_queries "$engine" "$session_id" "$@"
   monitor="$(ui_api "$app_base/ui-api/sessions/$session_id/monitor?engine=$engine")"
   grep -Eq '"totalOperations":1[0-9]|"totalOperations":[2-9][0-9]' <<<"$monitor"
   printf 'PASS %s: 10 SQL queries ran in one session %s\n' "$engine" "$session_id"
   stop_session "$engine" "$session_id"
   if [[ "$engine" == "kyuubi" ]]; then
+    wait_for_spark_history
     spark_session_id=""
+    spark_engine_session_id=""
   else
     flink_session_id=""
   fi
+}
+
+wait_for_spark_history() {
+  local deadline=$((SECONDS + 180))
+  local applications
+  local expected_name="kyuubi_CONNECTION_SPARK_SQL_${test_username}_${spark_engine_session_id}"
+  while (( SECONDS < deadline )); do
+    applications="$(ui_api "$app_base/ui-api/spark/applications?limit=20")"
+    if grep -Eq "\"name\":\"$expected_name\",\"user\":\"$test_username\"[^}]*\"completed\":true" \
+      <<<"$applications"; then
+      echo "PASS Kyuubi Spark event log in Ozone and History for $test_username"
+      return 0
+    fi
+    sleep 3
+  done
+  echo "Spark History did not return completed application $expected_name for $test_username" >&2
+  return 1
 }
 
 spark_queries=(

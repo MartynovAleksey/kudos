@@ -32,11 +32,7 @@ public class SqlEngineRegistry {
   public SqlEngineRegistry(List<SqlEngine> engines) {
     Map<String, SqlEngine> registered = new LinkedHashMap<>();
     for (SqlEngine engine : engines) {
-      String id = normalize(engine.id());
-      if (id.isEmpty() && engine instanceof KyuubiService) {
-        // Mockito-replaced KyuubiService beans used by integration tests have no id().
-        id = "kyuubi";
-      }
+      String id = engineId(engine);
       SqlEngine previous = registered.putIfAbsent(id, engine);
       if (previous != null) {
         throw new IllegalStateException("Duplicate SQL engine id: " + engine.id());
@@ -59,6 +55,18 @@ public class SqlEngineRegistry {
   private static SqlEngineInfo describe(SqlEngine engine) {
     return new SqlEngineInfo(
         engine.id(), engine.displayName(), engine.supportsSessions(), engine.supportsHistory());
+  }
+
+  private static String engineId(SqlEngine engine) {
+    // The engine type is fixed by its Spring bean. This also keeps Mockito-replaced beans
+    // distinguishable while an integration-test application context is being created.
+    if (engine instanceof KyuubiFlinkService) {
+      return "kyuubi-flink";
+    }
+    if (engine instanceof KyuubiService) {
+      return "kyuubi";
+    }
+    return normalize(engine.id());
   }
 
   private static String normalize(String id) {

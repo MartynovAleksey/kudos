@@ -434,7 +434,6 @@ public class KyuubiService implements KyuubiSqlEngine {
     StringBuilder confs =
         new StringBuilder("kyuubi.engine.share.level=CONNECTION;kyuubi.engine.type=").append(engineType);
     boolean driverOptionsSet = false;
-    boolean eventLogEnabledSet = false;
     if (sparkParams != null) {
       for (String line : sparkParams.split("\\r?\\n")) {
         String trimmed = line.trim();
@@ -454,15 +453,8 @@ public class KyuubiService implements KyuubiSqlEngine {
           value += " -Dderby.system.home=/tmp/kudos-metastore-" + engineId;
           driverOptionsSet = true;
         }
-        if ("SPARK_SQL".equals(engineType) && key.equals("spark.eventLog.enabled")) {
-          eventLogEnabledSet = true;
-        }
         confs.append(';').append(key).append('=').append(value);
       }
-    }
-    if ("SPARK_SQL".equals(engineType) && !eventLogEnabledSet) {
-      // The app keeps the caller's Kerberos ticket in memory; Spark's child process cannot use it.
-      confs.append(";spark.eventLog.enabled=false");
     }
     if ("SPARK_SQL".equals(engineType) && !driverOptionsSet) {
       confs
