@@ -70,6 +70,36 @@ class UiPageRenderingTests {
   }
 
   @Test
+  @WithMockUser(username = "admin", authorities = "ROLE_ADMINISTRATOR")
+  void modernChromeScrollsLongPagesInTheContentPane() throws Exception {
+    mockMvc
+        .perform(get("/static/app/kudos.css"))
+        .andExpect(status().isOk())
+        .andExpect(
+            content()
+                .string(
+                    org.hamcrest.Matchers.containsString(
+                        "body[data-ui-mode=\"modern\"] .hue-page {\n"
+                            + "  height: 100vh;\n"
+                            + "  border: 0;\n"
+                            + "  border-radius: 0;\n"
+                            + "  background: var(--k8s-window);\n"
+                            + "  overflow: hidden;")))
+        .andExpect(
+            content()
+                .string(
+                    org.hamcrest.Matchers.containsString(
+                        "body[data-ui-mode=\"modern\"] .main-page {\n"
+                            + "  height: 100vh;\n"
+                            + "  min-height: 0;\n"
+                            + "  margin-left: 252px;\n"
+                            + "  padding: 26px 30px;\n"
+                            + "  box-sizing: border-box;\n"
+                            + "  background: var(--k8s-window);\n"
+                            + "  overflow-y: auto;")));
+  }
+
+  @Test
   void anonymousUserIsSentToTheLoginPage() throws Exception {
     mockMvc.perform(get("/editor")).andExpect(status().is3xxRedirection());
   }

@@ -1156,7 +1156,7 @@ body[data-ui-mode="modern"] {
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
 }
 body[data-ui-mode="modern"] .hue-page {
-  min-height: 100vh;
+  height: 100vh;
   border: 0;
   border-radius: 0;
   background: var(--k8s-window);
@@ -1254,11 +1254,13 @@ body[data-ui-mode="modern"] .sidebar-footer .sidebar-sidebar-item {
   margin: 2px 0;
 }
 body[data-ui-mode="modern"] .main-page {
-  min-height: 100vh;
+  height: 100vh;
+  min-height: 0;
   margin-left: 252px;
   padding: 26px 30px;
   box-sizing: border-box;
   background: var(--k8s-window);
+  overflow-y: auto;
 }
 
 /*
