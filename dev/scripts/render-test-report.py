@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Формирует автономный HTML-отчёт из XML-файлов Maven Surefire."""
+"""Builds a standalone HTML report from Maven Surefire XML files."""
 
 from __future__ import annotations
 
@@ -38,21 +38,21 @@ def main() -> None:
             if problem is None:
                 problem = case.find("error")
             skipped = case.find("skipped")
-            status = "Ошибка" if problem is not None else "Пропущен" if skipped is not None else "Успешно"
+            status = "Failed" if problem is not None else "Skipped" if skipped is not None else "Passed"
             details = "" if problem is None else (problem.get("message") or problem.text or "")
             cases.append((case.get("name", ""), case.get("time", "0"), status, details))
         suites.append((root.get("name", path.stem), cases))
 
     total = sum(len(cases) for _, cases in suites)
-    failed = sum(status == "Ошибка" for _, cases in suites for _, _, status, _ in cases)
-    skipped = sum(status == "Пропущен" for _, cases in suites for _, _, status, _ in cases)
+    failed = sum(status == "Failed" for _, cases in suites for _, _, status, _ in cases)
+    skipped = sum(status == "Skipped" for _, cases in suites for _, _, status, _ in cases)
     rows = []
     for suite, cases in suites:
         for name, duration, status, details in cases:
-            css = {"Успешно": "ok", "Ошибка": "fail", "Пропущен": "skip"}[status]
+            css = {"Passed": "ok", "Failed": "fail", "Skipped": "skip"}[status]
             rows.append(
                 f"<tr class='{css}'><td>{html.escape(suite)}</td><td>{html.escape(name)}</td>"
-                f"<td>{html.escape(duration)} с</td><td>{status}</td>"
+                f"<td>{html.escape(duration)} s</td><td>{status}</td>"
                 f"<td><pre>{html.escape(details)}</pre></td></tr>"
             )
 
@@ -60,14 +60,14 @@ def main() -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(
         "<!doctype html><html lang='ru'><head><meta charset='utf-8'>"
-        "<title>Отчёт автотестов KUDOS</title><style>"
+        "<title>KUDOS automated test report</title><style>"
         "body{font:14px system-ui;margin:32px;color:#172033}"
         "table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccd3df;padding:8px;text-align:left}"
         "th{background:#edf1f7}.ok td:nth-child(4){color:#08783e}.fail td:nth-child(4){color:#b42318}"
         ".skip td:nth-child(4){color:#8a5a00}pre{white-space:pre-wrap;margin:0}"
-        "</style></head><body><h1>Отчёт автотестов KUDOS</h1>"
-        f"<p>Всего: <b>{total}</b>; ошибок: <b>{failed}</b>; пропущено: <b>{skipped}</b>.</p>"
-        "<table><thead><tr><th>Набор</th><th>Тест</th><th>Время</th><th>Результат</th><th>Подробности</th>"
+        "</style></head><body><h1>KUDOS automated test report</h1>"
+        f"<p>Total: <b>{total}</b>; failed: <b>{failed}</b>; skipped: <b>{skipped}</b>.</p>"
+        "<table><thead><tr><th>Suite</th><th>Test</th><th>Duration</th><th>Status</th><th>Details</th>"
         f"</tr></thead><tbody>{''.join(rows)}</tbody></table></body></html>",
         encoding="utf-8",
     )

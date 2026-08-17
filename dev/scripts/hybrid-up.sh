@@ -23,8 +23,8 @@
 # Steps: build image -> bring up cluster+Vault in Docker -> create k8s
 # ConfigMaps/Secret from the running stand -> helm install -> port-forward.
 #
-# Usage:  scripts/hybrid-up.sh [--no-build] [--namespace kudos]
-# Stop:   scripts/hybrid-down.sh
+# Usage:  dev/scripts/hybrid-up.sh [--no-build] [--namespace kudos]
+# Stop:   dev/scripts/hybrid-down.sh
 #
 set -euo pipefail
 
@@ -46,7 +46,7 @@ image="kudos:0.1.0"
 compose_bin="${DOCKER_COMPOSE_BIN:-$HOME/.docker/cli-plugins/docker-compose}"
 
 dc() {
-  env -u DOCKER_DEFAULT_PLATFORM DOCKER_CONFIG="$root/docker/.docker-config" \
+  env -u DOCKER_DEFAULT_PLATFORM DOCKER_CONFIG="$root/dev/docker/.docker-config" \
     "$compose_bin" -f "$root/compose.yaml" "$@"
 }
 
@@ -55,7 +55,7 @@ step() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 # --- 1. Build the application image (skip with --no-build) --------------------
 if [ "$BUILD" -eq 1 ]; then
   step "Building application image $image"
-  DOCKER_BUILDKIT=1 docker build -f docker/app/Dockerfile -t "$image" .
+  DOCKER_BUILDKIT=1 docker build -f dev/docker/app/Dockerfile -t "$image" .
 else
   step "Skipping image build (--no-build); using existing $image"
 fi
@@ -137,8 +137,8 @@ kubectl -n "$NS" create secret generic kudos-vault-approle \
 kubectl -n "$NS" create configmap kudos-krb5 --from-file=krb5.conf="$work/krb5.conf" \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 kubectl -n "$NS" create configmap kudos-cluster-conf \
-  --from-file=core-site.xml=docker/ozone/core-site.xml \
-  --from-file=ozone-site.xml=docker/ozone/ozone-site.xml \
+  --from-file=core-site.xml=dev/docker/ozone/core-site.xml \
+  --from-file=ozone-site.xml=dev/docker/ozone/ozone-site.xml \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 kubectl -n "$NS" create configmap kudos-config --from-file=application.yml="$work/application.yml" \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
@@ -179,7 +179,7 @@ cat <<EOF
 
   Pods:   kubectl -n $NS get pods
   Logs:   kubectl -n $NS logs deploy/kudos -c app -f
-  Stop:   scripts/hybrid-down.sh
+  Stop:   dev/scripts/hybrid-down.sh
 
 EOF
 exec kubectl -n "$NS" port-forward svc/kudos 8443:8443 --address 127.0.0.1

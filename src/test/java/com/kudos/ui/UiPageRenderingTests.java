@@ -23,6 +23,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.kudos.ui.service.EngineVisibilityStore;
+import com.kudos.ui.service.ToolVisibilityStore;
+import java.util.Map;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -45,6 +49,17 @@ import org.springframework.test.web.servlet.MockMvc;
 class UiPageRenderingTests {
 
   @Autowired MockMvc mockMvc;
+  @Autowired ToolVisibilityStore toolVisibility;
+  @Autowired EngineVisibilityStore engineVisibility;
+
+  @AfterEach
+  void restoreVisibility() {
+    // The stores are shared singletons; leave everything visible for other tests.
+    toolVisibility.update(
+        Map.of("editor", true, "files", true, "ozone", true, "hbase", true, "jobs", true));
+    engineVisibility.update(
+        Map.of("kyuubi", true, "kyuubi-flink", true, "trino", true, "starrocks", true));
+  }
 
   @Test
   void loginPageRendersWithoutAuthentication() throws Exception {
@@ -102,15 +117,81 @@ class UiPageRenderingTests {
             .getContentAsString();
 
     assertThat(page)
-        .contains("data-ui-mode=\"old\"")
+        .contains("data-ui-mode=\"modern\"")
         .contains("data-ui-theme=\"system\"")
         .contains("data-ui-user=\"admin\"")
         .contains("/static/app/brand/logo-mark.png")
         .contains("id=\"uiSettingsPanel\"")
-        .contains("data-ui-mode-choice=\"modern\"")
         .contains("data-ui-theme-choice=\"system\"")
         .contains("id=\"uiSettingsReset\"");
+    // The old/modern toggle has been removed; the interface is always modern.
+    assertThat(page).doesNotContain("data-ui-mode-choice");
     assertToolOrder(page, "editor", "files", "ozone", "hbase", "jobs");
+  }
+
+  @Test
+  @WithMockUser(username = "admin", authorities = "ROLE_ADMINISTRATOR")
+  void administratorGetsTheVisibleToolsSettingAndSidebarCollapse() throws Exception {
+    String page =
+        mockMvc.perform(get("/editor")).andExpect(status().isOk()).andReturn().getResponse()
+            .getContentAsString();
+
+    assertThat(page)
+        .contains("Visible tools")
+        .contains("data-ui-tool-choice=\"editor\"")
+        .contains("id=\"uiSidebarCollapse\"")
+        .contains("data-ui-sidebar=\"collapsed\"");
+  }
+
+  @Test
+  @WithMockUser(username = "user", authorities = "ROLE_USER")
+  void aRegularUserHasNoVisibleToolsSetting() throws Exception {
+    String page =
+        mockMvc.perform(get("/editor")).andExpect(status().isOk()).andReturn().getResponse()
+            .getContentAsString();
+
+    // The setting is administrator-only, but the tools themselves still render.
+    assertThat(page).doesNotContain("Visible tools", "data-ui-tool-choice=");
+    assertThat(page).contains("data-ui-tool=\"editor\"");
+  }
+
+  @Test
+  @WithMockUser(username = "user", authorities = "ROLE_USER")
+  void aGloballyHiddenToolIsOmittedForARegularUser() throws Exception {
+    toolVisibility.update(Map.of("hbase", false));
+
+    String page =
+        mockMvc.perform(get("/editor")).andExpect(status().isOk()).andReturn().getResponse()
+            .getContentAsString();
+
+    assertThat(page).doesNotContain("data-ui-tool=\"hbase\"");
+    assertThat(page).contains("data-ui-tool=\"editor\"");
+  }
+
+  @Test
+  @WithMockUser(username = "admin", authorities = "ROLE_ADMINISTRATOR")
+  void administratorGetsTheSqlEngineToggles() throws Exception {
+    String page =
+        mockMvc.perform(get("/editor")).andExpect(status().isOk()).andReturn().getResponse()
+            .getContentAsString();
+
+    assertThat(page)
+        .contains("SQL engines")
+        .contains("data-ui-engine-choice=\"trino\"")
+        .contains("data-ui-engine-choice=\"kyuubi-flink\"");
+  }
+
+  @Test
+  @WithMockUser(username = "admin", authorities = "ROLE_ADMINISTRATOR")
+  void aHiddenEngineHasNoEditorTab() throws Exception {
+    engineVisibility.update(Map.of("trino", false));
+
+    String page =
+        mockMvc.perform(get("/editor")).andExpect(status().isOk()).andReturn().getResponse()
+            .getContentAsString();
+
+    assertThat(page).doesNotContain("data-sql-engine=\"trino\"");
+    assertThat(page).contains("data-sql-engine=\"kyuubi\"");
   }
 
   @Test

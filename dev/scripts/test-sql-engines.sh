@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Проверяет SQL Editor через приложение: запросы не используют таблицы или реальные данные.
+# Validates SQL Editor through the application; queries do not use tables or real data.
 set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -31,11 +31,11 @@ spark_engine_session_id=""
 flink_session_id=""
 
 run_docker() {
-  env DOCKER_CONFIG="$project_root/docker/.docker-config" PATH="/usr/bin:/bin" "$docker_bin" "$@"
+  env DOCKER_CONFIG="$project_root/dev/docker/.docker-config" PATH="/usr/bin:/bin" "$docker_bin" "$@"
 }
 
 run_compose() {
-  env -u DOCKER_DEFAULT_PLATFORM DOCKER_CONFIG="$project_root/docker/.docker-config" PATH="/usr/bin:/bin" \
+  env -u DOCKER_DEFAULT_PLATFORM DOCKER_CONFIG="$project_root/dev/docker/.docker-config" PATH="/usr/bin:/bin" \
     "$compose_bin" -f "$project_root/compose.yaml" "$@"
 }
 

@@ -262,7 +262,7 @@
                 <configuration>
                   <executable>bash</executable>
                   <arguments>
-                    <argument>${project.basedir}/scripts/scan-trivy.sh</argument>
+                    <argument>${project.basedir}/dev/scripts/scan-trivy.sh</argument>
                   </arguments>
                 </configuration>
               </execution>
@@ -277,7 +277,7 @@
       <id>owasp</id>
       <properties>
         <!--
-          NVD API key. Kept OUT of source control: scripts/scan-owasp.sh reads it
+          NVD API key. Kept OUT of source control: dev/scripts/scan-owasp.sh reads it
           from a file (~/OWASP-API.key by default) and passes it as
           -Dnvd.api.key. Left empty here so a bare `mvn -Powasp` still runs
           (unkeyed, slower). Override ad hoc with:  -Dnvd.api.key=<key>
@@ -335,7 +335,7 @@
                 <configuration>
                   <executable>python3</executable>
                   <arguments>
-                    <argument>${project.basedir}/scripts/scan_report_md.py</argument>
+                    <argument>${project.basedir}/dev/scripts/scan_report_md.py</argument>
                     <argument>owasp</argument>
                     <argument>${project.build.directory}/dependency-check-report.json</argument>
                     <argument>${project.basedir}/owasp.md</argument>

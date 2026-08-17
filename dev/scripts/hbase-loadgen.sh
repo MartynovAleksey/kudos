@@ -33,9 +33,9 @@
 #   MODE=generate | clean                  clean drops every ${PREFIX}* table
 #
 # Usage:
-#   ./scripts/hbase-loadgen.sh            # generate the representative matrix
-#   MODE=clean ./scripts/hbase-loadgen.sh # remove everything it created
-#   MANY_TABLES=5000 ROW_SIZES="100000" ./scripts/hbase-loadgen.sh   # heavier
+#   ./dev/scripts/hbase-loadgen.sh            # generate the representative matrix
+#   MODE=clean ./dev/scripts/hbase-loadgen.sh # remove everything it created
+#   MANY_TABLES=5000 ROW_SIZES="100000" ./dev/scripts/hbase-loadgen.sh   # heavier
 set -uo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -51,10 +51,10 @@ admin_password="${TEST_ADMIN_PASSWORD:-KudosAdmin2026Secure!}"
 : "${MODE:=generate}"
 
 run_docker() {
-  env DOCKER_CONFIG="$project_root/docker/.docker-config" PATH="/usr/bin:/bin" "$docker_bin" "$@"
+  env DOCKER_CONFIG="$project_root/dev/docker/.docker-config" PATH="/usr/bin:/bin" "$docker_bin" "$@"
 }
 run_compose() {
-  env DOCKER_CONFIG="$project_root/docker/.docker-config" PATH="/usr/bin:/bin" \
+  env DOCKER_CONFIG="$project_root/dev/docker/.docker-config" PATH="/usr/bin:/bin" \
     "$compose_bin" -f "$project_root/compose.yaml" "$@"
 }
 

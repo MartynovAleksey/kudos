@@ -19,9 +19,9 @@
 # The NVD API key is read from a FILE, never hard-coded and never a build arg:
 #     key file = $OWASP_API_KEY_FILE   (default: ~/OWASP-API.key)
 #
-# Local run:   bash scripts/scan-owasp.sh
+# Local run:   bash dev/scripts/scan-owasp.sh
 # Docker:      the key file is mounted as a BuildKit secret at /run/secrets/owasp_key
-#              and passed via OWASP_API_KEY_FILE (see docker/app/Dockerfile).
+#              and passed via OWASP_API_KEY_FILE (see dev/docker/app/Dockerfile).
 #
 # Output:      owasp.md in the project root (numbered Markdown table).
 # Requires:    maven, python3. First run downloads the NVD database (can be slow).

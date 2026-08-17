@@ -92,6 +92,14 @@ kudos:
     # no banner. Example:
     # banner-html: '<strong>TEST</strong> environment — data is not production.'
     banner-html: ""
+    # Where an administrator's choice of visible left-panel tools is stored, so
+    # it applies to every user on their next sign-in. Set for the container via
+    # the KUDOS_UI_TOOL_VISIBILITY_FILE environment variable in compose.yaml (for
+    # the same reason as the log directory below); empty here holds the choice in
+    # memory only, which is the safe default for local runs and tests.
+    tool-visibility-file: ${KUDOS_UI_TOOL_VISIBILITY_FILE:}
+    # Same, for which SQL engines are shown in the editor.
+    engine-visibility-file: ${KUDOS_UI_ENGINE_VISIBILITY_FILE:}
 
   # The log directory (kudos.logging.dir) is set for the container via the
   # KUDOS_LOGGING_DIR environment variable in compose.yaml, not here: this file

@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Built from the docker/ directory so the Ozone service configuration can be
-# reused verbatim, matching how docker/spark-history/Dockerfile is built.
+# Built from the dev/docker/ directory so the Ozone service configuration can be
+# reused verbatim, matching how dev/docker/spark-history/Dockerfile is built.
 #
 # Flink stores its completed-job archives in the same Kerberized Ozone the rest
 # of the stack uses. Flink ships Hadoop-free, so a vanilla Hadoop provides the

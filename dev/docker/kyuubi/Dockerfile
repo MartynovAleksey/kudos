@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Built from the docker/ directory so the Ozone service configuration can be
+# Built from the dev/docker/ directory so the Ozone service configuration can be
 # reused verbatim instead of being duplicated per service.
 #
 # The Ozone filesystem jar is taken from the same Ozone build the stack runs,

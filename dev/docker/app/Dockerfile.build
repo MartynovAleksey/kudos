@@ -18,14 +18,14 @@
 # and exports them to the host. The runtime image is built separately from these
 # artifacts by Dockerfile.runtime, so no build tooling ever lands in the runtime.
 #
-#   DOCKER_BUILDKIT=1 docker build -f docker/app/Dockerfile.build \
+#   DOCKER_BUILDKIT=1 docker build -f dev/docker/app/Dockerfile.build \
 #     --output type=local,dest=dist .
 #   -> dist/kudos-0.1.0.jar, dist/HealthCheck.class
 #
 # The optional security-scan stages live here too (they scan the built jar):
-#   DOCKER_BUILDKIT=1 docker build -f docker/app/Dockerfile.build --target trivy-report \
+#   DOCKER_BUILDKIT=1 docker build -f dev/docker/app/Dockerfile.build --target trivy-report \
 #     --output type=local,dest=. .
-#   DOCKER_BUILDKIT=1 docker build -f docker/app/Dockerfile.build --target owasp-report \
+#   DOCKER_BUILDKIT=1 docker build -f dev/docker/app/Dockerfile.build --target owasp-report \
 #     --secret id=owasp_key,src=$HOME/OWASP-API.key --output type=local,dest=. .
 FROM maven:3.9.11-eclipse-temurin-21 AS build
 WORKDIR /workspace
@@ -37,11 +37,11 @@ RUN echo 'Compiling kudos...' && \
     mvn -B -Dstyle.color=never -DskipTests package
 # Scan scripts live in the build stage so the optional scan stages below inherit
 # them; copied after packaging so editing a script does not bust the build cache.
-COPY scripts scripts
+COPY dev/scripts scripts
 # Precompile the container healthcheck into a small jar: the distroless runtime is
 # a JRE (no compiler), so it can run a .class/.jar but not a single-file .java.
 # A jar bundles the anonymous inner classes too (a bare .class would miss them).
-COPY docker/app/HealthCheck.java .
+COPY dev/docker/app/HealthCheck.java .
 RUN javac -d /workspace/health HealthCheck.java && \
     jar --create --file /workspace/healthcheck.jar --main-class HealthCheck -C /workspace/health .
 

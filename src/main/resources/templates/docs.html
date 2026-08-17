@@ -58,6 +58,62 @@
         </tbody>
       </table>
 
+      <h3>Components</h3>
+      <p>Each component below is one of the areas you see in the interface.</p>
+
+      <h4><i class="fa fa-fw fa-code"></i> Editor</h4>
+      <p>
+        Runs SQL against the cluster's query engines. Pick an engine from the tabs at the top;
+        write SQL in the editor (Ace, with autocomplete on <code>Ctrl + Space</code>) and run it
+        with <strong>Execute</strong> (the statement at the cursor) or <strong>Execute all</strong>.
+        Results are shown as a table and can be exported to Excel. Output is split into
+        <strong>Result</strong>, <strong>Log</strong> (live engine logs, session engines only) and
+        <strong>Session History</strong> tabs.
+      </p>
+      <ul>
+        <li><strong>Kyuubi Spark SQL</strong> — Spark SQL through Kyuubi. Supports named
+          <em>sessions</em>: start one with <strong>+</strong>, tune engine parameters, restart or
+          close it. <strong>Query mode</strong> runs each statement in its own short-lived
+          connection instead of a persistent session.</li>
+        <li><strong>Kyuubi Flink SQL</strong> — Flink SQL through Kyuubi, with the same session
+          model; the running job's dashboard opens from <em>Jobs</em>.</li>
+        <li><strong>Trino</strong> — interactive Trino queries using the signed-in user's Kerberos
+          identity (delegation). No sessions; errors and past runs appear under History.</li>
+        <li><strong>StarRocks</strong> — StarRocks queries over the MySQL protocol via a service
+          account. No sessions; History records past runs.</li>
+      </ul>
+
+      <h4><i class="fa fa-fw fa-files-o"></i> Files</h4>
+      <p>Browses HDFS over WebHDFS: navigate directories, preview files, upload, and manage
+        permissions — all as your own Kerberos identity.</p>
+
+      <h4><i class="fa fa-fw fa-cloud"></i> Ozone</h4>
+      <p>Browses the Ozone object store through its <code>ofs://</code> filesystem, the same way as
+        the file browser.</p>
+
+      <h4><i class="fa fa-fw fa-database"></i> HBase</h4>
+      <p>A full table browser over the HBase REST Gateway: create, alter and drop tables and column
+        families; scan with filters and pagination; edit rows and cells; and bulk-upload data.</p>
+
+      <h4><i class="fa fa-fw fa-tasks"></i> Jobs</h4>
+      <p>Lists cluster applications on two tabs, each with its own filters:</p>
+      <ul>
+        <li><strong>Spark</strong> — applications from the Spark History Server; open one to see its
+          UI embedded in the KUDOS chrome (reverse-proxied).</li>
+        <li><strong>Flink</strong> — running and completed Flink applications; open one to see its
+          dashboard embedded, with Flink's own side panel hidden. Administrator-only.</li>
+      </ul>
+
+      <h4><i class="fa fa-fw fa-book"></i> Documentation</h4>
+      <p>This page: the API reference, a description of every component, and the configuration and
+        logging reference.</p>
+
+      <h4><i class="fa fa-fw fa-cog"></i> Interface settings</h4>
+      <p>Opens from the sidebar. Sets the theme (light / dark / follow the system), collapses the
+        sidebar to an icon rail, and — for administrators — controls which left-panel tools and
+        which SQL engines are visible to everyone. Theme and sidebar are per-browser; tool and
+        engine visibility are deployment-wide and take effect on each user's next sign-in.</p>
+
       <h3>Configuration</h3>
       <p>
         Settings live in an external file mounted at <code>/etc/kudos/application.yml</code>

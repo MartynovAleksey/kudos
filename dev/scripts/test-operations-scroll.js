@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 /*
  * Copyright 2026 Aleksey Martynov and contributors
  *
@@ -14,8 +16,6 @@
  * limitations under the License.
  */
 
-#!/usr/bin/env node
-
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
@@ -24,8 +24,8 @@ const source = fs.readFileSync('src/main/resources/app-static/kudos.js', 'utf8')
 const styles = fs.readFileSync('src/main/resources/app-static/kudos.css', 'utf8');
 const start = source.indexOf('    function renderOperations(');
 const end = source.indexOf('\n\n    function rerunOperation(', start);
-assert.notEqual(start, -1, 'Не найдена функция renderOperations');
-assert.notEqual(end, -1, 'Не найдена граница функции renderOperations');
+assert.notEqual(start, -1, 'renderOperations function was not found');
+assert.notEqual(end, -1, 'renderOperations function boundary was not found');
 
 class Element {
   constructor(tagName, attributes = {}) {
@@ -127,14 +127,14 @@ context.renderOperations(
 );
 
 const updatedScroll = operationsContainer.querySelector('.k8s-operations-scroll');
-assert.ok(updatedScroll, 'Список операций не был отрисован');
-assert.equal(updatedScroll.scrollTop, 173, 'Позиция прокрутки сброшена при обновлении');
+assert.ok(updatedScroll, 'Operations list was not rendered');
+assert.equal(updatedScroll.scrollTop, 173, 'Scroll position was reset during refresh');
 console.log('PASS Operations scroll position is preserved');
 
 const outputStart = source.indexOf('    function showOutputTab(');
 const outputEnd = source.indexOf('\n\n    outputTabs.forEach', outputStart);
-assert.notEqual(outputStart, -1, 'Не найдена функция showOutputTab');
-assert.notEqual(outputEnd, -1, 'Не найдена граница функции showOutputTab');
+assert.notEqual(outputStart, -1, 'showOutputTab function was not found');
+assert.notEqual(outputEnd, -1, 'showOutputTab function boundary was not found');
 
 const resultOutput = { tab: new Element('a'), item: new Element('li'), pane: new Element('div') };
 const logOutput = { tab: new Element('a'), item: new Element('li'), pane: new Element('div') };
@@ -148,34 +148,34 @@ const outputContext = {
 };
 vm.runInNewContext(source.slice(outputStart, outputEnd), outputContext);
 outputContext.showOutputTab('operations');
-assert.equal(resultOutput.pane.hidden, true, 'Result не скрыт при открытии Operations');
-assert.equal(logOutput.pane.hidden, true, 'Log не скрыт при открытии Operations');
-assert.equal(operationsOutput.pane.hidden, false, 'Operations не показан в собственной вкладке');
+assert.equal(resultOutput.pane.hidden, true, 'Result is not hidden when Operations opens');
+assert.equal(logOutput.pane.hidden, true, 'Log is not hidden when Operations opens');
+assert.equal(operationsOutput.pane.hidden, false, 'Operations is not shown in its own tab');
 assert.equal(operationsOutput.pane.attributes['aria-hidden'], 'false');
 console.log('PASS Output tabs hide inactive panes');
 
 const sessionsStart = source.indexOf('    function renderSessions(');
 const sessionsEnd = source.indexOf('\n\n    function sessionForm(', sessionsStart);
-assert.notEqual(sessionsStart, -1, 'Не найдена функция renderSessions');
-assert.notEqual(sessionsEnd, -1, 'Не найдена граница функции renderSessions');
+assert.notEqual(sessionsStart, -1, 'renderSessions function was not found');
+assert.notEqual(sessionsEnd, -1, 'renderSessions function boundary was not found');
 const sessionTabs = source.slice(sessionsStart, sessionsEnd);
 assert.doesNotMatch(sessionTabs, /kyuubiSessionId|k8s-session-id/,
-  'Идентификатор Kyuubi не должен отображаться в имени вкладки');
-assert.match(sessionTabs, /k8s-session-indicator/, 'На вкладке нет индикатора состояния');
+  'The Kyuubi identifier must not be displayed in the tab name');
+assert.match(sessionTabs, /k8s-session-indicator/, 'The tab has no status indicator');
 assert.match(sessionTabs, /perQueryTab\.addEventListener\('click', deactivateSession\)/,
-  'Вкладка per-query не переключается по всей площади');
+  'The per-query tab is not selectable across its full area');
 assert.match(sessionTabs, /tab\.addEventListener\('click', function \(\) \{ activateSession\(session\); \}\)/,
-  'Вкладка сессии не переключается по всей площади');
+  'The session tab is not selectable across its full area');
 assert.match(sessionTabs, /event\.stopPropagation\(\);\s+restartSession\(session\);/,
-  'Перезапуск сессии должен оставаться отдельным действием');
+  'Restarting a session must remain a separate action');
 assert.match(sessionTabs, /button\('Restart', 'k8s-session-tab-action k8s-session-tab-restart'/,
-  'На вкладке нет явной кнопки перезапуска');
+  'The tab has no explicit restart button');
 console.log('PASS Session tabs show a status indicator without session ID');
 
 const resultStart = source.indexOf('    function storedResult(');
 const resultEnd = source.indexOf('\n\n    function renderEmptyResult', resultStart);
-assert.notEqual(resultStart, -1, 'Не найдена функция storedResult');
-assert.notEqual(resultEnd, -1, 'Не найдена граница функций хранения результата');
+assert.notEqual(resultStart, -1, 'storedResult function was not found');
+assert.notEqual(resultEnd, -1, 'Result-storage function boundary was not found');
 
 const storage = new Map();
 const sessionStorage = {
@@ -200,41 +200,41 @@ resultContext().rememberResult('session-1', result);
 assert.deepEqual(
   JSON.parse(JSON.stringify(resultContext().storedResult('session-1'))),
   result,
-  'Результат не восстановлен после перехода между инструментами'
+  'The result was not restored after navigating between tools'
 );
 const restored = resultContext();
 restored.forgetResult('session-1');
-assert.equal(restored.storedResult('session-1'), null, 'Очищенный результат остался в хранилище');
+assert.equal(restored.storedResult('session-1'), null, 'The cleared result remains in storage');
 assert.match(
   source,
   /query\.value = storedQuery\(activeSessionId\);\s+restoreResult\(\);/,
-  'При открытии редактора результат не восстанавливается'
+  'The result is not restored when opening the editor'
 );
 console.log('PASS Editor result is retained during tool navigation');
 
 assert.match(source, /function loadSessionResult\(session\)/,
-  'Нет восстановления результата Kyuubi-сессии после возврата в Editor');
+  'The Kyuubi session result is not restored after returning to Editor');
 assert.match(source, /loadSessionResult\(active\);/,
-  'Сохранённый сервером результат не загружается для активной Kyuubi-сессии');
+  'The server-stored result is not loaded for the active Kyuubi session');
 assert.match(source, /\/result'\), \{ method: 'DELETE' \}/,
-  'Очистка результата не удаляет сохранённый результат Kyuubi-сессии');
+  'Clearing the result does not remove the stored Kyuubi session result');
 console.log('PASS Completed Kyuubi result is restored after navigation');
 
 assert.match(styles, /\.k8s-session-perquery \.k8s-session-tab-label\s*\{\s*width: 100%;[\s\S]*pointer-events: none;/,
-  'Область клика per-query не растянута на всю вкладку');
+  'The per-query click target does not cover the entire tab');
 assert.match(styles, /\.k8s-session-tab\s*\{[\s\S]*cursor: pointer;/,
-  'Вкладка сессии не обозначена как целиком кликабельная');
+  'The session tab is not marked as fully clickable');
 console.log('PASS Session tab click targets cover the entire tab');
 
-assert.match(source, /data-sql-engine/, 'В редакторе отсутствуют вкладки SQL-движков');
+assert.match(source, /data-sql-engine/, 'The editor has no SQL-engine tabs');
 assert.match(source, /engineTabs\.forEach\(function \(tab\) \{\s+tab\.addEventListener\('click'/,
-  'Вкладки SQL-движков не переключаются по клику');
+  'SQL-engine tabs do not switch when clicked');
 assert.match(source, /tab\.parentElement\.classList\.toggle\('active', active\)/,
-  'Активная вкладка SQL-движка не оформляется как вкладка Jobs');
+  'The active SQL-engine tab is not styled like the Jobs tab');
 assert.match(styles, /\.k8s-session-bar\.k8s-hidden\s*\{\s*display:\s*none;/,
-  'Панель Kyuubi-сессий остаётся видимой во вкладке Trino');
+  'The Kyuubi session panel remains visible on the Trino tab');
 assert.match(source, /UI_API \+ '\/sql\/history\?engine=' \+ encodeURIComponent\(engine\)/,
-  'История запросов SQL-движка не загружается');
+  'The SQL-engine query history is not loaded');
 assert.match(source, /logsTabItem'\)\.classList\.toggle\('k8s-hidden', !supportsSessions && !hasHistory\)/,
-  'Вкладка логов не скрывается только для движков без логов');
+  'The log tab is not hidden only for engines without logs');
 console.log('PASS Editor engine tabs switch with the Jobs tab pattern');

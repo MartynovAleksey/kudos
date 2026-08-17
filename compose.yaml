@@ -16,7 +16,7 @@ name: kudos-test
 
 services:
   freeipa:
-    build: ./docker/freeipa
+    build: ./dev/docker/freeipa
     hostname: freeipa.test.local
     # Keep systemd alive when a reusable test volume needs an upgrade; the
     # upstream image otherwise powers off before dependent services can report
@@ -72,7 +72,7 @@ services:
 
   kyuubi:
     build:
-      context: ./docker
+      context: ./dev/docker
       dockerfile: kyuubi/Dockerfile
     platform: linux/amd64
     hostname: kyuubi.test.local
@@ -106,7 +106,7 @@ services:
       retries: 18
 
   hdfs:
-    build: ./docker/hdfs
+    build: ./dev/docker/hdfs
     # Apache Hadoop 3.4.2 publishes the image used by this test stack for
     # amd64; Docker Desktop emulates it on Apple Silicon.
     platform: linux/amd64
@@ -141,7 +141,7 @@ services:
       retries: 30
 
   hbase:
-    build: ./docker/hbase
+    build: ./dev/docker/hbase
     hostname: hbase.test.local
     depends_on:
       freeipa:
@@ -173,7 +173,7 @@ services:
       retries: 30
 
   ozone:
-    build: ./docker/ozone
+    build: ./dev/docker/ozone
     hostname: ozone.test.local
     depends_on:
       freeipa:
@@ -212,7 +212,7 @@ services:
 
   spark-history:
     build:
-      context: ./docker
+      context: ./dev/docker
       dockerfile: spark-history/Dockerfile
     # apache/spark:4.1.0 is multi-architecture, so this one runs natively on
     # both Intel and Apple Silicon instead of through emulation.
@@ -251,10 +251,10 @@ services:
   # working. The official flink image is multi-arch, so it runs natively on both
   # Intel and Apple Silicon. Completed jobs are archived to Kerberized Ozone
   # (ofs://ozone.test.local/flink/completed-jobs), the same store Spark uses, and
-  # the History Server reads them back from there — see docker/flink/Dockerfile.
+  # the History Server reads them back from there — see dev/docker/flink/Dockerfile.
   flink-jobmanager:
     build:
-      context: ./docker
+      context: ./dev/docker
       dockerfile: flink/Dockerfile
     image: kudos-flink:latest
     hostname: flink-jobmanager.test.local
@@ -378,7 +378,7 @@ services:
       VAULT_TOKEN: root
     entrypoint: ["sh", "/vault/bootstrap.sh"]
     volumes:
-      - ./docker/vault/bootstrap.sh:/vault/bootstrap.sh:ro
+      - ./dev/docker/vault/bootstrap.sh:/vault/bootstrap.sh:ro
       - vault-approle:/vault/approle
     restart: "no"
 
@@ -401,7 +401,7 @@ services:
     entrypoint: ["vault"]
     command: ["agent", "-config=/vault/agent.hcl"]
     volumes:
-      - ./docker/vault/agent.hcl:/vault/agent.hcl:ro
+      - ./dev/docker/vault/agent.hcl:/vault/agent.hcl:ro
       - vault-approle:/vault/approle:ro
       - app-tls:/vault/secrets
     healthcheck:
@@ -417,7 +417,7 @@ services:
   # by Trino and its JDBC driver. It has no Kerberos material.
   trino-tls:
     build:
-      context: ./docker
+      context: ./dev/docker
       dockerfile: trino-tls/Dockerfile
     depends_on:
       vault-agent:
@@ -434,7 +434,7 @@ services:
 
   trino:
     build:
-      context: ./docker
+      context: ./dev/docker
       dockerfile: trino/Dockerfile
     hostname: trino.test.local
     depends_on:
@@ -496,17 +496,17 @@ services:
     entrypoint: ["bash", "/bootstrap/bootstrap.sh"]
     volumes:
       - app-tls:/vault/secrets:ro
-      - ./docker/starrocks/bootstrap.sql:/bootstrap/bootstrap.sql:ro
-      - ./docker/starrocks/bootstrap.sh:/bootstrap/bootstrap.sh:ro
+      - ./dev/docker/starrocks/bootstrap.sql:/bootstrap/bootstrap.sql:ro
+      - ./dev/docker/starrocks/bootstrap.sh:/bootstrap/bootstrap.sh:ro
     restart: "no"
 
   app:
     # Thin distroless runtime built from the pre-built jar in ./dist. Populate
     # ./dist first with Dockerfile.build (run-test-env.sh does this automatically):
-    #   docker build -f docker/app/Dockerfile.build --output type=local,dest=dist .
+    #   docker build -f dev/docker/app/Dockerfile.build --output type=local,dest=dist .
     build:
       context: .
-      dockerfile: docker/app/Dockerfile.runtime
+      dockerfile: dev/docker/app/Dockerfile.runtime
     hostname: app.test.local
     depends_on:
       freeipa:
@@ -541,7 +541,7 @@ services:
       - trino-tls:/run/trino-tls:ro
       # The ofs:// client needs the cluster's own service principals and
       # addresses; reuse the service configuration instead of restating it.
-      - ./docker/ozone:/etc/ozone/conf:ro
+      - ./dev/docker/ozone:/etc/ozone/conf:ro
       # Every kudos.cluster setting lives here and is editable without a
       # rebuild. See config/application.yml for why none of them are set as
       # environment variables below.
@@ -564,6 +564,12 @@ services:
       # Log directory for the container (the app-logs volume above). Kept out of
       # the shared config file so local runs default to ./logs instead.
       KUDOS_LOGGING_DIR: /var/log/kudos
+      # Where an administrator's visible-tools choice is persisted so it applies
+      # to every user. On the writable log volume; kept out of the shared config
+      # file (like the log dir) so local runs hold it in memory instead.
+      KUDOS_UI_TOOL_VISIBILITY_FILE: /var/log/kudos/ui-tool-visibility.json
+      # Same, for the administrator's choice of visible SQL engines.
+      KUDOS_UI_ENGINE_VISIBILITY_FILE: /var/log/kudos/ui-engine-visibility.json
       # Operators can override this for an API-disabled deployment without
       # changing the mounted YAML: KUDOS_API_ENABLED=false docker compose up -d app
       KUDOS_API_ENABLED: ${KUDOS_API_ENABLED:-true}
@@ -591,7 +597,7 @@ services:
   # image replaces only Polars with its official legacy-CPU wheel so the
   # upstream amd64 Hue can also run through Rosetta on Apple Silicon.
   hue-reference:
-    build: ./docker/hue-reference
+    build: ./dev/docker/hue-reference
     image: kudos-hue-reference:latest
     platform: linux/amd64
     hostname: hue-reference.test.local
@@ -606,9 +612,9 @@ services:
       HADOOP_CONF_DIR: /etc/hadoop/conf
     volumes:
       - hue-secrets:/run/kudos-hue:ro
-      - ./docker/hue-reference/hue.ini:/usr/share/hue/desktop/conf/z-kudos.ini:ro
-      - ./docker/hdfs/core-site.xml:/etc/hadoop/conf/core-site.xml:ro
-      - ./docker/hdfs/hdfs-site.xml:/etc/hadoop/conf/hdfs-site.xml:ro
+      - ./dev/docker/hue-reference/hue.ini:/usr/share/hue/desktop/conf/z-kudos.ini:ro
+      - ./dev/docker/hdfs/core-site.xml:/etc/hadoop/conf/core-site.xml:ro
+      - ./dev/docker/hdfs/hdfs-site.xml:/etc/hadoop/conf/hdfs-site.xml:ro
     ports:
       - "8082:8888"
     networks:

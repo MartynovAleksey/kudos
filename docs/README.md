@@ -2,7 +2,7 @@
 
 `kudos` is a lightweight stateless Spring Boot API for working with HDFS, SQL in Kyuubi/Spark, Trino and StarRocks, HBase, and Apache Ozone on behalf of an LDAP-authenticated user.
 
-The repository also contains a fully containerized single-node test environment with FreeIPA and Kerberos. By default, the environment starts the official Hue image from Docker Hub on port `8082` as a reference environment; its File Browser is connected to the same Kerberos-protected HDFS as KUDOS.
+The repository also contains a fully containerized single-node test environment with FreeIPA and Kerberos. By default, the environment starts the official Hue image from Docker Hub on port `8082` as a reference environment: its File Browser is connected to the same Kerberos-protected HDFS as KUDOS.
 
 > **Important:** the usernames and passwords below are public demonstration credentials for this repository. They are intended only for the isolated local test environment and must not be used in production.
 
@@ -17,9 +17,9 @@ The application provides:
 - HDFS browsing through WebHDFS with SPNEGO;
 - HBase access through the REST Gateway with SPNEGO; the application does not open ZooKeeper or HBase RPC;
 - Apache Ozone browsing through `ofs://` and Kerberos;
-- reference Hue from Docker Hub with a configured Kerberos HDFS File Browser.
+- a reference Hue image from Docker Hub with a configured Kerberos HDFS File Browser.
 
-The Java UI distinguishes two LDAP roles: `administrator` and `user`. An administrator can see all Spark jobs and the Spark UI; a user can see only applications whose `sparkUser` matches their login and cannot open the shared or another user's `/spark-ui/**` directly. SQL, HDFS, Ozone, and HBase operations run with the user's Kerberos identity, while the corresponding cluster service makes the final data-access decision.
+The Java UI distinguishes two LDAP roles: `administrator` and `user`. The administrator can see all Spark jobs and Spark UI; the user can see only applications whose `sparkUser` matches their login and cannot open the shared or another user's `/spark-ui/**` directly. SQL, HDFS, Ozone, and HBase operations run under the user's Kerberos identity, while the corresponding cluster service makes the final data-access decision.
 
 ## Three project parts
 
@@ -28,7 +28,7 @@ The project is divided into three independent parts:
 | Part | Where | Documentation |
 |-------|-----|--------------|
 | **Test environment** — single-node setup (FreeIPA, HDFS, Kyuubi, Trino, StarRocks, HBase, Ozone, Vault) and running the application against it | Docker Compose (`compose.yaml`) | this README (below) |
-| **Image build** — multi-stage build plus optional security scans | Docker (`docker/app/Dockerfile`) | [docs/BUILD.md](BUILD.md) |
+| **Image build** — multi-stage build with optional security scans | Docker (`dev/docker/app/Dockerfile`) | [docs/BUILD.md](BUILD.md) |
 | **Production deployment** of the ready application outside test mode | Helm (`deploy/helm/kudos`) | [docs/DEPLOY-HELM.md](DEPLOY-HELM.md) |
 
 Project documents for SQL engines and new components are in [docs/design/](design/README.md).
@@ -53,10 +53,10 @@ Java and Maven on the host are not required to start only the Docker environment
 ./dev/scripts/verify-no-hbase-client.sh
 
 ```bash
-./scripts/verify-no-hbase-client.sh
+./dev/scripts/verify-no-hbase-client.sh
 ```
 
-On Apple Silicon, Docker Desktop must be able to run `linux/amd64` images. Emulation support is usually enabled by default. Kyuubi, Hadoop, Ozone, and the official Hue run as `linux/amd64`; FreeIPA, HBase, and the Java application are built for the host architecture.
+On Apple Silicon, Docker Desktop must be able to run `linux/amd64` images. Emulation support is usually enabled by default. Kyuubi, Hadoop, Ozone, and the official Hue image run as `linux/amd64`; FreeIPA, HBase, and the Java application are built for the host architecture.
 
 
 
@@ -64,8 +64,8 @@ cd kudos
 
 ```bash
 cd kudos
-chmod +x scripts/*.sh
-./scripts/run-test-env.sh -d
+chmod +x dev/scripts/*.sh
+./dev/scripts/run-test-env.sh -d
 ```
 
 2. detects the Mac architecture;
@@ -85,7 +85,7 @@ docker compose ps
 docker compose ps
 ```
 
-The main services should reach the `healthy` state, while `hue-reference` should be `running`. The Java application is created only after the FreeIPA, Kyuubi, Trino, StarRocks, HDFS, HBase, and Ozone health checks succeed.
+The core services should become `healthy`, and `hue-reference` should become `running`. The Java application is created only after successful health checks for FreeIPA, Kyuubi, Trino, StarRocks, HDFS, HBase, and Ozone.
 
 curl --fail --silent --resolve app.test.local:8443:127.0.0.1 \
 
@@ -104,10 +104,10 @@ curl --fail --silent --location http://localhost:8082/ | grep -i hue
 
 ### Reference Hue and HDFS
 
-Open `http://localhost:8082/`: reference Hue uses `docker/hue-reference/hue.ini`, the HDFS `core-site.xml`/`hdfs-site.xml`, and a separate `hue-secrets` volume. It contains only the test-only `admin.keytab`, CA, and `krb5.conf`, not service keytabs. Check UI availability and the Kerberos HDFS listing from the Hue container with:
+Open `http://localhost:8082/`: reference Hue uses `dev/docker/hue-reference/hue.ini`, the HDFS `core-site.xml`/`hdfs-site.xml` files, and a separate `hue-secrets` volume. It contains only the test-only `admin.keytab`, CA, and `krb5.conf`, not service keytabs. To check UI availability and Kerberos HDFS listing from the Hue container:
 
 ```bash
-./scripts/test-hue-hdfs.sh
+./dev/scripts/test-hue-hdfs.sh
 ```
 
 This configuration is intended only for the local reference environment; its keytab and passwords must not be transferred to production.
@@ -119,7 +119,7 @@ cd kudos
 ```bash
 cd kudos
 docker compose down --remove-orphans
-./scripts/run-test-env.sh -d
+./dev/scripts/run-test-env.sh -d
 ```
 
 cd kudos
@@ -136,7 +136,7 @@ cd kudos
 ```bash
 cd kudos
 docker compose down --volumes --remove-orphans
-./scripts/run-test-env.sh -d
+./dev/scripts/run-test-env.sh -d
 ```
 
 
@@ -176,7 +176,7 @@ An HTML report for the latest Surefire run is generated with:
 python3 dev/scripts/render-test-report.py --output target/reports/api-toggle-autotest-report.html
 
 ```bash
-python3 scripts/render-test-report.py --output target/reports/api-toggle-autotest-report.html
+python3 dev/scripts/render-test-report.py --output target/reports/api-toggle-autotest-report.html
 ```
 
 
@@ -185,7 +185,7 @@ cd kudos
 
 ```bash
 cd kudos
-./scripts/test-kerberos-services.sh
+./dev/scripts/test-kerberos-services.sh
 ```
 
 - Kyuubi JDBC SQL;
@@ -211,7 +211,7 @@ cd kudos
 
 ```bash
 cd kudos
-./scripts/test-sql-engines.sh
+./dev/scripts/test-sql-engines.sh
 ```
 
 tested without a session: their current implementation opens a JDBC connection
@@ -223,7 +223,7 @@ for each query.
 
 ```bash
 cd kudos
-./scripts/test-start-cycles.sh 10
+./dev/scripts/test-start-cycles.sh 10
 ```
 
 `test-kerberos-services.sh`. The number of cycles can be changed with a positive
@@ -234,8 +234,8 @@ cd kudos
 
 ```bash
 cd kudos
-./scripts/hbase-loadgen.sh              # seed a representative matrix
-MODE=clean ./scripts/hbase-loadgen.sh   # remove everything created by the generator
+columns (horizontal scrolling and a limit on visible columns). The scale is
+parameterized; the defaults are a representative matrix that completes in a few
 ```
 
 ```bash
@@ -496,7 +496,7 @@ curl --fail --silent --get "${resolve[@]}" \
 
 ### 8. Official Hue from Docker Hub
 
-Reference Hue does not replace the Java application and is not involved in storage functional tests. It is provided for visual and behavioral comparison during further UI implementation.
+Reference Hue does not replace the Java application and does not participate in functional storage tests. It is provided for visual and behavioral comparison with the future UI implementation.
 
 Open in a browser:
 
@@ -510,7 +510,7 @@ Or check HTTP from a terminal:
 curl --fail --silent --location http://localhost:8082/ | grep -i hue
 ```
 
-Compose builds a thin image layer from `gethue/hue:latest`. The only change is replacing the Python `polars` wheel with the official `polars-lts-cpu` wheel of the same version, because the regular x86_64 wheel exits with `SIGILL` under Rosetta on Apple Silicon. Hue code, Mako templates, CSS, and JavaScript are unchanged.
+Compose builds a thin image layer from `gethue/hue:latest`. The only change is replacing the `polars` Python wheel with the official `polars-lts-cpu` wheel of the same version, because the regular x86_64 wheel exits with `SIGILL` under Rosetta on Apple Silicon. Hue code, Mako templates, CSS, and JavaScript are not modified.
 
   curl --fail --silent --negotiate -u : -X DELETE "$base/$table/schema" >/dev/null
 
@@ -579,7 +579,7 @@ For each protected request, Spring Security performs an LDAP bind, then obtains 
 
 ### HTTPS
 
-The application is available only over HTTPS on port `8443`. **Vault PKI** issues the certificate for `app.test.local`: dev-mode Vault starts in Compose, `docker/vault/bootstrap.sh` configures the PKI engine and AppRole, and the `vault-agent` sidecar issues the certificate through AppRole and places it as PEM in the shared volume (`/vault/secrets/tls.crt`, `tls.key`, `ca.crt`). The application reads it through the Spring Boot SSL bundle under the `vault` profile (`application-vault.yml`), while `reload-on-update` picks up rotations without a restart. Clients verify the certificate against the Vault CA. From a terminal:
+- Java 21;
 
 ```bash
 docker compose exec -T vault-agent cat /vault/secrets/ca.crt > /tmp/kudos-ca.crt
@@ -606,7 +606,7 @@ The application does not store its own Kerberos credentials. At login, it obtain
 | `KudosUiApplication.java` | Spring Boot entrypoint. |
 
 Only `krb5.conf` (the `app-secrets` volume) and Vault-issued TLS material (the `app-tls` volume) are mounted into the application container; the cluster service keytabs are never mounted there. Even if the application process is compromised, it has no keytab that could be used to authenticate as a service.
-| `WebConfig.java` | Serves vendored Hue styles and fonts together with the UI's own assets. |
+| `WebConfig.java` | Serves vendored Hue styles and fonts together with custom UI assets. |
 ### Obtaining and storing the Kerberos ticket
 
 **Obtaining the ticket.** The application has no own keytab and obtains the ticket from the user's password—the same exchange with the KDC performed by `kinit`. The logic is in [`KerberosTicketService`](../src/main/java/com/kudos/ui/security/KerberosTicketService.java):
@@ -655,7 +655,7 @@ curl --fail --silent \
 
 
 
-The application serves screens at `https://app.test.local:8443/`, matching the forms of reference Hue 4:
+The application serves screens at `https://app.test.local:8443/`, reproducing the reference Hue 4 forms:
 
 
 | --- | --- | --- |
@@ -681,7 +681,7 @@ Every completed request to `/api/**` and `/ui-api/**` is recorded as an audit ev
 
 | `TrinoService.java` | Sessionless SQL execution in Trino using the authenticated user's Kerberos ticket. |
 
-The shell is built from vendored Hue styles (`hue.css`, `cui.css`, `bootstrap2.css`, `login.css`, Font Awesome, and Roboto) in `src/main/resources/hue-upstream/desktop/static`. The Hue 4 left sidebar is styled inside its JavaScript bundle, which is not vendored, so its dimensions and colors are reproduced in `src/main/resources/app-static/kudos.css` from values captured from the reference container. Hue logos and trademarks are not reproduced.
+The shell is assembled from vendored Hue styles (`hue.css`, `cui.css`, `bootstrap2.css`, `login.css`, Font Awesome, and Roboto) in `src/main/resources/hue-upstream/desktop/static`. The Hue 4 left sidebar is styled inside its JavaScript bundle, which is not vendored, so its dimensions and colors are reproduced in `src/main/resources/app-static/kudos.css` using values taken from the reference container. Hue logos and trademarks are not reproduced.
 
 | `OzoneService.java` | Hadoop `FileSystem` for `ofs://` URIs, listing, and object reads. |
 
@@ -745,13 +745,13 @@ An ordinary user receives only their own jobs from the server; the user filter f
 ofs://ozone.test.local/spark/eventlogs
 ```
 
-The `docker/ozone/start-ozone` script creates the `spark` volume and `eventlogs` bucket at startup, while `spark-history` reads the same directory. The Java application displays the application list on `/jobs`, retrieving it from the history server REST API through SPNEGO.
 
 
 
 
 
-The application image is built with the multi-stage `docker/app/Dockerfile` (the `runtime` stage),
+
+
 ```bash
 cd kudos
 [docs/BUILD.md](BUILD.md).
@@ -783,7 +783,7 @@ kudos:
     enabled: false
 ```
 
-6. `app` starts only after the infrastructure services are healthy and the StarRocks bootstrap succeeds;
+6. `app` starts only after the infrastructure services are healthy and StarRocks bootstrap succeeds;
 7. `hue-reference` waits for healthy FreeIPA and HDFS, receives a separate test-only volume with the `admin` keytab, and starts by default.
 
 ```
@@ -804,7 +804,7 @@ TEST.LOCAL
 | LDAP/Kerberos user | `analyst` / `analyst@TEST.LOCAL` | `KudosAnalyst2026Secure!` |
 | FreeIPA Directory Manager | `cn=Directory Manager` | `DirectoryManager1` |
 
-`admin` belongs to the `kudos-administrators` LDAP group and receives the `administrator` role; `analyst` receives the `user` role. All these passwords are stored in plain text in `compose.yaml` and the systemd bootstrap unit and are allowed only for the isolated local environment.
+`admin` belongs to the `kudos-administrators` LDAP group and receives the `administrator` role; `analyst` receives the `user` role. All these passwords are exposed in `compose.yaml` and the systemd bootstrap unit and are acceptable only for the isolated local environment.
 
 ofs://ozone.test.local/spark/eventlogs
 
@@ -834,7 +834,7 @@ ofs://ozone.test.local/spark/eventlogs
 | `spark-history` | `apache/spark:4.1.0` | `18080` | Spark History Server, reading event logs from Ozone. |
 | `starrocks` | `starrocks/allin1-ubuntu:3.5.20` | `9030` | Single-node FE+BE, MySQL wire protocol for the Query Editor. |
 | `app` | Java 21 / Spring Boot | `8443` | kudos integration API and UI, HTTPS only. |
-| `hue-secrets` | Only the `admin.keytab`, `krb5.conf`, and CA for reference Hue. |
+| `hue-secrets` | Only `admin.keytab`, `krb5.conf`, and the CA for reference Hue. |
 
 HDFS uses replication factor `1`. Ozone is also configured for single-node replication. HBase stores data in the local filesystem inside a named volume. StarRocks uses a shared service account, `kudos_svc`: this is a test-environment limitation, while per-user permissions require a separate StarRocks LDAP integration. This is a compact functional environment, not a production deployment.
 
@@ -847,19 +847,19 @@ HDFS uses replication factor `1`. Ozone is also configured for single-node repli
 src/main/java/com/kudos/ui/     Java application code
 src/main/resources/              Spring configuration and vendored UI resources
 src/test/                        Spring tests
-docker/app/                      Java multi-stage image
-docker/freeipa/                  FreeIPA image and identity bootstrap
-docker/kyuubi/                   Kerberos Kyuubi/Spark configuration
-docker/hdfs/                     Kerberos HDFS 3.4.2 configuration
-docker/hbase/                    Kerberos HBase 2.6.2 configuration
-docker/ozone/                    Kerberos Ozone 2.0.0 configuration
-docker/hue-reference/            Thin compatibility layer over Docker Hub Hue
-scripts/run-test-env.sh          Cross-platform environment launcher
-scripts/test-kerberos-services.sh Functional Kerberos data-path tests
-scripts/test-sql-engines.sh         40 SQL Editor checks without real data
-scripts/test-hue-hdfs.sh         Reference Hue File Browser and HDFS listing check
-scripts/test-start-cycles.sh      Repeated restart and regression tests
-scripts/hbase-loadgen.sh          Seed HBase at scale to exercise the browser UI
+dev/docker/app/                      Java multi-stage image
+dev/docker/freeipa/                  FreeIPA image and identity bootstrap
+dev/docker/kyuubi/                   Kerberos Kyuubi/Spark configuration
+dev/docker/hdfs/                     Kerberos HDFS 3.4.2 configuration
+dev/docker/hbase/                    Kerberos HBase 2.6.2 configuration
+dev/docker/ozone/                    Kerberos Ozone 2.0.0 configuration
+dev/docker/hue-reference/            Thin compatibility layer over Docker Hub Hue
+dev/scripts/run-test-env.sh          Cross-platform environment launcher
+dev/scripts/test-kerberos-services.sh Functional Kerberos data-path tests
+```text
+dev/scripts/test-hue-hdfs.sh         Checks the reference Hue File Browser and HDFS listing
+dev/scripts/test-start-cycles.sh      Repeated restart and regression tests
+dev/scripts/hbase-loadgen.sh          Seed HBase at scale to exercise the browser UI
 compose.yaml                     Services, volumes, ports and dependencies
 ```
 
@@ -883,19 +883,19 @@ echo "${DOCKER_DEFAULT_PLATFORM-<not set>}"
 
 ### Docker Desktop Keychain `-67674`
 
-If the Docker CLI cannot access the macOS credential helper, a public image pull may fail with a Keychain error. The project scripts use `docker/.docker-config` without a credential store only for public pulls/builds and do not modify the user's Docker Desktop login.
+| `dn/ozone.test.local@TEST.LOCAL` | `dn-ozone.test.local.keytab` | Ozone DataNode. |
 
 | `hbase/hbase.test.local@TEST.LOCAL` | `hbase-hbase.test.local.keytab` | HMaster, RegionServer, and REST Gateway as the HBase service user. |
 
 ```bash
-./scripts/run-test-env.sh -d
+./dev/scripts/run-test-env.sh -d
 ```
 
 
 
 ### Official Hue on Apple Silicon
 
-Docker Hub Hue is distributed as an amd64 image. Under Rosetta, the regular `polars` wheel uses an unsupported CPU instruction and may exit with `SIGILL`. `docker/hue-reference/Dockerfile` replaces only that wheel with `polars-lts-cpu`; the Hue UI remains upstream.
+Docker Hub Hue is distributed as an amd64 image. Under Rosetta, the regular `polars` wheel uses an unsupported CPU instruction and may exit with `SIGILL`. `dev/docker/hue-reference/Dockerfile` replaces only that wheel with `polars-lts-cpu`; the Hue UI remains upstream.
 
 
 
@@ -905,7 +905,7 @@ Docker Hub Hue is distributed as an amd64 image. Under Rosetta, the regular `pol
 | `freeipa-tmp` | Writable FreeIPA `/tmp` with the required filesystem semantics. |
 | `kerberos-shared` | `krb5.conf`, user keytab, and service keytabs. |
 | `hdfs-data` | NameNode metadata and DataNode blocks. |
-- `gethue/hue:latest` is intentionally used only as a moving reference; production builds must pin a digest.
+- `gethue/hue:latest` is intentionally used only as a moving reference; a production build must pin the digest.
 | `hbase-data` | HBase and embedded ZooKeeper state. |
 | `ozone-data` | SCM, OM, Ratis, and DataNode state. |
 
@@ -916,10 +916,10 @@ src/main/java/com/kudos/ui/     Java application code
 ```bash
 cd kudos
 mvn test
-./scripts/run-test-env.sh -d
-./scripts/test-kerberos-services.sh
-./scripts/test-hue-hdfs.sh
-./scripts/test-start-cycles.sh 10
+./dev/scripts/run-test-env.sh -d
+./dev/scripts/test-kerberos-services.sh
+./dev/scripts/test-hue-hdfs.sh
+./dev/scripts/test-start-cycles.sh 10
 ```
 
 dev/scripts/test-kerberos-services.sh Functional Kerberos data-path tests

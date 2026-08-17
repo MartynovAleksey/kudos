@@ -117,9 +117,9 @@ def summary(rows):
 def render_trivy(rows, source):
     rows.sort(key=lambda r: (SEV_ORDER.get(r["sev"], 9), r["cve"]))
     out = []
-    out.append("# Trivy — Dependency Vulnerabilities\n")
+    out.append("# Trivy dependency vulnerabilities\n")
     out.append(f"- **Generated:** {datetime.datetime.now().isoformat(timespec='seconds')}")
-    out.append(f"- **Source:** `{source}` (scanned fat JAR, including nested dependencies)")
+    out.append(f"- **Source:** `{source}` (scan of the built fat JAR, including nested dependencies)")
     out.append(f"- **Found:** {len(rows)} ({summary(rows)})\n")
     if not rows:
         out.append("No vulnerabilities found.\n")
@@ -139,9 +139,9 @@ def render_trivy(rows, source):
 def render_owasp(rows, source):
     rows.sort(key=lambda r: (SEV_ORDER.get(r["sev"], 9), r["cve"]))
     out = []
-    out.append("# OWASP dependency-check — Dependency Vulnerabilities\n")
+    out.append("# OWASP Dependency-Check vulnerabilities\n")
     out.append(f"- **Generated:** {datetime.datetime.now().isoformat(timespec='seconds')}")
-    out.append(f"- **Source:** `{source}` (cross-check against the NVD database via the NVD API)")
+    out.append(f"- **Source:** `{source}` (comparison with the NVD database through the NVD API)")
     out.append(f"- **Found:** {len(rows)} ({summary(rows)})\n")
     if not rows:
         out.append("No vulnerabilities found.\n")

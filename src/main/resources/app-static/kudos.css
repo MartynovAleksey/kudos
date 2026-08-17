@@ -495,6 +495,22 @@
   color: #29a7de;
 }
 
+/* Sign out lives here now, immediately left of the user. */
+.k8s-ticket-signout {
+  display: inline-flex;
+  align-items: center;
+  color: inherit;
+  text-decoration: none;
+  opacity: 0.85;
+}
+.k8s-ticket-signout:hover {
+  color: #d9534f;
+  opacity: 1;
+}
+.k8s-ticket-signout .fa {
+  color: inherit;
+}
+
 .k8s-ticket-user {
   color: #ffffff;
   font-weight: 600;
@@ -898,11 +914,10 @@
   font-weight: 500;
 }
 .k8s-session-perquery {
-  min-width: 58px;
-  padding: 0;
+  padding: 0 12px;
 }
 .k8s-session-perquery .k8s-session-tab-label {
-  width: 100%;
+  width: auto;
   min-width: 0;
   pointer-events: none;
 }
@@ -924,12 +939,19 @@
 .k8s-session-add {
   width: 32px;
   height: 32px;
-  margin-right: auto;
   font-size: 21px;
   color: #394047;
 }
+/* The auto left margin pushes it to the far right of the bar; centred vertically
+   in the tab strip, with the height of an inactive session tab. */
 .k8s-session-bar > .btn {
-  margin-bottom: 4px;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  margin: 0 0 0 auto;
+  padding: 0 12px;
+  box-sizing: border-box;
 }
 .k8s-session-empty {
   margin-bottom: 8px;
@@ -982,6 +1004,18 @@
   font-size: 11px;
   white-space: pre-wrap;
 }
+/* No logs yet: shed the code frame and read as the same plain muted line the
+   empty Result pane shows, so switching tabs before a query does not flicker. */
+.k8s-session-logs.k8s-session-logs-empty {
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  font-family: inherit;
+  font-size: inherit;
+  color: #999999;
+  font-style: italic;
+}
 .k8s-query-actions {
   display: flex;
   align-items: center;
@@ -1025,6 +1059,13 @@
    scoped selectors alter the current Hue-compatible chrome. */
 .sidebar-settings-button {
   border: 0;
+}
+/* While the settings popover is open, blur and lock the rest of the interface.
+   The panel and ticket timer sit outside .hue-page, so they stay crisp. */
+body.k8s-ui-settings-open .hue-page {
+  filter: blur(4px);
+  pointer-events: none;
+  transition: filter 120ms ease;
 }
 .k8s-ui-settings {
   position: fixed;
@@ -1219,6 +1260,52 @@ body[data-ui-mode="modern"] .main-page {
   box-sizing: border-box;
   background: var(--k8s-window);
 }
+
+/*
+ * Collapsed modern sidebar: an icon-only rail, toggled by the footer button.
+ * Collapsing is a modern-mode affordance; the old chrome is already a narrow
+ * icon rail, so its collapse button is hidden below.
+ */
+body[data-ui-mode="modern"][data-ui-sidebar="collapsed"] .sidebar {
+  width: 66px;
+}
+body[data-ui-mode="modern"][data-ui-sidebar="collapsed"] .main-page {
+  margin-left: 66px;
+}
+body[data-ui-mode="modern"][data-ui-sidebar="collapsed"] .sidebar-header {
+  justify-content: center;
+  padding-left: 0;
+}
+body[data-ui-mode="modern"][data-ui-sidebar="collapsed"] .sidebar-header a::after,
+body[data-ui-mode="modern"][data-ui-sidebar="collapsed"] .sidebar-body::before,
+body[data-ui-mode="modern"][data-ui-sidebar="collapsed"] .sidebar-sidebar-item::after,
+body[data-ui-mode="modern"][data-ui-sidebar="collapsed"] .sidebar-sidebar-item span {
+  display: none;
+}
+body[data-ui-mode="modern"][data-ui-sidebar="collapsed"] .sidebar-body {
+  padding: 16px 9px 0;
+}
+body[data-ui-mode="modern"][data-ui-sidebar="collapsed"] .sidebar-footer {
+  padding: 0 9px 16px;
+}
+body[data-ui-mode="modern"][data-ui-sidebar="collapsed"] .sidebar-sidebar-item {
+  justify-content: center;
+  padding: 0;
+}
+body[data-ui-mode="modern"][data-ui-sidebar="collapsed"] .sidebar-sidebar-item-icon {
+  width: 100%;
+}
+/* The id-level resets on these two buttons out-specify the class rule above, so
+   centre them in the collapsed rail explicitly. */
+body[data-ui-mode="modern"][data-ui-sidebar="collapsed"] #uiSettingsButton,
+body[data-ui-mode="modern"][data-ui-sidebar="collapsed"] #uiSidebarCollapse {
+  justify-content: center;
+  padding: 0;
+}
+/* Keep the settings popover next to the narrow rail instead of the 252px edge. */
+body[data-ui-mode="modern"][data-ui-sidebar="collapsed"] .k8s-ui-settings {
+  left: 78px;
+}
 body[data-ui-mode="modern"] .hue-title-bar {
   min-height: 48px;
   margin: 0 0 20px;
@@ -1303,8 +1390,8 @@ body[data-ui-mode="modern"] .k8s-session-add:hover {
   background: rgba(20, 121, 236, 0.1);
 }
 body[data-ui-mode="modern"] .k8s-session-bar > .btn {
-  min-height: 34px;
-  margin: 0 4px 0 0;
+  height: 34px;
+  margin: 0 0 0 auto;
   border-color: var(--k8s-line);
   border-radius: 8px;
   box-shadow: none;
@@ -1361,10 +1448,15 @@ body[data-ui-mode="modern"] .k8s-output-tabs > li.active > a {
   background: #fff;
   box-shadow: 0 2px 4px rgba(25, 25, 30, 0.16);
 }
-body[data-ui-mode="modern"] #uiSettingsButton {
+body[data-ui-mode="modern"] #uiSettingsButton,
+body[data-ui-mode="modern"] #uiSidebarCollapse {
   position: static;
   z-index: auto;
-  width: auto;
+  /* A button with width:auto shrinks to its content, unlike the nav anchors that
+     stretch to the rail; force full width so both align and hover-highlight the
+     whole row. */
+  width: 100%;
+  box-sizing: border-box;
   height: 44px;
   margin: 2px 0;
   padding: 0 13px;
@@ -1375,8 +1467,18 @@ body[data-ui-mode="modern"] #uiSettingsButton {
   color: inherit;
   box-shadow: none;
 }
-body[data-ui-mode="modern"] #uiSettingsButton .sidebar-sidebar-item-icon {
+body[data-ui-mode="modern"] #uiSettingsButton .sidebar-sidebar-item-icon,
+body[data-ui-mode="modern"] #uiSidebarCollapse .sidebar-sidebar-item-icon {
   width: 29px;
+}
+/* The id-level resets (and the dark-theme settings background) set their own
+   background that would beat the shared .sidebar-sidebar-item:hover rule, so
+   re-apply the hover highlight with enough specificity to win in both themes. */
+body[data-ui-mode="modern"] #uiSettingsButton.sidebar-sidebar-item:hover,
+body[data-ui-mode="modern"] #uiSidebarCollapse.sidebar-sidebar-item:hover {
+  color: #fff;
+  background: linear-gradient(180deg, #2588f5, #0a69db);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
 }
 body[data-ui-mode="modern"] .k8s-ui-settings {
   z-index: 1202;
@@ -1384,9 +1486,9 @@ body[data-ui-mode="modern"] .k8s-ui-settings {
   right: auto;
   bottom: 16px;
   left: 264px;
-  width: 360px;
+  width: 248px;
   max-height: calc(100vh - 164px);
-  padding: 21px;
+  padding: 12px;
   color: var(--k8s-text);
   border-color: #d2d2d9;
   border-radius: 18px;
@@ -1396,35 +1498,35 @@ body[data-ui-mode="modern"] .k8s-ui-settings {
   overflow-y: auto;
 }
 body[data-ui-mode="modern"] .k8s-ui-settings-header {
-  margin-bottom: 18px;
+  margin-bottom: 8px;
 }
 body[data-ui-mode="modern"] .k8s-ui-settings-header strong {
-  font-size: 20px;
+  font-size: 13px;
   font-weight: 600;
 }
 body[data-ui-mode="modern"] .k8s-ui-settings-close {
   display: block;
 }
 body[data-ui-mode="modern"] .k8s-ui-settings-group {
-  margin: 18px 0;
+  margin: 10px 0;
 }
 body[data-ui-mode="modern"] .k8s-ui-settings-group legend {
-  margin-bottom: 10px;
+  margin-bottom: 5px;
   color: var(--k8s-muted);
-  font-size: 15px;
+  font-size: 11px;
   font-weight: 400;
 }
 body[data-ui-mode="modern"] .k8s-ui-choice-group {
   gap: 0;
-  padding: 5px;
-  border-radius: 11px;
+  padding: 3px;
+  border-radius: 8px;
   background: #e9e9ee;
 }
 body[data-ui-mode="modern"] .k8s-ui-choice-group button {
-  padding: 7px 6px;
-  border-radius: 8px;
+  padding: 5px;
+  border-radius: 6px;
   color: #5b5b65;
-  font-size: 14px;
+  font-size: 11px;
 }
 body[data-ui-mode="modern"] .k8s-ui-choice-group button[aria-pressed="true"] {
   color: var(--k8s-text);
@@ -1432,10 +1534,10 @@ body[data-ui-mode="modern"] .k8s-ui-choice-group button[aria-pressed="true"] {
   box-shadow: 0 2px 4px rgba(25, 25, 30, 0.16);
 }
 body[data-ui-mode="modern"] .k8s-ui-theme-preview {
-  min-height: 17px;
-  margin: 16px 0 0;
+  min-height: 14px;
+  margin: 8px 0 0;
   color: var(--k8s-muted);
-  font-size: 13px;
+  font-size: 11px;
 }
 body[data-ui-mode="modern"] .k8s-ui-theme-preview::after {
   content: "Theme follows system preference";
@@ -1450,19 +1552,19 @@ body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"]
 body[data-ui-mode="modern"] .k8s-ui-settings-group label {
   display: flex;
   align-items: center;
-  min-height: 50px;
+  min-height: 28px;
   margin: 0;
   border-top: 1px solid #e0e0e5;
   color: #44444c;
-  font-size: 16px;
+  font-size: 12px;
 }
 body[data-ui-mode="modern"] .k8s-ui-settings-group label:last-child {
   border-bottom: 1px solid #e0e0e5;
 }
 body[data-ui-mode="modern"] .k8s-ui-settings-group input {
   order: 2;
-  width: 42px;
-  height: 25px;
+  width: 34px;
+  height: 20px;
   margin: 0 0 0 auto;
   appearance: none;
   border: 0;
@@ -1474,8 +1576,8 @@ body[data-ui-mode="modern"] .k8s-ui-settings-group input {
 body[data-ui-mode="modern"] .k8s-ui-settings-group input::after {
   content: "";
   display: block;
-  width: 19px;
-  height: 19px;
+  width: 14px;
+  height: 14px;
   margin: 3px;
   border-radius: 50%;
   background: #fff;
@@ -1486,7 +1588,7 @@ body[data-ui-mode="modern"] .k8s-ui-settings-group input:checked {
   background: #1877ee;
 }
 body[data-ui-mode="modern"] .k8s-ui-settings-group input:checked::after {
-  transform: translateX(17px);
+  transform: translateX(14px);
 }
 body[data-ui-mode="modern"] #uiSettingsReset {
   display: none;
@@ -1501,6 +1603,17 @@ body[data-ui-mode="modern"] .k8s-ticket-timer {
   background: transparent;
   box-shadow: none;
   font-size: 13px;
+}
+/* The timer sits on the transparent window, so its white username and remaining
+   time vanished in the light theme. Follow the theme's text token instead: dark
+   on light, light on dark. Warning/amber and expired/red states still win by
+   their higher specificity. */
+body[data-ui-mode="modern"] .k8s-ticket-user,
+body[data-ui-mode="modern"] .k8s-ticket-remaining {
+  color: var(--k8s-text);
+}
+body[data-ui-mode="modern"] .k8s-ticket-divider {
+  background-color: var(--k8s-line);
 }
 
 body[data-ui-mode="modern"][data-ui-theme="dark"],
@@ -1679,6 +1792,6 @@ body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"]
   body[data-ui-mode="modern"] .k8s-ui-settings {
     right: auto;
     left: 232px;
-    width: min(360px, calc(100vw - 36px));
+    width: min(248px, calc(100vw - 36px));
   }
 }

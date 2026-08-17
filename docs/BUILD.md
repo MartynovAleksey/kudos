@@ -7,22 +7,22 @@ The test environment (Compose) and production deployment (Helm) are separate;
 
 ## Build outputs
 
-**1. `docker/app/Dockerfile.build`** — компилирует Spring Boot JAR (и класс
+**1. `dev/docker/app/Dockerfile.build`** compiles the Spring Boot JAR and the
 health-check class on a Maven/JDK image and **exports them to the host** in
 
 ```bash
-DOCKER_BUILDKIT=1 docker build -f docker/app/Dockerfile.build \
+DOCKER_BUILDKIT=1 docker build -f dev/docker/app/Dockerfile.build \
   --output type=local,dest=dist .
 # -> dist/kudos-0.1.0.jar, dist/HealthCheck.class
 ```
 
-**2. `docker/app/Dockerfile.runtime`** — берёт готовые артефакты из `./dist` и
+
 **2. `dev/docker/app/Dockerfile.runtime`** takes the prepared artifacts from
 `./dist` and places them in a **distroless** image
 (`gcr.io/distroless/java21-debian12:nonroot`). The image contains **neither
 
 ```bash
-docker build -f docker/app/Dockerfile.runtime -t kudos:0.1.0 .
+docker build -f dev/docker/app/Dockerfile.runtime -t kudos:0.1.0 .
 ```
 
 ```
@@ -31,7 +31,7 @@ docker build -f docker/app/Dockerfile.runtime -t kudos:0.1.0 .
 > minimizing CVEs. A true `FROM scratch` image is not suitable for a JVM
 > application because it contains no JVM, libc, or linker to run `java -jar`.
 
-Тестовый compose собирает `app` из `Dockerfile.runtime`; `scripts/run-test-env.sh`
+> JRE and a precompiled `HealthCheck.class`; Kubernetes uses an `httpGet` probe.
 
 
 > baked into the image: Vault PKI issues it and a Vault Agent sidecar delivers
@@ -56,14 +56,14 @@ no certificate is required.
 
 ## Optional security-scanning stages
 
-В `docker/app/Dockerfile.build` есть дополнительные стадии, которые **не**
+`dev/docker/app/Dockerfile.build` provides additional stages that are **not**
 built during a normal artifact build (`--target artifacts`). Each scans the
 built fat JAR and exports a Markdown table through `--output`. BuildKit is
 
 Trivy → `./trivy.md`:
 
 ```bash
-DOCKER_BUILDKIT=1 docker build -f docker/app/Dockerfile.build \
+DOCKER_BUILDKIT=1 docker build -f dev/docker/app/Dockerfile.build \
   --target trivy-report \
   --output type=local,dest=. .
 ```
@@ -72,14 +72,14 @@ DOCKER_BUILDKIT=1 docker build -f docker/app/Dockerfile.build \
 OWASP Dependency-Check produces `./owasp.md`; pass the NVD key as a file-based
 
 ```bash
-DOCKER_BUILDKIT=1 docker build -f docker/app/Dockerfile.build \
+DOCKER_BUILDKIT=1 docker build -f dev/docker/app/Dockerfile.build \
   --target owasp-report \
   --secret id=owasp_key,src=$HOME/OWASP-API.key \
   --output type=local,dest=. .
 ```
 
 
-`mvn -Powasp verify`) — см. `pom.xml` и `scripts/scan-*.sh`. Разбор применимости
+The same scanners are available as optional Maven profiles (`mvn -Ptrivy
 verify`, `mvn -Powasp verify`); see `pom.xml` and `dev/scripts/scan-*.sh`.
 `trivy_analyzed.md` and `owasp_analyzed.md` assess whether reported CVEs apply
 

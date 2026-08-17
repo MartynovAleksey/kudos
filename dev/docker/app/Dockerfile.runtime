@@ -18,9 +18,9 @@
 # (produced by Dockerfile.build). No Maven, no build layers: just the JRE, the
 # fat-jar and the healthcheck class.
 #
-#   1) build artifacts:  DOCKER_BUILDKIT=1 docker build -f docker/app/Dockerfile.build \
+#   1) build artifacts:  DOCKER_BUILDKIT=1 docker build -f dev/docker/app/Dockerfile.build \
 #                          --output type=local,dest=dist .
-#   2) runtime image:    docker build -f docker/app/Dockerfile.runtime -t kudos:0.1.0 .
+#   2) runtime image:    docker build -f dev/docker/app/Dockerfile.runtime -t kudos:0.1.0 .
 #
 # Distroless is the closest practical base to "scratch" for a JVM app: scratch has
 # no JVM, libc or dynamic linker, so `java -jar` cannot run there at all. Runs as a
@@ -35,6 +35,6 @@ COPY dist/healthcheck.jar /app/healthcheck.jar
 # volume inherits writable ownership — otherwise logback's file appenders cannot
 # write. TLS material and krb5.conf are mounted world-readable, so the non-root
 # user reads them fine; /tmp (present in distroless, 1777) covers Tomcat/POI temp.
-COPY --chown=65532:65532 docker/app/logdir/ /var/log/kudos/
+COPY --chown=65532:65532 dev/docker/app/logdir/ /var/log/kudos/
 EXPOSE 8443
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

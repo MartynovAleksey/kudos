@@ -26,12 +26,12 @@ docker_compose_bin="${DOCKER_COMPOSE_BIN:-$HOME/.docker/cli-plugins/docker-compo
 # project-local config has no credentials and is used only for public image
 # pulls/builds; it does not modify the user's Docker Desktop login state.
 run_docker() {
-  env DOCKER_CONFIG="$project_root/docker/.docker-config" PATH="/usr/bin:/bin" "$docker_bin" "$@"
+  env DOCKER_CONFIG="$project_root/dev/docker/.docker-config" PATH="/usr/bin:/bin" "$docker_bin" "$@"
 }
 
 run_compose() {
   env \
-    DOCKER_CONFIG="$project_root/docker/.docker-config" \
+    DOCKER_CONFIG="$project_root/dev/docker/.docker-config" \
     PATH="/usr/bin:/bin" \
     "$docker_compose_bin" \
     -f "$project_root/compose.yaml" \
@@ -39,7 +39,7 @@ run_compose() {
 }
 
 # Build the app artifacts (fat-jar + healthcheck class) into ./dist. The runtime
-# image (docker/app/Dockerfile.runtime, distroless) is built from these by compose,
+# image (dev/docker/app/Dockerfile.runtime, distroless) is built from these by compose,
 # so it carries no build tooling. Uses `--target build` + docker cp instead of
 # BuildKit --output so it works with the keychain-safe, PATH-stripped run_docker
 # wrapper (buildx is not on that PATH).
@@ -47,7 +47,7 @@ build_artifacts() {
   echo "Building application artifacts (jar + healthcheck) into ./dist ..."
   rm -rf "$project_root/dist"
   mkdir -p "$project_root/dist"
-  run_docker build -f "$project_root/docker/app/Dockerfile.build" \
+  run_docker build -f "$project_root/dev/docker/app/Dockerfile.build" \
     --target build -t kudos-test-artifacts "$project_root"
   local cid
   cid="$(run_docker create kudos-test-artifacts)"

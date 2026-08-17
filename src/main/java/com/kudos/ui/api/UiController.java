@@ -17,8 +17,12 @@
 package com.kudos.ui.api;
 
 import com.kudos.ui.config.FeaturesProperties;
+import com.kudos.ui.service.EngineVisibilityStore;
 import com.kudos.ui.service.SparkApplicationAccessService;
+import com.kudos.ui.service.SqlEngineInfo;
 import com.kudos.ui.service.SqlEngineRegistry;
+import java.util.List;
+import java.util.Map;
 import org.springframework.stereotype.Controller;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.server.ResponseStatusException;
@@ -38,14 +42,17 @@ public class UiController {
   private final FeaturesProperties features;
   private final SparkApplicationAccessService sparkAccess;
   private final SqlEngineRegistry sqlEngines;
+  private final EngineVisibilityStore engineVisibility;
 
   public UiController(
       FeaturesProperties features,
       SparkApplicationAccessService sparkAccess,
-      SqlEngineRegistry sqlEngines) {
+      SqlEngineRegistry sqlEngines,
+      EngineVisibilityStore engineVisibility) {
     this.features = features;
     this.sparkAccess = sparkAccess;
     this.sqlEngines = sqlEngines;
+    this.engineVisibility = engineVisibility;
   }
 
   @GetMapping("/login")
@@ -77,8 +84,22 @@ public class UiController {
   @GetMapping("/editor")
   String editor(Model model) {
     model.addAttribute("app", "editor");
-    model.addAttribute("sqlEngines", sqlEngines.available());
+    model.addAttribute("sqlEngines", visibleEngines());
     return "editor";
+  }
+
+  /**
+   * The engines whose editor tab is shown, per the administrator's choice. If the
+   * choice would hide every engine, all are shown instead so the editor is never
+   * left without an engine to run on.
+   */
+  private List<SqlEngineInfo> visibleEngines() {
+    Map<String, Boolean> visibility = engineVisibility.visibility();
+    List<SqlEngineInfo> visible =
+        sqlEngines.available().stream()
+            .filter(engine -> visibility.getOrDefault(engine.id(), true))
+            .toList();
+    return visible.isEmpty() ? sqlEngines.available() : visible;
   }
 
   @GetMapping("/filebrowser")

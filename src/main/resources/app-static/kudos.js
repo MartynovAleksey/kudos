@@ -23,7 +23,6 @@
 
   var UI_API = '/ui-api';
   var UI_PREFERENCES_KEY_PREFIX = 'kudos.ui-preferences.v1.';
-  var UI_TOOLS = ['editor', 'files', 'ozone', 'hbase', 'jobs'];
 
   function el(id) {
     return document.getElementById(id);
@@ -43,9 +42,10 @@
   }
 
   function defaultUiPreferences() {
-    var tools = {};
-    UI_TOOLS.forEach(function (tool) { tools[tool] = true; });
-    return { mode: 'old', theme: 'system', tools: tools };
+    // Theme and the sidebar's collapsed state are personal and live in the
+    // browser. Tool and engine visibility are deliberately absent: they are
+    // deployment-wide settings an administrator changes on the server.
+    return { theme: 'system', sidebar: 'collapsed' };
   }
 
   function loadUiPreferences() {
@@ -56,13 +56,8 @@
     }
     try {
       var parsed = JSON.parse(storage.getItem(uiPreferencesKey()) || '{}');
-      defaults.mode = parsed.mode === 'modern' ? 'modern' : 'old';
       defaults.theme = ['light', 'dark', 'system'].indexOf(parsed.theme) >= 0 ? parsed.theme : 'system';
-      UI_TOOLS.forEach(function (tool) {
-        if (parsed.tools && typeof parsed.tools[tool] === 'boolean') {
-          defaults.tools[tool] = parsed.tools[tool];
-        }
-      });
+      defaults.sidebar = parsed.sidebar === 'expanded' ? 'expanded' : 'collapsed';
     } catch (ignored) {
       // Invalid or unavailable browser storage must leave the safe defaults intact.
     }
@@ -92,34 +87,31 @@
     var settingsPanel = el('uiSettingsPanel');
     var closeButton = el('uiSettingsClose');
     var resetButton = el('uiSettingsReset');
+    var collapseButton = el('uiSidebarCollapse');
     var systemTheme = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
 
     function applyPreferences() {
-      body.setAttribute('data-ui-mode', preferences.mode);
       body.setAttribute('data-ui-theme', preferences.theme);
       body.setAttribute('data-ui-system-theme', systemTheme && systemTheme.matches ? 'dark' : 'light');
+      body.setAttribute('data-ui-sidebar', preferences.sidebar);
       document.documentElement.style.colorScheme = preferences.theme === 'system' ? 'light dark' : preferences.theme;
-      eachUiNode('[data-ui-tool]', function (item) {
-        var tool = item.getAttribute('data-ui-tool');
-        item.hidden = preferences.tools[tool] === false;
-      });
-      eachUiNode('[data-ui-mode-choice]', function (choice) {
-        choice.setAttribute('aria-pressed', String(choice.getAttribute('data-ui-mode-choice') === preferences.mode));
-      });
       eachUiNode('[data-ui-theme-choice]', function (choice) {
         choice.setAttribute('aria-pressed', String(choice.getAttribute('data-ui-theme-choice') === preferences.theme));
       });
-      UI_TOOLS.forEach(function (tool) {
-        var setting = document.querySelector('[data-ui-tool-setting="' + tool + '"]');
-        var control = document.querySelector('[data-ui-tool-choice="' + tool + '"]');
-        var available = document.querySelector('[data-ui-tool="' + tool + '"]') !== null;
-        if (setting) {
-          setting.hidden = !available;
+      if (collapseButton) {
+        var collapsed = preferences.sidebar === 'collapsed';
+        collapseButton.setAttribute('aria-pressed', String(collapsed));
+        collapseButton.setAttribute('aria-label', collapsed ? 'Expand sidebar' : 'Collapse sidebar');
+        collapseButton.setAttribute('title', collapsed ? 'Expand sidebar' : 'Collapse sidebar');
+        var icon = collapseButton.querySelector('.fa');
+        if (icon) {
+          icon.className = 'fa fa-fw ' + (collapsed ? 'fa-angle-double-right' : 'fa-angle-double-left');
         }
-        if (control) {
-          control.checked = preferences.tools[tool] !== false;
+        var label = collapseButton.querySelector('span');
+        if (label) {
+          label.textContent = collapsed ? 'Expand' : 'Collapse';
         }
-      });
+      }
     }
 
     function persistAndApply() {
@@ -127,35 +119,73 @@
       applyPreferences();
     }
 
+    // Blur the rest of the interface while the panel is open, so it reads as a
+    // focused popover. The class drives a CSS filter on .hue-page.
+    function syncSettingsBackdrop() {
+      var open = settingsPanel && !settingsPanel.hidden;
+      document.body.classList.toggle('k8s-ui-settings-open', Boolean(open));
+    }
+
+    function closePanel() {
+      if (settingsPanel) {
+        settingsPanel.hidden = true;
+      }
+      if (settingsButton) {
+        settingsButton.setAttribute('aria-expanded', 'false');
+      }
+      syncSettingsBackdrop();
+    }
+
     if (settingsButton && settingsPanel) {
       settingsButton.addEventListener('click', function () {
         settingsPanel.hidden = !settingsPanel.hidden;
         settingsButton.setAttribute('aria-expanded', String(!settingsPanel.hidden));
+        syncSettingsBackdrop();
       });
     }
     if (closeButton && settingsPanel && settingsButton) {
       closeButton.addEventListener('click', function () {
-        settingsPanel.hidden = true;
-        settingsButton.setAttribute('aria-expanded', 'false');
+        closePanel();
         settingsButton.focus();
       });
     }
-    eachUiNode('[data-ui-mode-choice]', function (choice) {
-      choice.addEventListener('click', function () {
-        preferences.mode = choice.getAttribute('data-ui-mode-choice');
+    // Close the panel when the user clicks anywhere outside it (and outside the
+    // button that opened it), the usual dismissal for a floating popover.
+    if (settingsPanel && settingsButton) {
+      document.addEventListener('click', function (event) {
+        if (settingsPanel.hidden) {
+          return;
+        }
+        if (!settingsPanel.contains(event.target) && !settingsButton.contains(event.target)) {
+          closePanel();
+        }
+      });
+    }
+    if (collapseButton) {
+      collapseButton.addEventListener('click', function () {
+        preferences.sidebar = preferences.sidebar === 'collapsed' ? 'expanded' : 'collapsed';
         persistAndApply();
       });
-    });
+    }
     eachUiNode('[data-ui-theme-choice]', function (choice) {
       choice.addEventListener('click', function () {
         preferences.theme = choice.getAttribute('data-ui-theme-choice');
         persistAndApply();
       });
     });
+    // Tool visibility is server-side and administrator-only. The checkboxes are
+    // rendered only for administrators; changing one saves the choice for the
+    // whole deployment and reflects it live in this admin's own sidebar.
     eachUiNode('[data-ui-tool-choice]', function (control) {
       control.addEventListener('change', function () {
-        preferences.tools[control.getAttribute('data-ui-tool-choice')] = control.checked;
-        persistAndApply();
+        saveToolVisibility(control);
+      });
+    });
+    // SQL engine visibility, likewise server-side and administrator-only. The
+    // hidden engine's editor tab disappears for everyone on their next load.
+    eachUiNode('[data-ui-engine-choice]', function (control) {
+      control.addEventListener('change', function () {
+        saveEngineVisibility(control);
       });
     });
     if (resetButton) {
@@ -177,6 +207,59 @@
       }
     }
     applyPreferences();
+  }
+
+  function saveToolVisibility(changed) {
+    var visibility = {};
+    eachUiNode('[data-ui-tool-choice]', function (control) {
+      visibility[control.getAttribute('data-ui-tool-choice')] = control.checked;
+    });
+    // Reflect the change live in this administrator's own sidebar; other users
+    // pick it up on their next page load.
+    var tool = changed.getAttribute('data-ui-tool-choice');
+    var item = document.querySelector('[data-ui-tool="' + tool + '"]');
+    if (item) {
+      item.hidden = !changed.checked;
+    }
+    request(UI_API + '/tool-visibility', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(visibility)
+    }).catch(function () {
+      // The save failed (for example the session lost its administrator role):
+      // put the checkbox and the sidebar item back so the UI stays truthful.
+      changed.checked = !changed.checked;
+      if (item) {
+        item.hidden = !changed.checked;
+      }
+    });
+  }
+
+  function saveEngineVisibility(changed) {
+    var visibility = {};
+    eachUiNode('[data-ui-engine-choice]', function (control) {
+      visibility[control.getAttribute('data-ui-engine-choice')] = control.checked;
+    });
+    // Hide the engine's editor tab live if it is on the page; enabling a hidden
+    // engine takes effect on the next load, when the server renders its tab.
+    // The tab has an explicit display, so toggle it with an inline style rather
+    // than the hidden attribute (which the stylesheet would override).
+    var engine = changed.getAttribute('data-ui-engine-choice');
+    var tab = document.querySelector('[data-sql-engine="' + engine + '"]');
+    var item = tab ? tab.closest('li') : null;
+    if (item) {
+      item.style.display = changed.checked ? '' : 'none';
+    }
+    request(UI_API + '/engine-visibility', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(visibility)
+    }).catch(function () {
+      changed.checked = !changed.checked;
+      if (item) {
+        item.style.display = changed.checked ? '' : 'none';
+      }
+    });
   }
 
   function text(value) {
@@ -1135,7 +1218,10 @@
       sessionBar.classList.toggle('k8s-hidden', !supportsSessions);
       sessionMonitor.classList.toggle('k8s-hidden', !supportsSessions);
       noSessions.classList.toggle('k8s-hidden', !supportsSessions);
-      el('logsTabItem').classList.toggle('k8s-hidden', !supportsSessions && !hasHistory);
+      // Live operation logs come from a Kyuubi session monitor; engines without
+      // sessions (Trino, StarRocks) have none, and their errors surface in the
+      // query History instead, so the Log tab is dropped for them.
+      el('logsTabItem').classList.toggle('k8s-hidden', !supportsSessions);
       el('operationsTabItem').classList.toggle('k8s-hidden', !supportsSessions && !hasHistory);
       el('operationsTab').textContent = hasHistory ? 'History' : 'Session History';
       if (!supportsSessions) {
@@ -1168,6 +1254,15 @@
       ]);
     }
 
+    // Render the Log pane. Empty, it drops its <pre> frame and shows the same
+    // plain muted line as the empty Result pane, so switching tabs before a
+    // query runs does not flip between framed and unframed elements.
+    function showLogs(content) {
+      var empty = !content;
+      sessionMonitorLogs.classList.toggle('k8s-session-logs-empty', empty);
+      sessionMonitorLogs.textContent = empty ? 'Run a query to see its logs.' : content;
+    }
+
     function loadMonitor(session) {
       if (!session) {
         sessionMonitorSummary.innerHTML = '';
@@ -1176,7 +1271,7 @@
         sessionMonitorMetrics.innerHTML = '';
         sessionMonitorOperations.innerHTML = '';
         sessionMonitorOperations.appendChild(text('No operations yet.'));
-        sessionMonitorLogs.textContent = 'No operation logs yet.';
+        showLogs('');
         return;
       }
       request(sessionApi('/' + encodeURIComponent(session.id) + '/monitor'))
@@ -1202,7 +1297,7 @@
             metric('Queue', monitor.executorPoolQueueSize)
           ].forEach(function (item) { sessionMonitorMetrics.appendChild(item); });
           renderOperations(session, monitor.operations || []);
-          sessionMonitorLogs.textContent = (monitor.logs || []).join('\n') || 'No operation logs yet.';
+          showLogs((monitor.logs || []).join('\n'));
         })
         .catch(function (error) {
           sessionMonitorWarning.classList.remove('k8s-hidden');
@@ -1292,7 +1387,7 @@
 
     function renderQueryLogs(result) {
       var logs = result && result.logs ? result.logs : [];
-      sessionMonitorLogs.textContent = logs.join('\n') || 'No query logs yet.';
+      showLogs(logs.join('\n'));
     }
 
     function loadQueryHistory(engine) {
@@ -1415,7 +1510,7 @@
       run.disabled = Boolean(active && active.state !== 'READY');
       loadMonitor(active);
       loadSessionResult(active);
-      var perQuery = element('span', { class: 'k8s-session-tab-label' });
+      var perQuery = element('span', { class: 'k8s-session-tab-label', text: 'Query mode' });
       var perQueryTab = element('div', {
         class: 'k8s-session-tab k8s-session-perquery' + (active ? '' : ' k8s-session-active'),
         title: 'Per-query mode',
@@ -1443,10 +1538,13 @@
           ? session.sparkParams.replace(/\r?\n/g, ', ')
           : 'cluster defaults';
         var label = element('button', { type: 'button', class: 'k8s-session-tab-label', text: session.name });
-        var restart = button('Restart', 'k8s-session-tab-action k8s-session-tab-restart', function (event) {
-          event.stopPropagation();
-          restartSession(session);
-        });
+        var restart = button(
+          element('i', { class: 'fa fa-refresh' }),
+          'k8s-session-tab-action k8s-session-tab-restart',
+          function (event) {
+            event.stopPropagation();
+            restartSession(session);
+          });
         restart.title = 'Restart session';
         restart.setAttribute('aria-label', 'Restart session ' + session.name);
         var close = button('×', 'k8s-session-tab-action k8s-session-tab-close', function (event) {

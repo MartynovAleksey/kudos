@@ -19,6 +19,9 @@ package com.kudos.ui.api;
 import com.kudos.ui.config.FeaturesProperties;
 import com.kudos.ui.config.UiProperties;
 import com.kudos.ui.security.RoleAccess;
+import com.kudos.ui.service.EngineVisibilityStore;
+import com.kudos.ui.service.ToolVisibilityStore;
+import java.util.Map;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ModelAttribute;
@@ -34,11 +37,20 @@ public class UiModelAdvice {
   private final UiProperties ui;
   private final FeaturesProperties features;
   private final RoleAccess roles;
+  private final ToolVisibilityStore toolVisibility;
+  private final EngineVisibilityStore engineVisibility;
 
-  public UiModelAdvice(UiProperties ui, FeaturesProperties features, RoleAccess roles) {
+  public UiModelAdvice(
+      UiProperties ui,
+      FeaturesProperties features,
+      RoleAccess roles,
+      ToolVisibilityStore toolVisibility,
+      EngineVisibilityStore engineVisibility) {
     this.ui = ui;
     this.features = features;
     this.roles = roles;
+    this.toolVisibility = toolVisibility;
+    this.engineVisibility = engineVisibility;
   }
 
   @ModelAttribute("bannerHtml")
@@ -54,5 +66,15 @@ public class UiModelAdvice {
   @ModelAttribute("administrator")
   boolean administrator(Authentication authentication) {
     return roles.isAdministrator(authentication);
+  }
+
+  @ModelAttribute("toolVisibility")
+  Map<String, Boolean> toolVisibility() {
+    return toolVisibility.visibility();
+  }
+
+  @ModelAttribute("engineVisibility")
+  Map<String, Boolean> engineVisibility() {
+    return engineVisibility.visibility();
   }
 }

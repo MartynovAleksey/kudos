@@ -30,13 +30,13 @@ if ! [[ "$cycles" =~ ^[1-9][0-9]*$ ]]; then
 fi
 
 run_docker() {
-  env DOCKER_CONFIG="$project_root/docker/.docker-config" PATH="/usr/bin:/bin" "$docker_bin" "$@"
+  env DOCKER_CONFIG="$project_root/dev/docker/.docker-config" PATH="/usr/bin:/bin" "$docker_bin" "$@"
 }
 
 run_compose() {
   env \
     -u DOCKER_DEFAULT_PLATFORM \
-    DOCKER_CONFIG="$project_root/docker/.docker-config" \
+    DOCKER_CONFIG="$project_root/dev/docker/.docker-config" \
     PATH="/usr/bin:/bin" \
     "$compose_bin" \
     -f "$project_root/compose.yaml" \

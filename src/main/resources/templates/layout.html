@@ -35,7 +35,7 @@
   <link rel="stylesheet" th:href="@{/static/app/kudos.css}"/>
   <script th:src="@{/static/app/kudos.js}" defer="defer"></script>
 </head>
-<body data-ui-mode="old" data-ui-theme="system" data-ui-system-theme="light"
+<body data-ui-mode="modern" data-ui-theme="system" data-ui-system-theme="light" data-ui-sidebar="collapsed"
       th:attr="data-app=${app},data-ui-user=${#authentication.name}">
 <div class="hue-page">
   <div class="sidebar sidebar-collapsed">
@@ -45,35 +45,45 @@
       </a>
     </div>
     <nav class="sidebar-body">
-      <div class="sidebar-accordion-item" data-ui-tool="editor" th:if="${features.editor}"
+      <div class="sidebar-accordion-item" data-ui-tool="editor"
+           th:if="${features.editor and (administrator or toolVisibility.editor)}"
+           th:hidden="${administrator and !toolVisibility.editor}"
            th:classappend="${app == 'editor'} ? ' sidebar-active'">
         <a class="sidebar-sidebar-item" th:href="@{/editor}" title="Editor" aria-label="Editor">
           <div class="sidebar-sidebar-item-icon"><i class="fa fa-fw fa-code"></i></div>
           <span>Editor</span>
         </a>
       </div>
-      <div class="sidebar-accordion-item" data-ui-tool="files" th:if="${features.files}"
+      <div class="sidebar-accordion-item" data-ui-tool="files"
+           th:if="${features.files and (administrator or toolVisibility.files)}"
+           th:hidden="${administrator and !toolVisibility.files}"
            th:classappend="${app == 'filebrowser'} ? ' sidebar-active'">
         <a class="sidebar-sidebar-item" th:href="@{/filebrowser}" title="Files" aria-label="Files">
           <div class="sidebar-sidebar-item-icon"><i class="fa fa-fw fa-files-o"></i></div>
           <span>Files</span>
         </a>
       </div>
-      <div class="sidebar-accordion-item" data-ui-tool="ozone" th:if="${features.ozone}"
+      <div class="sidebar-accordion-item" data-ui-tool="ozone"
+           th:if="${features.ozone and (administrator or toolVisibility.ozone)}"
+           th:hidden="${administrator and !toolVisibility.ozone}"
            th:classappend="${app == 'ozone'} ? ' sidebar-active'">
         <a class="sidebar-sidebar-item" th:href="@{/ozone}" title="Ozone" aria-label="Ozone">
           <div class="sidebar-sidebar-item-icon"><i class="fa fa-fw fa-cloud"></i></div>
           <span>Ozone</span>
         </a>
       </div>
-      <div class="sidebar-accordion-item" data-ui-tool="hbase" th:if="${features.hbase}"
+      <div class="sidebar-accordion-item" data-ui-tool="hbase"
+           th:if="${features.hbase and (administrator or toolVisibility.hbase)}"
+           th:hidden="${administrator and !toolVisibility.hbase}"
            th:classappend="${app == 'hbase'} ? ' sidebar-active'">
         <a class="sidebar-sidebar-item" th:href="@{/hbase}" title="HBase" aria-label="HBase">
           <div class="sidebar-sidebar-item-icon"><i class="fa fa-fw fa-database"></i></div>
           <span>HBase</span>
         </a>
       </div>
-      <div class="sidebar-accordion-item" data-ui-tool="jobs" th:if="${features.jobs}"
+      <div class="sidebar-accordion-item" data-ui-tool="jobs"
+           th:if="${features.jobs and (administrator or toolVisibility.jobs)}"
+           th:hidden="${administrator and !toolVisibility.jobs}"
            th:classappend="${app == 'jobs'} ? ' sidebar-active'">
         <a class="sidebar-sidebar-item" th:href="@{/jobs}" title="Jobs" aria-label="Jobs">
           <div class="sidebar-sidebar-item-icon"><i class="fa fa-fw fa-tasks"></i></div>
@@ -95,12 +105,13 @@
         <div class="sidebar-sidebar-item-icon"><i class="fa fa-fw fa-cog"></i></div>
         <span>Settings</span>
       </button>
-      <div class="sidebar-accordion-item">
-        <a class="sidebar-sidebar-item" th:href="@{/logout}" title="Sign out" aria-label="Sign out">
-          <div class="sidebar-sidebar-item-icon"><i class="fa fa-fw fa-sign-out"></i></div>
-          <span>Sign out</span>
-        </a>
-      </div>
+      <!-- Bottom-most control, mirroring Hue's sidebar collapse toggle. Sign out
+           now lives next to the user in the ticket timer, not here. -->
+      <button id="uiSidebarCollapse" class="sidebar-sidebar-item sidebar-footer-collapse-btn sidebar-base-btn"
+              type="button" title="Collapse sidebar" aria-label="Collapse sidebar" aria-pressed="false">
+        <div class="sidebar-sidebar-item-icon"><i class="fa fa-fw fa-angle-double-left"></i></div>
+        <span>Collapse</span>
+      </button>
       <div class="sidebar-footer-bottom-color-line"></div>
     </div>
   </div>
@@ -121,13 +132,6 @@
       <button id="uiSettingsClose" class="k8s-ui-settings-close" type="button" aria-label="Close settings">×</button>
     </div>
     <fieldset class="k8s-ui-settings-group">
-      <legend>Appearance</legend>
-      <div class="k8s-ui-choice-group">
-        <button type="button" data-ui-mode-choice="old" aria-pressed="true">Old</button>
-        <button type="button" data-ui-mode-choice="modern" aria-pressed="false">Modern</button>
-      </div>
-    </fieldset>
-    <fieldset class="k8s-ui-settings-group">
       <legend>Theme</legend>
       <div class="k8s-ui-choice-group">
         <button type="button" data-ui-theme-choice="light" aria-pressed="false">Light</button>
@@ -136,13 +140,26 @@
       </div>
       <p class="k8s-ui-theme-preview" aria-live="polite"></p>
     </fieldset>
-    <fieldset class="k8s-ui-settings-group">
+    <!-- Tool visibility below is a deployment-wide setting an administrator
+         changes for everyone, so it is shown only to administrators. Each
+         checkbox reflects the server's stored choice and, once changed, applies
+         to every user on their next sign-in. -->
+    <fieldset class="k8s-ui-settings-group" th:if="${administrator}">
       <legend>Visible tools</legend>
-      <label data-ui-tool-setting="editor"><input type="checkbox" data-ui-tool-choice="editor" checked="checked"/> Editor</label>
-      <label data-ui-tool-setting="files"><input type="checkbox" data-ui-tool-choice="files" checked="checked"/> Files</label>
-      <label data-ui-tool-setting="ozone"><input type="checkbox" data-ui-tool-choice="ozone" checked="checked"/> Ozone</label>
-      <label data-ui-tool-setting="hbase"><input type="checkbox" data-ui-tool-choice="hbase" checked="checked"/> HBase</label>
-      <label data-ui-tool-setting="jobs"><input type="checkbox" data-ui-tool-choice="jobs" checked="checked"/> Jobs</label>
+      <label data-ui-tool-setting="editor" th:if="${features.editor}"><input type="checkbox" data-ui-tool-choice="editor" th:checked="${toolVisibility.editor}"/> Editor</label>
+      <label data-ui-tool-setting="files" th:if="${features.files}"><input type="checkbox" data-ui-tool-choice="files" th:checked="${toolVisibility.files}"/> Files</label>
+      <label data-ui-tool-setting="ozone" th:if="${features.ozone}"><input type="checkbox" data-ui-tool-choice="ozone" th:checked="${toolVisibility.ozone}"/> Ozone</label>
+      <label data-ui-tool-setting="hbase" th:if="${features.hbase}"><input type="checkbox" data-ui-tool-choice="hbase" th:checked="${toolVisibility.hbase}"/> HBase</label>
+      <label data-ui-tool-setting="jobs" th:if="${features.jobs}"><input type="checkbox" data-ui-tool-choice="jobs" th:checked="${toolVisibility.jobs}"/> Jobs</label>
+    </fieldset>
+    <!-- SQL engines shown in the editor. Deployment-wide, administrator-only,
+         applied to every user on their next page load. -->
+    <fieldset class="k8s-ui-settings-group" th:if="${administrator}">
+      <legend>SQL engines</legend>
+      <label data-ui-engine-setting="kyuubi"><input type="checkbox" data-ui-engine-choice="kyuubi" th:checked="${engineVisibility.get('kyuubi')}"/> Spark SQL</label>
+      <label data-ui-engine-setting="kyuubi-flink"><input type="checkbox" data-ui-engine-choice="kyuubi-flink" th:checked="${engineVisibility.get('kyuubi-flink')}"/> Flink SQL</label>
+      <label data-ui-engine-setting="trino"><input type="checkbox" data-ui-engine-choice="trino" th:checked="${engineVisibility.get('trino')}"/> Trino</label>
+      <label data-ui-engine-setting="starrocks"><input type="checkbox" data-ui-engine-choice="starrocks" th:checked="${engineVisibility.get('starrocks')}"/> StarRocks</label>
     </fieldset>
     <button id="uiSettingsReset" class="btn btn-small" type="button">Restore defaults</button>
   </aside>
@@ -151,6 +168,10 @@
      zero the script signs the user out. -->
 <div id="k8s-ticket-timer" class="k8s-ticket-timer" th:if="${ticketRemainingSeconds != null}"
      th:attr="data-remaining=${ticketRemainingSeconds}, data-logout=@{/logout}">
+  <a class="k8s-ticket-signout" th:href="@{/logout}" title="Sign out" aria-label="Sign out">
+    <i class="fa fa-sign-out"></i>
+  </a>
+  <span class="k8s-ticket-divider"></span>
   <i class="fa fa-user"></i>
   <span class="k8s-ticket-user" sec:authentication="name">user</span>
   <span class="k8s-ticket-divider"></span>

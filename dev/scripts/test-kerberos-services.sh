@@ -26,13 +26,13 @@ analyst_password="${TEST_ANALYST_PASSWORD:-KudosAnalyst2026Secure!}"
 starrocks_password="${TEST_STARROCKS_PASSWORD:-KudosStarRocks2026}"
 
 run_docker() {
-  env DOCKER_CONFIG="$project_root/docker/.docker-config" PATH="/usr/bin:/bin" "$docker_bin" "$@"
+  env DOCKER_CONFIG="$project_root/dev/docker/.docker-config" PATH="/usr/bin:/bin" "$docker_bin" "$@"
 }
 
 run_compose() {
   env \
     -u DOCKER_DEFAULT_PLATFORM \
-    DOCKER_CONFIG="$project_root/docker/.docker-config" \
+    DOCKER_CONFIG="$project_root/dev/docker/.docker-config" \
     PATH="/usr/bin:/bin" \
     "$compose_bin" \
     -f "$project_root/compose.yaml" \
@@ -263,9 +263,9 @@ app_api "${hb_json[@]}" -X POST "$app_base/api/hbase/family/add" \
   -d "{\"table\":\"$hb_table\",\"family\":{\"name\":\"cf2\",\"maxVersions\":2}}" >/dev/null
 app_api "$app_base/api/hbase/describe?table=$hb_table" | grep -q '"name":"cf2"'
 
-# Verify the complete mutation path: multiple versions, a binary cell, column
-# deletion, and CSV bulk upload. No temporary files are needed: curl reads the
-# multipart body directly from stdin.
+# Validate the complete mutation path: multiple versions, a binary cell, column
+# deletion, and CSV bulk upload. No temporary files are needed because curl
+# reads the multipart body directly from stdin.
 app_api "${hb_json[@]}" -X POST "$app_base/api/hbase/row" \
   -d "{\"table\":\"$hb_table\",\"row\":\"versions\",\"cells\":{\"cf:a\":\"old\"}}" >/dev/null
 sleep 1

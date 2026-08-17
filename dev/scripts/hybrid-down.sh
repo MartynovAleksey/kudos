@@ -14,10 +14,10 @@
 # limitations under the License.
 
 #
-# Tears down the hybrid prod-mode test started by scripts/hybrid-up.sh:
+# Tears down the hybrid prod-mode test started by dev/scripts/hybrid-up.sh:
 # uninstalls the Helm release and stops the Docker test environment.
 #
-# Usage:  scripts/hybrid-down.sh [--namespace kudos] [--purge]
+# Usage:  dev/scripts/hybrid-down.sh [--namespace kudos] [--purge]
 #   --purge  also delete the namespace and remove Docker volumes (data loss).
 #
 set -euo pipefail
@@ -37,7 +37,7 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 root="$(cd -- "$script_dir/.." && pwd)"
 compose_bin="${DOCKER_COMPOSE_BIN:-$HOME/.docker/cli-plugins/docker-compose}"
 dc() {
-  env -u DOCKER_DEFAULT_PLATFORM DOCKER_CONFIG="$root/docker/.docker-config" \
+  env -u DOCKER_DEFAULT_PLATFORM DOCKER_CONFIG="$root/dev/docker/.docker-config" \
     "$compose_bin" -f "$root/compose.yaml" "$@"
 }
 

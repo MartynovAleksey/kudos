@@ -30,7 +30,7 @@ the sidecar renews it before its lease expires. The agent configuration is
 from values as environment variables.
 
 ## Requirements
-- Опубликованный образ приложения (`docker/app/Dockerfile`, стадия `runtime` —
+
 - A Kubernetes cluster and Helm 3+.
 - A published application image built with the `runtime` stage of
   `dev/docker/app/Dockerfile`, accessible from the cluster; see
@@ -38,7 +38,7 @@ from values as environment variables.
 
 - Network access from the Pod to WebHDFS, Kyuubi, HBase REST Gateway, Ozone OM,
 
-Мирроринг того, что тестовый `docker/vault/bootstrap.sh` делает автоматически:
+
 
 ```bash
 This mirrors what the test environment's `dev/docker/vault/bootstrap.sh` does
@@ -179,9 +179,9 @@ kubectl -n kudos rollout status deploy/kudos
 | `vault.caConfigMap` | `""` | optional ConfigMap with `ca.crt` trusted by Vault API |
 
 ```bash
-scripts/hybrid-up.sh            # build → docker up → k8s prereqs → helm install → port-forward
+dev/scripts/hybrid-up.sh            # build → docker up → k8s prereqs → helm install → port-forward
 # UI: https://localhost:8443/   (admin / KudosAdmin2026Secure!)
-scripts/hybrid-down.sh          # снести (добавить --purge, чтобы удалить namespace и volume'ы)
+
 ```
 
 You can exercise production mode locally: run the **cluster and Vault in Docker

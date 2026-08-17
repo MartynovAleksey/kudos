@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 /*
  * Copyright 2026 Aleksey Martynov and contributors
  *
@@ -13,8 +15,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-#!/usr/bin/env node
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -47,6 +47,10 @@ class Element {
     this.listeners[name]({ target: this });
   }
 
+  querySelector() {
+    return null;
+  }
+
   focus() {}
 }
 
@@ -61,7 +65,8 @@ function runPreferences(user, saved, availableTools) {
     uiSettingsButton: new Element(),
     uiSettingsPanel: new Element(),
     uiSettingsClose: new Element(),
-    uiSettingsReset: new Element()
+    uiSettingsReset: new Element(),
+    uiSidebarCollapse: new Element()
   };
   const storage = new Map(saved ? [[`kudos.ui-preferences.v1.${user}`, JSON.stringify(saved)]] : []);
   const selectorMap = {
@@ -112,28 +117,34 @@ function runPreferences(user, saved, availableTools) {
   return { body, document, storage, toolNodes, toolSettings, toolChoices, byId };
 }
 
-const alice = runPreferences('alice', { mode: 'modern', theme: 'dark', tools: { ozone: false } }, ['editor', 'files', 'ozone', 'jobs']);
-assert.equal(alice.body.getAttribute('data-ui-mode'), 'modern');
+// Theme and the sidebar's collapsed state are personal and stored in the
+// browser. Mode is gone (the interface is always modern); tool and engine
+// visibility are server-side and administrator-only, not in browser storage.
+const alice = runPreferences('alice', { theme: 'dark', sidebar: 'collapsed' }, ['editor', 'files', 'ozone', 'jobs']);
 assert.equal(alice.body.getAttribute('data-ui-theme'), 'dark');
-assert.equal(alice.toolNodes.find((node) => node.getAttribute('data-ui-tool') === 'ozone').hidden, true);
-assert.equal(alice.toolSettings.length, 4, 'Недоступный сервером инструмент не должен попадать в настройки');
+assert.equal(alice.body.getAttribute('data-ui-sidebar'), 'collapsed');
 assert.equal(alice.document.documentElement.style.colorScheme, 'dark');
 
+// The footer button toggles the sidebar and persists the choice.
+alice.byId.uiSidebarCollapse.dispatch('click');
+assert.equal(alice.body.getAttribute('data-ui-sidebar'), 'expanded');
+assert.equal(JSON.parse(alice.storage.get('kudos.ui-preferences.v1.alice')).sidebar, 'expanded');
+
+// Restore defaults resets the theme without touching server-side state.
 alice.byId.uiSettingsReset.dispatch('click');
-assert.equal(alice.toolNodes.find((node) => node.getAttribute('data-ui-tool') === 'ozone').hidden, false);
-assert.equal(JSON.parse(alice.storage.get('kudos.ui-preferences.v1.alice')).mode, 'old');
+assert.equal(JSON.parse(alice.storage.get('kudos.ui-preferences.v1.alice')).theme, 'system');
 
 const bob = runPreferences('bob', null, ['editor', 'files', 'ozone', 'jobs']);
-assert.equal(bob.body.getAttribute('data-ui-mode'), 'old');
 assert.equal(bob.body.getAttribute('data-ui-theme'), 'system');
-assert.ok(bob.toolNodes.every((node) => !node.hidden), 'Без сохранённых настроек инструменты должны быть видимы');
+assert.equal(bob.body.getAttribute('data-ui-sidebar'), 'collapsed');
+assert.ok(bob.toolNodes.every((node) => !node.hidden), 'The client does not hide tools; this is a server-side setting');
 
 assert.match(styles, /body\[data-ui-mode="modern"\][\s\S]*-apple-system/,
-  'Modern-слой не использует системную типографику');
+  'The modern layer does not use system typography');
 assert.match(styles, /body\[data-ui-mode="modern"\]\[data-ui-theme="system"\]\[data-ui-system-theme="dark"\]/,
-  'System-тема не следует системной тёмной теме');
+  'The system theme does not follow the system dark theme');
 assert.doesNotMatch(styles, /k8s-modern-window-chrome/,
-  'Modern-слой не должен содержать оконную панель');
+  'The modern layer must not contain a window chrome');
 assert.doesNotMatch(styles, /apple-logo|apple\.png|apple\.svg/i,
-  'Modern-слой не должен содержать Apple asset');
+  'The modern layer must not contain an Apple asset');
 console.log('PASS UI preferences are user-scoped and keep server feature boundaries');
