@@ -5,7 +5,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,12 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 /*
- * The Hue 4 page chrome (top nav, content wrapper, page content, data tables)
- * comes from the vendored hue.css. Its left sidebar is styled from inside Hue's
- * JavaScript bundle, which is not vendored, so the sidebar rules below restate
- * the measurements and colours read off the reference container.
+ * Page chrome (top nav, content wrapper, page content, data tables) builds on
+ * the primitives in kudos-base.css; the visual theme, layout and left sidebar
+ * are defined here.
  */
 
 /*
@@ -140,9 +138,7 @@
 }
 
 /*
- * Hue 4 draws its cards and navs from component styles that live in the
- * JavaScript bundle, so the vendored hue.css leaves .card and .nav with no
- * padding and with the browser's default list markers. Restore both.
+ * Card and nav padding/markers on top of the base primitives.
  */
 .nav,
 .nav > li {
@@ -163,14 +159,14 @@
   font-weight: 500;
 }
 
-.hue-title-bar {
+.k8s-title-bar {
   margin: 0;
   padding: 0 16px;
   border-bottom: 1px solid #e5e5e5;
   background-color: #f8f8f8;
 }
 
-.hue-title-bar .app-header {
+.k8s-title-bar .app-header {
   font-size: 17px;
   line-height: 40px;
   color: #0b7fad;
@@ -181,49 +177,48 @@
    block the title ul pushed them onto a second row, making the bar taller. One
    flex row keeps the title/tabs at the left and the buttons at the right, at the
    reference height. */
-.hue-title-bar .navbar-inner .container-fluid {
+.k8s-title-bar .navbar-inner .container-fluid {
   display: flex;
   align-items: center;
 }
 /* The Bootstrap clearfix ::before/::after pseudo-elements would otherwise count
    as flex items and, together with the right-pushed buttons, spread the title
    and buttons to the centre. Drop them so only the real children remain. */
-.hue-title-bar .navbar-inner .container-fluid::before,
-.hue-title-bar .navbar-inner .container-fluid::after {
+.k8s-title-bar .navbar-inner .container-fluid::before,
+.k8s-title-bar .navbar-inner .container-fluid::after {
   content: none;
 }
-.hue-title-bar .navbar-inner .container-fluid > .pull-right {
+.k8s-title-bar .navbar-inner .container-fluid > .pull-right {
   margin-left: auto;
   padding: 0;
 }
 
-/* Application-type tabs in the jobs title bar, matching Hue's job browser: the
-   title and every tab share one 40px row; an inactive tab is Hue blue with no
-   background, the active one is dark text on a light-grey box that fills the
-   row. The full .hue-title-bar .navbar-inner prefix is needed to outrank Hue's
-   own `.navbar .navbar-inner ul.nav li a` padding, which otherwise makes the
-   tabs overflow the row and sit lower than the title. */
-.hue-title-bar .navbar-inner .k8s-jobs-nav {
+/* Application-type tabs in the jobs title bar: the title and every tab share
+   one 40px row; an inactive tab is blue with no background, the active one is
+   dark text on a light-grey box that fills the row. The full
+   .k8s-title-bar .navbar-inner prefix keeps the tab padding from overflowing the
+   row and sitting lower than the title. */
+.k8s-title-bar .navbar-inner .k8s-jobs-nav {
   display: flex;
   align-items: stretch;
   height: 49px;
   margin: 0;
   padding: 0;
 }
-.hue-title-bar .navbar-inner .k8s-jobs-nav > li {
+.k8s-title-bar .navbar-inner .k8s-jobs-nav > li {
   float: none;
   list-style: none;
   display: flex;
   margin: 0;
 }
-.hue-title-bar .navbar-inner .k8s-jobs-nav .app-header {
+.k8s-title-bar .navbar-inner .k8s-jobs-nav .app-header {
   display: flex;
   align-items: center;
   height: 49px;
   margin: 0 12px 0 0;
   padding: 0;
 }
-.hue-title-bar .navbar-inner .k8s-jobs-nav .k8s-titlebar-tab > a {
+.k8s-title-bar .navbar-inner .k8s-jobs-nav .k8s-titlebar-tab > a {
   display: flex;
   align-items: center;
   height: 49px;
@@ -236,11 +231,11 @@
   border: 0;
   border-radius: 0;
 }
-.hue-title-bar .navbar-inner .k8s-jobs-nav .k8s-titlebar-tab > a:hover {
+.k8s-title-bar .navbar-inner .k8s-jobs-nav .k8s-titlebar-tab > a:hover {
   background: #f4f5f6;
   color: #0b7fad;
 }
-.hue-title-bar .navbar-inner .k8s-jobs-nav .k8s-titlebar-tab.active > a {
+.k8s-title-bar .navbar-inner .k8s-jobs-nav .k8s-titlebar-tab.active > a {
   color: #424242;
   background: #f1efef;
   cursor: default;
@@ -311,7 +306,7 @@
 }
 
 /* Sortable column headings. */
-.table-huedatatable thead th a {
+.k8s-datatable thead th a {
   color: inherit;
   text-decoration: none;
   cursor: pointer;
@@ -362,7 +357,7 @@
   transform: none;
   opacity: 1;
 }
-/* The statement Execute/Ctrl+Enter would run (Hue-style cue). */
+/* The statement Execute/Ctrl+Enter would run. */
 .ace_marker-layer .k8s-active-stmt {
   position: absolute;
   background: rgba(51, 132, 199, 0.12);
@@ -1055,14 +1050,14 @@
   display: none;
 }
 
-/* User-selected presentation preferences. Old is the default and only these
-   scoped selectors alter the current Hue-compatible chrome. */
+/* User-selected presentation preferences (theme, sidebar) applied through these
+   scoped selectors. */
 .sidebar-settings-button {
   border: 0;
 }
 /* While the settings popover is open, blur and lock the rest of the interface.
-   The panel and ticket timer sit outside .hue-page, so they stay crisp. */
-body.k8s-ui-settings-open .hue-page {
+   The panel and ticket timer sit outside .k8s-page, so they stay crisp. */
+body.k8s-ui-settings-open .k8s-page {
   filter: blur(4px);
   pointer-events: none;
   transition: filter 120ms ease;
@@ -1137,8 +1132,7 @@ body.k8s-ui-settings-open .hue-page {
   margin: 0 6px 0 0;
 }
 
-/* Modern deliberately follows the approved desktop mockup. It is fully scoped,
-   so the existing Hue-compatible old mode is unchanged. */
+/* The interface follows the approved desktop mockup. */
 body[data-ui-mode="modern"] {
   --k8s-window: #fbfbfd;
   --k8s-sidebar: #f0f0f4;
@@ -1155,7 +1149,7 @@ body[data-ui-mode="modern"] {
   color: var(--k8s-text);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
 }
-body[data-ui-mode="modern"] .hue-page {
+body[data-ui-mode="modern"] .k8s-page {
   height: 100vh;
   border: 0;
   border-radius: 0;
@@ -1308,36 +1302,36 @@ body[data-ui-mode="modern"][data-ui-sidebar="collapsed"] #uiSidebarCollapse {
 body[data-ui-mode="modern"][data-ui-sidebar="collapsed"] .k8s-ui-settings {
   left: 78px;
 }
-body[data-ui-mode="modern"] .hue-title-bar {
+body[data-ui-mode="modern"] .k8s-title-bar {
   min-height: 48px;
   margin: 0 0 20px;
   padding: 0;
   border: 0;
   background: transparent;
 }
-body[data-ui-mode="modern"] .hue-title-bar .app-header {
+body[data-ui-mode="modern"] .k8s-title-bar .app-header {
   color: var(--k8s-text);
   font-size: 30px;
   font-weight: 650;
   line-height: 48px;
   letter-spacing: -0.8px;
 }
-body[data-ui-mode="modern"] .hue-title-bar .app-header .fa {
+body[data-ui-mode="modern"] .k8s-title-bar .app-header .fa {
   display: none;
 }
-body[data-ui-mode="modern"] .hue-title-bar .navbar-inner .k8s-jobs-nav .k8s-titlebar-tab {
+body[data-ui-mode="modern"] .k8s-title-bar .navbar-inner .k8s-jobs-nav .k8s-titlebar-tab {
   margin: 5px 0;
   padding: 4px;
   background: #e9e9ee;
 }
-body[data-ui-mode="modern"] .hue-title-bar .navbar-inner .k8s-jobs-nav .app-header + .k8s-titlebar-tab {
+body[data-ui-mode="modern"] .k8s-title-bar .navbar-inner .k8s-jobs-nav .app-header + .k8s-titlebar-tab {
   margin-left: 12px;
   border-radius: 11px 0 0 11px;
 }
-body[data-ui-mode="modern"] .hue-title-bar .navbar-inner .k8s-jobs-nav .k8s-titlebar-tab:last-child {
+body[data-ui-mode="modern"] .k8s-title-bar .navbar-inner .k8s-jobs-nav .k8s-titlebar-tab:last-child {
   border-radius: 0 11px 11px 0;
 }
-body[data-ui-mode="modern"] .hue-title-bar .navbar-inner .k8s-jobs-nav .k8s-titlebar-tab > a {
+body[data-ui-mode="modern"] .k8s-title-bar .navbar-inner .k8s-jobs-nav .k8s-titlebar-tab > a {
   margin: 0;
   height: auto;
   min-height: 0;
@@ -1349,7 +1343,7 @@ body[data-ui-mode="modern"] .hue-title-bar .navbar-inner .k8s-jobs-nav .k8s-titl
   font-size: 15px;
   line-height: 19px;
 }
-body[data-ui-mode="modern"] .hue-title-bar .navbar-inner .k8s-jobs-nav .k8s-titlebar-tab.active > a {
+body[data-ui-mode="modern"] .k8s-title-bar .navbar-inner .k8s-jobs-nav .k8s-titlebar-tab.active > a {
   color: var(--k8s-text);
   background: #fff;
   box-shadow: 0 2px 4px rgba(25, 25, 30, 0.16);
@@ -1628,8 +1622,8 @@ body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"]
   --k8s-text: #f1f1f4;
   --k8s-muted: #b0b0bb;
 }
-body[data-ui-mode="modern"][data-ui-theme="dark"] .hue-title-bar .navbar-inner .k8s-jobs-nav .k8s-titlebar-tab > a,
-body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .hue-title-bar .navbar-inner .k8s-jobs-nav .k8s-titlebar-tab > a {
+body[data-ui-mode="modern"][data-ui-theme="dark"] .k8s-title-bar .navbar-inner .k8s-jobs-nav .k8s-titlebar-tab > a,
+body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .k8s-title-bar .navbar-inner .k8s-jobs-nav .k8s-titlebar-tab > a {
   color: #c7c7d1;
   background: transparent;
 }
@@ -1641,8 +1635,8 @@ body[data-ui-mode="modern"][data-ui-theme="dark"] .sidebar-body::before,
 body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .sidebar-body::before {
   color: #a7a7b2;
 }
-body[data-ui-mode="modern"][data-ui-theme="dark"] .hue-title-bar .navbar-inner .k8s-jobs-nav .k8s-titlebar-tab,
-body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .hue-title-bar .navbar-inner .k8s-jobs-nav .k8s-titlebar-tab,
+body[data-ui-mode="modern"][data-ui-theme="dark"] .k8s-title-bar .navbar-inner .k8s-jobs-nav .k8s-titlebar-tab,
+body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .k8s-title-bar .navbar-inner .k8s-jobs-nav .k8s-titlebar-tab,
 body[data-ui-mode="modern"][data-ui-theme="dark"] .k8s-output-tabs,
 body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .k8s-output-tabs {
   border-color: #42424b;
@@ -1652,8 +1646,8 @@ body[data-ui-mode="modern"][data-ui-theme="dark"] .k8s-output-tabs > li > a,
 body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .k8s-output-tabs > li > a {
   color: #c7c7d1;
 }
-body[data-ui-mode="modern"][data-ui-theme="dark"] .hue-title-bar .navbar-inner .k8s-jobs-nav .k8s-titlebar-tab.active > a,
-body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .hue-title-bar .navbar-inner .k8s-jobs-nav .k8s-titlebar-tab.active > a,
+body[data-ui-mode="modern"][data-ui-theme="dark"] .k8s-title-bar .navbar-inner .k8s-jobs-nav .k8s-titlebar-tab.active > a,
+body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .k8s-title-bar .navbar-inner .k8s-jobs-nav .k8s-titlebar-tab.active > a,
 body[data-ui-mode="modern"][data-ui-theme="dark"] .k8s-output-tabs > li.active > a,
 body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .k8s-output-tabs > li.active > a {
   color: #fff;
@@ -1744,23 +1738,23 @@ body[data-ui-mode="modern"][data-ui-theme="dark"] .k8s-toolbar input::placeholde
 body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .k8s-toolbar input::placeholder {
   color: #b0b0bb;
 }
-body[data-ui-mode="modern"][data-ui-theme="dark"] .table-huedatatable,
-body[data-ui-mode="modern"][data-ui-theme="dark"] .table-huedatatable > thead > tr > th,
-body[data-ui-mode="modern"][data-ui-theme="dark"] .table-huedatatable > tbody > tr > td,
-body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .table-huedatatable,
-body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .table-huedatatable > thead > tr > th,
-body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .table-huedatatable > tbody > tr > td {
+body[data-ui-mode="modern"][data-ui-theme="dark"] .k8s-datatable,
+body[data-ui-mode="modern"][data-ui-theme="dark"] .k8s-datatable > thead > tr > th,
+body[data-ui-mode="modern"][data-ui-theme="dark"] .k8s-datatable > tbody > tr > td,
+body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .k8s-datatable,
+body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .k8s-datatable > thead > tr > th,
+body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .k8s-datatable > tbody > tr > td {
   color: #e5e5eb;
   border-color: #454550;
   background: #2a2a30;
 }
-body[data-ui-mode="modern"][data-ui-theme="dark"] .table-huedatatable > thead > tr > th,
-body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .table-huedatatable > thead > tr > th {
+body[data-ui-mode="modern"][data-ui-theme="dark"] .k8s-datatable > thead > tr > th,
+body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .k8s-datatable > thead > tr > th {
   color: #c8c8d2;
   background: #303037;
 }
-body[data-ui-mode="modern"][data-ui-theme="dark"] .table-huedatatable.table-striped > tbody > tr:nth-child(odd) > td,
-body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .table-huedatatable.table-striped > tbody > tr:nth-child(odd) > td {
+body[data-ui-mode="modern"][data-ui-theme="dark"] .k8s-datatable.table-striped > tbody > tr:nth-child(odd) > td,
+body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .k8s-datatable.table-striped > tbody > tr:nth-child(odd) > td {
   background: #303037;
 }
 body[data-ui-mode="modern"][data-ui-theme="dark"] .k8s-muted,

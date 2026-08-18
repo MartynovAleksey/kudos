@@ -5,7 +5,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 /*
  * Screen behaviour for the kudos pages. Every call goes to this
  * application's own Spring API under the browser's authenticated session.
@@ -120,7 +119,7 @@
     }
 
     // Blur the rest of the interface while the panel is open, so it reads as a
-    // focused popover. The class drives a CSS filter on .hue-page.
+    // focused popover. The class drives a CSS filter on .k8s-page.
     function syncSettingsBackdrop() {
       var open = settingsPanel && !settingsPanel.hidden;
       document.body.classList.toggle('k8s-ui-settings-open', Boolean(open));
@@ -332,7 +331,7 @@
 
   function buildTable(columns, rows, cellRenderer) {
     var table = document.createElement('table');
-    table.className = 'table table-condensed table-huedatatable';
+    table.className = 'table table-condensed k8s-datatable';
     var thead = document.createElement('thead');
     var headRow = document.createElement('tr');
     columns.forEach(function (column) {
@@ -605,8 +604,8 @@
       editor.completers = [sparkCompleter, langTools.keyWordCompleter, langTools.textCompleter];
     }
 
-    // Inline display:none, not the `hidden` attribute — the vendored Hue CSS
-    // styles `textarea` and overrides `[hidden]`, leaving the box visible.
+    // Inline display:none, not the `hidden` attribute — the base CSS gives
+    // `textarea` an explicit display, which would otherwise keep the box visible.
     textarea.style.display = 'none';
     host.hidden = false;
 
@@ -1333,7 +1332,7 @@
         return;
       }
       var scroll = element('div', { class: 'k8s-operations-scroll' });
-      var table = element('table', { class: 'table table-condensed table-huedatatable' });
+      var table = element('table', { class: 'table table-condensed k8s-datatable' });
       var head = document.createElement('thead');
       var header = document.createElement('tr');
       ['State', 'Statement', 'Runs', 'Started', 'Error', 'Actions'].forEach(function (label) {
@@ -1408,7 +1407,7 @@
         return;
       }
       var scroll = element('div', { class: 'k8s-operations-scroll' });
-      var table = element('table', { class: 'table table-condensed table-huedatatable' });
+      var table = element('table', { class: 'table table-condensed k8s-datatable' });
       var head = document.createElement('thead');
       var header = document.createElement('tr');
       ['State', 'Statement', 'Runs', 'Started', 'Error', 'Actions'].forEach(function (label) {
@@ -3022,7 +3021,7 @@
       }
 
       var table = document.createElement('table');
-      table.className = 'table table-condensed table-huedatatable';
+      table.className = 'table table-condensed k8s-datatable';
       table.appendChild(header());
       var body = document.createElement('tbody');
       visible.forEach(function (application) {
@@ -3058,7 +3057,7 @@
         return;
       }
       var table = document.createElement('table');
-      table.className = 'table table-condensed table-huedatatable';
+      table.className = 'table table-condensed k8s-datatable';
       table.appendChild(header());
       var body = document.createElement('tbody');
       visible.forEach(function (application) {
@@ -3212,7 +3211,7 @@
 
     function flinkTable(applications) {
       var table = document.createElement('table');
-      table.className = 'table table-condensed table-huedatatable';
+      table.className = 'table table-condensed k8s-datatable';
       var head = document.createElement('thead');
       var headRow = document.createElement('tr');
       ['', 'Job', 'ID', 'Started', 'Duration'].forEach(function (label) {

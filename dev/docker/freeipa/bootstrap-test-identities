@@ -221,12 +221,3 @@ if test -d /app-secrets; then
   install -m 0644 /shared/ca.crt /app-secrets/ca.crt
   install -m 0644 /shared/krb5.conf /app-secrets/krb5.conf
 fi
-
-# Hue needs one test-user ticket to demonstrate its File Browser. Do not mount
-# the shared service-keytab volume into Hue: it contains principals unrelated
-# to this reference component.
-if test -d /hue-secrets; then
-  install -m 0644 /shared/admin.keytab /hue-secrets/admin.keytab
-  install -m 0644 /shared/ca.crt /hue-secrets/ca.crt
-  install -m 0644 /shared/krb5.conf /hue-secrets/krb5.conf
-fi

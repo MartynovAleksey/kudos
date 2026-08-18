@@ -28,16 +28,13 @@
   <link rel="icon" type="image/png" sizes="32x32" th:href="@{/static/app/brand/favicon-32.png}"/>
   <link rel="stylesheet" th:href="@{/static/desktop/css/roboto.css}"/>
   <link rel="stylesheet" th:href="@{/static/desktop/ext/css/font-awesome.min.css}"/>
-  <link rel="stylesheet" th:href="@{/static/desktop/ext/css/cui/cui.css}"/>
-  <link rel="stylesheet" th:href="@{/static/desktop/ext/css/cui/bootstrap2.css}"/>
-  <link rel="stylesheet" th:href="@{/static/desktop/ext/css/cui/bootstrap-responsive2.css}"/>
-  <link rel="stylesheet" th:href="@{/static/desktop/css/hue.css}"/>
+  <link rel="stylesheet" th:href="@{/static/app/kudos-base.css}"/>
   <link rel="stylesheet" th:href="@{/static/app/kudos.css}"/>
   <script th:src="@{/static/app/kudos.js}" defer="defer"></script>
 </head>
 <body data-ui-mode="modern" data-ui-theme="system" data-ui-system-theme="light" data-ui-sidebar="collapsed"
       th:attr="data-app=${app},data-ui-user=${#authentication.name}">
-<div class="hue-page">
+<div class="k8s-page">
   <div class="sidebar sidebar-collapsed">
     <div class="sidebar-header">
       <a th:href="@{/editor}" aria-label="KUDOS">
@@ -105,8 +102,8 @@
         <div class="sidebar-sidebar-item-icon"><i class="fa fa-fw fa-cog"></i></div>
         <span>Settings</span>
       </button>
-      <!-- Bottom-most control, mirroring Hue's sidebar collapse toggle. Sign out
-           now lives next to the user in the ticket timer, not here. -->
+      <!-- Bottom-most control: the sidebar collapse toggle. Sign out now lives
+           next to the user in the ticket timer, not here. -->
       <button id="uiSidebarCollapse" class="sidebar-sidebar-item sidebar-footer-collapse-btn sidebar-base-btn"
               type="button" title="Collapse sidebar" aria-label="Collapse sidebar" aria-pressed="false">
         <div class="sidebar-sidebar-item-icon"><i class="fa fa-fw fa-angle-double-left"></i></div>

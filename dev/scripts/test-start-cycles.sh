@@ -130,9 +130,7 @@ verify_endpoints() {
   # All ports are exercised from the host to catch published-port and DNS regressions.
   local deadline=$((SECONDS + 180))
   local app_ok=0
-  local hue_ok=0
   local app_health
-  local hue_page
 
   while (( SECONDS < deadline )); do
     if (( ! app_ok )) \
@@ -142,23 +140,12 @@ verify_endpoints() {
       app_ok=1
       log "Spring API answered /actuator/health"
     fi
-    if (( ! hue_ok )) \
-        && hue_page="$(probe_http 15 --location http://127.0.0.1:8082/ 2>/dev/null)" \
-        && grep -qi 'hue' <<<"$hue_page"; then
-      hue_ok=1
-      log "Docker Hub Hue reference rendered its start page"
-    fi
-    (( app_ok && hue_ok )) && break
+    (( app_ok )) && break
     sleep 3
   done
   if (( ! app_ok )); then
     log "Spring API did not become healthy" >&2
     dump_endpoint_diagnostics app
-    return 1
-  fi
-  if (( ! hue_ok )); then
-    log "Docker Hub Hue reference did not render its start page" >&2
-    dump_endpoint_diagnostics hue-reference
     return 1
   fi
   for port in 8443 10009 10099 9870 8080 9862 18080; do

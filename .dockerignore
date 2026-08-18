@@ -2,5 +2,5 @@
 .mvn/repository
 .m2
 target
-# src/main/resources/hue-upstream stays in the build context: the UI serves its
-# stylesheets and fonts at runtime.
+# src/main/resources/webui-vendor stays in the build context: the UI serves its
+# vendored webfonts (Font Awesome, Roboto) at runtime.

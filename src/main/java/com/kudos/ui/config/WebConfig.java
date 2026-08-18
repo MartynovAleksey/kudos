@@ -5,7 +5,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.kudos.ui.config;
 
 import com.kudos.ui.audit.AuditInterceptor;
@@ -26,9 +25,9 @@ import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
- * Serves the vendored Hue stylesheets and fonts under the same paths Hue itself
- * uses, so the upstream CSS resolves its relative font references unchanged, and
- * audits every API request.
+ * Serves the vendored third-party webfonts (Font Awesome and Roboto) under a
+ * fixed path so their CSS resolves its relative font references unchanged, the
+ * application's own CSS/JS/assets, and audits every API request.
  */
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
@@ -53,8 +52,9 @@ public class WebConfig implements WebMvcConfigurer {
   @Override
   public void addResourceHandlers(ResourceHandlerRegistry registry) {
     registry
+        // Vendored third-party webfonts only: Font Awesome (icons) and Roboto.
         .addResourceHandler("/static/desktop/**")
-        .addResourceLocations("classpath:/hue-upstream/desktop/static/")
+        .addResourceLocations("classpath:/webui-vendor/desktop/static/")
         .setCacheControl(CacheControl.maxAge(Duration.ofDays(7)).cachePublic());
     registry
         // The application's own CSS/JS/assets are not content-hashed, so a

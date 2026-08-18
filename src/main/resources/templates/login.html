@@ -24,11 +24,7 @@
   <link rel="icon" type="image/png" sizes="32x32" th:href="@{/static/app/brand/favicon-32.png}"/>
   <link rel="stylesheet" th:href="@{/static/desktop/css/roboto.css}"/>
   <link rel="stylesheet" th:href="@{/static/desktop/ext/css/font-awesome.min.css}"/>
-  <link rel="stylesheet" th:href="@{/static/desktop/ext/css/cui/cui.css}"/>
-  <link rel="stylesheet" th:href="@{/static/desktop/ext/css/cui/bootstrap2.css}"/>
-  <link rel="stylesheet" th:href="@{/static/desktop/ext/css/cui/bootstrap-responsive2.css}"/>
-  <link rel="stylesheet" th:href="@{/static/desktop/css/hue.css}"/>
-  <link rel="stylesheet" th:href="@{/static/desktop/css/login.css}"/>
+  <link rel="stylesheet" th:href="@{/static/app/kudos-base.css}"/>
   <link rel="stylesheet" th:href="@{/static/app/kudos.css}"/>
 </head>
 <body>
@@ -38,8 +34,7 @@
       <div class="logo">
         <img class="login-logo" th:src="@{/static/app/brand/logo-name.png}" alt="KUDOS"/>
       </div>
-      <div class="login-lead">From legacy to legacy-ready.</div>
-      <h3>Query. Explore. Repeat.</h3>
+      <div class="login-lead">One suite. Every engine. Full control.</div>
 
       <div class="alert alert-error center" th:if="${param.error}">
         Invalid username or password.

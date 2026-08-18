@@ -87,9 +87,8 @@ kudos:
 
   # UI-level settings.
   ui:
-    # Optional HTML shown as a banner across the top of every screen (like Hue's
-    # banner_top_html). Trusted operator config, rendered as-is. Leave unset for
-    # no banner. Example:
+    # Optional HTML shown as a banner across the top of every screen. Trusted
+    # operator config, rendered as-is. Leave unset for no banner. Example:
     # banner-html: '<strong>TEST</strong> environment — data is not production.'
     banner-html: ""
     # Where an administrator's choice of visible left-panel tools is stored, so

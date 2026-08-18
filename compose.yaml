@@ -41,7 +41,6 @@ services:
       - kerberos-shared:/shared
       # Holds only the application's TLS material and krb5.conf, never a keytab.
       - app-secrets:/app-secrets
-      - hue-secrets:/hue-secrets
       - freeipa-run:/run
       - freeipa-tmp:/tmp
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
@@ -329,7 +328,7 @@ services:
     volumes:
       - kerberos-shared:/shared:ro
     ports:
-      # Host 8082 is taken by the reference Hue, so publish the History Server on 8083.
+      # Publish the Spark History Server on 8083 to keep 8082 free on the host.
       - "8083:8082"
     networks:
       default:
@@ -593,35 +592,6 @@ services:
       retries: 8
       start_period: 40s
 
-  # Docker Hub Hue used only as a visual/behavioural reference. The derived
-  # image replaces only Polars with its official legacy-CPU wheel so the
-  # upstream amd64 Hue can also run through Rosetta on Apple Silicon.
-  hue-reference:
-    build: ./dev/docker/hue-reference
-    image: kudos-hue-reference:latest
-    platform: linux/amd64
-    hostname: hue-reference.test.local
-    command: ["./build/env/bin/hue", "runcpserver"]
-    depends_on:
-      freeipa:
-        condition: service_healthy
-      hdfs:
-        condition: service_healthy
-    environment:
-      KRB5_CONFIG: /run/kudos-hue/krb5.conf
-      HADOOP_CONF_DIR: /etc/hadoop/conf
-    volumes:
-      - hue-secrets:/run/kudos-hue:ro
-      - ./dev/docker/hue-reference/hue.ini:/usr/share/hue/desktop/conf/z-kudos.ini:ro
-      - ./dev/docker/hdfs/core-site.xml:/etc/hadoop/conf/core-site.xml:ro
-      - ./dev/docker/hdfs/hdfs-site.xml:/etc/hadoop/conf/hdfs-site.xml:ro
-    ports:
-      - "8082:8888"
-    networks:
-      default:
-        aliases:
-          - hue-reference.test.local
-
 volumes:
   freeipa-data:
   kerberos-shared:
@@ -632,7 +602,6 @@ volumes:
   hdfs-data:
   hbase-data:
   ozone-data:
-  hue-secrets:
   # AppRole role_id/secret_id written by vault-bootstrap, read by vault-agent.
   vault-approle:
   # Vault-issued TLS PEM (tls.crt/tls.key/ca.crt) shared from vault-agent to app.

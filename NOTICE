@@ -1,0 +1,11 @@
+KUDOS
+Copyright 2026 Aleksey Martynov and contributors
+
+This product is licensed under the Apache License, Version 2.0 (see the LICENSE
+file). You may not use the files in this repository except in compliance with
+that License.
+
+This product bundles third-party components under their own licenses: the Ace
+editor (src/main/resources/app-static/ace/), and the Font Awesome and Roboto
+webfonts (src/main/resources/webui-vendor/). Those components remain under, and
+are governed by, their respective licenses and copyright notices.

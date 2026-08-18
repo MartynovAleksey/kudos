@@ -187,10 +187,7 @@ echo "PASS StarRocks MySQL service account SQL"
 app_health="$(curl --fail --silent --connect-timeout 5 --max-time 15 \
   "${app_resolve[@]}" "$app_base/actuator/health")"
 grep -q '"status"[[:space:]]*:[[:space:]]*"UP"' <<<"$app_health"
-hue_page="$(curl --fail --silent --location --connect-timeout 5 --max-time 30 \
-  http://127.0.0.1:8082/)"
-grep -qi 'hue' <<<"$hue_page"
-echo "PASS Spring health + Docker Hub Hue reference"
+echo "PASS Spring health"
 
 # Exercise every storage path through the application itself, not just through
 # the service containers. A dependency missing from the app image fails only
@@ -243,9 +240,9 @@ app_api -H 'Content-Type: application/json' -X POST "$app_base/api/sql/execute" 
   | grep -q '"rows":\[\[42\]\]'
 echo "PASS Spring API StarRocks SQL through Vault service account"
 
-# Full HBase browser lifecycle, the way Hue's HBase app drives it: create a
-# table with column families, write and read a row, alter a family, then drop
-# it. A regression in any of these operations fails the run.
+# Full HBase browser lifecycle: create a table with column families, write and
+# read a row, alter a family, then drop it. A regression in any of these
+# operations fails the run.
 hb_table="k8s_selftest_$$"
 hb_json=(-H 'Content-Type: application/json')
 app_api "${hb_json[@]}" -X POST "$app_base/api/hbase/table/delete" \
