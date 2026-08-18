@@ -39,7 +39,8 @@
 set -uo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-project_root="$(cd -- "$script_dir/.." && pwd)"
+# The script lives in dev/scripts/, so the repository root is two levels up.
+project_root="$(cd -- "$script_dir/../.." && pwd)"
 docker_bin="$(command -v docker)"
 compose_bin="${DOCKER_COMPOSE_BIN:-$HOME/.docker/cli-plugins/docker-compose}"
 admin_password="${TEST_ADMIN_PASSWORD:-KudosAdmin2026Secure!}"
@@ -58,12 +59,24 @@ run_compose() {
     "$compose_bin" -f "$project_root/compose.yaml" "$@"
 }
 
-vault_agent_id="$(run_compose ps -q vault-agent)"
-app_ca="$(mktemp)"
-trap 'rm -f "$app_ca"' EXIT
-run_docker exec "$vault_agent_id" cat /vault/secrets/ca.crt >"$app_ca"
-base="https://app.test.local:8443"
-auth=(--resolve app.test.local:8443:127.0.0.1 --cacert "$app_ca" -u "admin:$admin_password" -s)
+# The stand serves plain HTTP on 8443 by default, and HTTPS only when the vault
+# profile is active. Detect which one is live so the same script works for both.
+resolve=(--resolve app.test.local:8443:127.0.0.1)
+if curl -sf -o /dev/null "${resolve[@]}" http://app.test.local:8443/actuator/health; then
+  base="http://app.test.local:8443"
+  auth=("${resolve[@]}" -u "admin:$admin_password" -s)
+else
+  vault_agent_id="$(run_compose ps -q vault-agent)"
+  if [[ -z "$vault_agent_id" ]]; then
+    echo "App is not reachable over HTTP and vault-agent is not running; is the stand up?" >&2
+    exit 1
+  fi
+  app_ca="$(mktemp)"
+  trap 'rm -f "$app_ca"' EXIT
+  run_docker exec "$vault_agent_id" cat /vault/secrets/ca.crt >"$app_ca"
+  base="https://app.test.local:8443"
+  auth=("${resolve[@]}" --cacert "$app_ca" -u "admin:$admin_password" -s)
+fi
 
 api_get() { curl "${auth[@]}" "$base$1"; }
 api_json() {

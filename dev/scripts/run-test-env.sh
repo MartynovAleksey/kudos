@@ -17,7 +17,8 @@
 set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-project_root="$(cd -- "$script_dir/.." && pwd)"
+# The script lives in dev/scripts/, so the repository root is two levels up.
+project_root="$(cd -- "$script_dir/../.." && pwd)"
 docker_bin="$(command -v docker)"
 docker_compose_bin="${DOCKER_COMPOSE_BIN:-$HOME/.docker/cli-plugins/docker-compose}"
 
