@@ -69,6 +69,24 @@ public class AuditService {
     }
   }
 
+  /** Records policy mutations with only normalized, non-secret target fields. */
+  public void recordPolicyMutation(String operation, String tool, String subject, String resource,
+      boolean success) {
+    try {
+      var event = java.util.Map.of("timestamp", Instant.now().toString(), "user", currentUser(),
+          "operation", operation, "tool", tool, "subject", subject, "resource", resource,
+          "result", success ? "success" : "failure");
+      String json = mapper.writeValueAsString(event);
+      AUDIT.info(json);
+      if (kafkaEnabled) {
+        KafkaTemplate<String, String> template = kafka.getIfAvailable();
+        if (template != null) template.send(topic, currentUser(), json);
+      }
+    } catch (Exception failure) {
+      AUDIT.warn("policy audit serialization failed");
+    }
+  }
+
   private static String currentUser() {
     Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
     return authentication == null ? "anonymous" : authentication.getName();

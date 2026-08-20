@@ -20,4 +20,23 @@ until test -r /shared/kyuubi.keytab && test -r /shared/krb5.conf; do
 done
 
 export KRB5_CONFIG=/shared/krb5.conf
+
+# The Iceberg S3 secret is minted by Ozone at runtime and published to the shared
+# volume; template it into the Spark catalog config so S3FileIO can sign warehouse
+# requests. gravitino (which kyuubi depends_on) already gates on the same file.
+until test -r /shared/s3-credentials.env; do sleep 2; done
+. /shared/s3-credentials.env
+# Replace the value on each secret line (placeholder on first start, the previous
+# secret on a restart) so re-templating is idempotent and survives restarts.
+sed -i "s|^\(spark.sql.catalog.iceberg.s3.secret-access-key=\).*|\1${AWS_SECRET_ACCESS_KEY}|" /opt/kyuubi/conf/kyuubi-defaults.conf
+# The Flink engine reads its Iceberg catalog from the file catalog store, not
+# kyuubi-defaults.conf; template the same secret into that store entry.
+sed -i "s|^\(s3.secret-access-key: \).*|\1\"${AWS_SECRET_ACCESS_KEY}\"|" /opt/flink/catalog-store/iceberg.yaml
+
+# The Flink SQL engine is Hadoop-free and reaches ofs:// through the vanilla
+# unshaded Hadoop on HADOOP_CLASSPATH (which carries the plain Ozone filesystem
+# jar in common/lib). Spark builds its classpath from its own jars/, so it
+# ignores HADOOP_CLASSPATH — setting it here only affects the Flink engine.
+export HADOOP_CLASSPATH="$(/opt/hadoop/bin/hadoop classpath)"
+
 exec /opt/kyuubi/bin/kyuubi run

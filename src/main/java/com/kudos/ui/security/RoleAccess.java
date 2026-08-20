@@ -16,6 +16,7 @@
 package com.kudos.ui.security;
 
 import org.springframework.security.core.Authentication;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.stereotype.Component;
 
 /** Centralizes the two UI roles without taking over data authorization in Hadoop services. */
@@ -26,6 +27,24 @@ public class RoleAccess {
     return authentication != null
         && authentication.getAuthorities().stream()
             .anyMatch(authority -> "ROLE_ADMINISTRATOR".equals(authority.getAuthority()));
+  }
+
+  public boolean isSecurityOfficer(Authentication authentication) {
+    return authentication != null && authentication.getAuthorities().stream()
+        .anyMatch(authority -> "ROLE_SECURITY_OFFICER".equals(authority.getAuthority()));
+  }
+
+  /** Security officers without the administrator role cannot use tool APIs. */
+  public boolean canUseToolApis(Authentication authentication) {
+    return authentication != null
+        && authentication.isAuthenticated()
+        && !(authentication instanceof AnonymousAuthenticationToken)
+        && (!isSecurityOfficer(authentication) || isAdministrator(authentication));
+  }
+
+  /** Security officers without the administrator role cannot open tool pages. */
+  public boolean canUseToolPages(Authentication authentication) {
+    return canUseToolApis(authentication);
   }
 
   public String username(Authentication authentication) {

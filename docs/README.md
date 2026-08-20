@@ -18,7 +18,28 @@ The application provides:
 - HBase access through the REST Gateway with SPNEGO; the application does not open ZooKeeper or HBase RPC;
 - Apache Ozone browsing through `ofs://` and Kerberos.
 
-The Java UI distinguishes two LDAP roles: `administrator` and `user`. The administrator can see all Spark jobs and the Spark UI; the user can see only applications whose `sparkUser` matches their login and cannot open the shared or another user's `/spark-ui/**` directly by URL. SQL, HDFS, Ozone, and HBase operations run under the user's Kerberos identity, while the corresponding cluster service retains the final decision on data access.
+The Java UI distinguishes the `administrator`, `security-officer`, and `user` roles. `administrator` manages platform settings and tool visibility but does not edit access policies. A pure `security-officer` gets only the `Security policies` center: the root route directs them there, while tool pages and APIs return `403`. Personal Light/Dark/System theme settings remain available; tool and SQL-engine visibility settings are hidden. A user sees only applications whose `sparkUser` matches their login and cannot open a shared or another user's `/spark-ui/**` by direct URL. SQL, HDFS, Ozone, and HBase run under the user's Kerberos identity; the corresponding cluster service retains the final decision on data access.
+
+## Role model and centralized policies
+
+`security-officer` is a dedicated KUDOS role for access management. Its UI console is the single place for policy operations, but does not replace enforcement in connected services. In the sidebar this console appears first and replaces Editor; Docs and tools are hidden. The personal theme remains available. `administrator` operates KUDOS (including enabling tools and SQL engines), while `user` works only within the policies granted to them. Separating roles does not automatically grant data access.
+
+For metadata policy, the sole source of truth is Gravitino's built-in authorization: policies are edited through KUDOS and stored in Gravitino. Ranger is excluded from this design and is not used as a fallback. Keep the boundaries distinct: metadata-path determines which catalogs, schemas, tables, and metadata operations a user can see; query-path determines SQL execution in the engine; storage-path determines file-object reads and writes. At present, only the metadata-path for the Gravitino Catalog UI is closed. Engine query-path and HDFS/Ozone storage-path are not closed; the current environment uses the `anonymous` (service admin) identity for engines, so this is not evidence of end-to-end data isolation.
+
+### Policy integration stages
+
+The future stages are listed below. They are recorded for planning and are **not implemented** in the current version.
+
+| Stage / tool | Native policy source | Resources and actions | Identity | E2E readiness criterion |
+|---|---|---|---|---|
+| HDFS | Apache Ranger or native HDFS ACLs/permissions — choose before implementation | path, list/read/write/delete, ACL | user's Kerberos principal | policy UI → WebHDFS → allowed and denied paths under two principals |
+| Ozone | Native Ozone ACL/IAM; Ranger is not planned | volume/bucket/key, list/read/write/delete | user's Kerberos/S3 identity | policy UI → OFS/S3G → verification of allowed and denied key operations |
+| HBase | Native HBase ACL | namespace/table/column family, read/write/create/alter | Kerberos principal through the REST Gateway | policy UI → HBase REST → CRUD/scan denial matrix |
+| Kyuubi Spark/Flink | Native Kyuubi/engine authorization and catalog policy | session, catalog/schema/table, SQL actions | End-user identity in the engine session | SQL executed as the user; metadata and SELECT/DDL produce the expected allow/deny results |
+| Trino | Native Trino access-control plugin | catalog/schema/table/column, SELECT/INSERT/UPDATE/DELETE | Authenticated Trino user | JDBC/UI queries from two users pass the matrix validation |
+| StarRocks | Native StarRocks privilege model | database/table/column, SELECT/INSERT/LOAD/ALTER | Per-user StarRocks identity, not a shared service account | Service-account bypass is excluded; SQL and DDL are verified for allow/deny |
+| Spark History | Native proxy/UI authorization; decide the backend policy before implementation | application/event-log visibility, read | KUDOS user plus history-server identity | The user sees only permitted applications and cannot bypass the URL restriction |
+| Flink UI | Native Flink UI/proxy authorization; decide the backend policy before implementation | job/cluster/log visibility, cancel | KUDOS user plus Flink identity | Permitted jobs are available; other users' jobs and destructive actions are denied |
 
 ## Three project parts
 
@@ -225,6 +246,69 @@ parameterized; the defaults are a representative matrix that completes in a few
 ```
 
 ```bash
+
+### Iceberg lakehouse (Gravitino + Ozone S3)
+
+```
+
+Literally 5000 tables × up to 100000 rows means hundreds of millions of cells
+
+`MANY_TABLES`, `ROW_SIZES`, and `COL_SIZES` variables if necessary.
+
+```bash
+cd kudos
+Apache Gravitino provides a single Iceberg REST catalog
+(`http://gravitino.test.local:9001/iceberg/`) used by **all** SQL engines —
+```
+
+`s3://warehouse/iceberg` through the Ozone S3 Gateway. Iceberg embeds the
+absolute URI-scheme path (`s3://…`) in table metadata, so the warehouse must use
+one scheme for all engines. The reason for using S3G instead of `ofs://` is
+described in [OZONE-S3-FOR-ICEBERG.md](OZONE-S3-FOR-ICEBERG.md). The KUDOS
+
+the engines use `s3://`.
+
+
+it on startup (`revoke` + `getsecret`) and publishes it to
+`/shared/s3-credentials.env`; each engine injects the secret into its
+configuration at startup (see the project memory and comments in
+`dev/docker/ozone/ozone-site.xml` for details).
+
+
+```bash
+./dev/scripts/test-lakehouse-interoperability.sh
+```
+
+MODE=clean ./dev/scripts/lakehouse-loadgen.sh   # remove the generator's five tables
+```
+
+
+explicit `order_timestamp` (`timestamp`), `priority` (`int`), and
+
+`order_date` as a calendar date.
+
+It also creates `iceberg.demo.temporal_values` with two columns (`TIMESTAMP`,
+
+
+
+creates the `iceberg.demo.interop_anomaly_values` table through Spark with dates
+
+`DOUBLE`, `-0.0`, and `NULL`. Run the complete reproducible write/read direction
+
+
+
+```bash
+base=http://localhost:8090/api/metalakes/metalake_demo
+auth='Authorization: Basic YW5vbnltb3VzOng='
+curl -sS -H "$auth" -H 'Accept: application/vnd.gravitino.v1+json' "$base/roles/demo_catalog_reader"
+curl -sS -H "$auth" -H 'Accept: application/vnd.gravitino.v1+json' "$base/roles/demo_customers_reader"
+curl -sS -H "$auth" -H 'Accept: application/vnd.gravitino.v1+json' "$base/users/admin"
+curl -sS -H "$auth" -H 'Accept: application/vnd.gravitino.v1+json' "$base/users/analyst"
+```
+
+Flink results match byte for byte. Each engine connects to the `iceberg` catalog
+
+own configurations, and Flink uses a **file catalog store** (`table.catalog-store`
 
 Flink session does not register catalogs. Therefore
 
@@ -768,9 +852,10 @@ TEST.LOCAL
 | --- | --- | --- |
 | LDAP/Kerberos administrator | `admin` / `admin@TEST.LOCAL` | `KudosAdmin2026Secure!` |
 | LDAP/Kerberos user | `analyst` / `analyst@TEST.LOCAL` | `KudosAnalyst2026Secure!` |
+| LDAP/Kerberos security officer | `security-officer` / `security-officer@TEST.LOCAL` | `KudosSecurityOfficer2026Secure!` |
 | FreeIPA Directory Manager | `cn=Directory Manager` | `DirectoryManager1` |
 
-`admin` belongs to the `kudos-administrators` LDAP group and receives the `administrator` role; `analyst` receives the `user` role. All these passwords are stored in plaintext in `compose.yaml` and the systemd bootstrap unit and are suitable only for the isolated local test environment.
+
 
 ofs://ozone.test.local/spark/eventlogs
 
@@ -866,6 +951,9 @@ echo "${DOCKER_DEFAULT_PLATFORM-<not set>}"
 | `hdfs-data` | NameNode metadata and DataNode blocks. |
 | `hbase-data` | HBase and embedded ZooKeeper state. |
 | `ozone-data` | SCM, OM, Ratis, and DataNode state. |
+
+FreeIPA uses `cgroup: host` because systemd runs inside the container. `privileged` is intentionally not used.
+
 
 
 

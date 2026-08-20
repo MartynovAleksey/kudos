@@ -17,7 +17,7 @@
 #
 # The Ozone filesystem jar comes from the same Ozone build the stack runs, so
 # the ofs:// client and the servers can never drift apart.
-FROM apache/ozone:2.0.0 AS ozone
+FROM apache/ozone:2.2.0 AS ozone
 
 FROM apache/spark:4.1.0
 
@@ -33,12 +33,11 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Spark ships the shaded Hadoop client (hadoop-client-api/runtime), whose
-# third-party classes live under org.apache.hadoop.shaded. The -client build of
-# the Ozone filesystem is the one relocated to match; the plain build expects an
-# unshaded Hadoop and is what the Spring application uses instead.
+# third-party classes live under org.apache.hadoop.shaded. Ozone 2.2's
+# self-contained ofs:// filesystem jar tolerates that and adds ofs:// on top.
 COPY --from=ozone \
-  /opt/hadoop/share/ozone/lib/ozone-filesystem-hadoop3-client-2.0.0.jar \
-  /opt/spark/jars/ozone-filesystem-hadoop3-client-2.0.0.jar
+  /opt/hadoop/share/ozone/lib/ozone-filesystem-hadoop3-2.2.0.jar \
+  /opt/spark/jars/ozone-filesystem-hadoop3-2.2.0.jar
 
 COPY ozone/ozone-site.xml /opt/spark/conf/ozone-site.xml
 COPY spark-history/core-site.xml /opt/spark/conf/core-site.xml

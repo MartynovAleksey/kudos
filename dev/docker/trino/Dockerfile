@@ -15,3 +15,11 @@
 FROM trinodb/trino:483
 
 COPY trino/etc/ /etc/trino/
+
+# Wrapper entrypoint: sources the runtime-minted Ozone S3 secret into the env so
+# the Iceberg catalog's ${ENV:KUDOS_S3_SECRET} resolves before the server starts.
+COPY trino/start-trino /usr/local/bin/start-trino
+USER root
+RUN chmod 0755 /usr/local/bin/start-trino
+USER trino
+ENTRYPOINT ["/usr/local/bin/start-trino"]

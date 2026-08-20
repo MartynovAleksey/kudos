@@ -20,6 +20,7 @@ import com.kudos.ui.service.EngineVisibilityStore;
 import com.kudos.ui.service.SparkApplicationAccessService;
 import com.kudos.ui.service.SqlEngineInfo;
 import com.kudos.ui.service.SqlEngineRegistry;
+import com.kudos.ui.security.RoleAccess;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Controller;
@@ -42,16 +43,19 @@ public class UiController {
   private final SparkApplicationAccessService sparkAccess;
   private final SqlEngineRegistry sqlEngines;
   private final EngineVisibilityStore engineVisibility;
+  private final RoleAccess roles;
 
   public UiController(
       FeaturesProperties features,
       SparkApplicationAccessService sparkAccess,
       SqlEngineRegistry sqlEngines,
-      EngineVisibilityStore engineVisibility) {
+      EngineVisibilityStore engineVisibility,
+      RoleAccess roles) {
     this.features = features;
     this.sparkAccess = sparkAccess;
     this.sqlEngines = sqlEngines;
     this.engineVisibility = engineVisibility;
+    this.roles = roles;
   }
 
   @GetMapping("/login")
@@ -60,7 +64,10 @@ public class UiController {
   }
 
   @GetMapping("/")
-  String index() {
+  String index(Authentication authentication) {
+    if (roles.isSecurityOfficer(authentication) && !roles.isAdministrator(authentication)) {
+      return "redirect:/security/policies";
+    }
     // Land on the first enabled screen, so a disabled editor is not a dead end.
     if (features.editor()) {
       return "redirect:/editor";
@@ -134,6 +141,12 @@ public class UiController {
   String docs(Model model) {
     model.addAttribute("app", "docs");
     return "docs";
+  }
+
+  @GetMapping("/security/policies")
+  String securityPolicies(Model model) {
+    model.addAttribute("app", "security-policies");
+    return "security-policies";
   }
 
   @GetMapping("/jobs/{applicationId}")

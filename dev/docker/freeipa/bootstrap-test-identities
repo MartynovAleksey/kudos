@@ -43,9 +43,30 @@ fi
 # this disposable test account usable for the documented credentials.
 # FreeIPA returns a non-zero code when the desired value is already stored.
 ipa user-mod analyst --password-expiration=20380101000000Z || true
+if ! ipa user-show security-officer >/dev/null 2>&1; then
+  printf '%s\n%s\n' "${IPA_SECURITY_OFFICER_PASSWORD}" "${IPA_SECURITY_OFFICER_PASSWORD}" \
+    | ipa user-add security-officer --first=Security --last=Officer --password
+fi
+# The user may already exist after an interrupted bootstrap with an expired or
+# otherwise unknown password. Verify the configured credential in an isolated
+# cache first; only an unsuccessful kinit justifies an administrator reset.
+security_officer_ccache="$(mktemp)"
+rm -f "$security_officer_ccache"
+if ! printf '%s\n' "${IPA_SECURITY_OFFICER_PASSWORD}" \
+  | KRB5CCNAME="FILE:$security_officer_ccache" \
+    kinit security-officer@TEST.LOCAL >/dev/null 2>&1; then
+  printf '%s\n%s\n' "${IPA_SECURITY_OFFICER_PASSWORD}" "${IPA_SECURITY_OFFICER_PASSWORD}" \
+    | ipa passwd security-officer
+fi
+rm -f "$security_officer_ccache"
+ipa user-mod security-officer --password-expiration=20380101000000Z || true
 ipa group-add kudos-administrators --desc='KUDOS UI administrators' || true
 if ! ipa group-show kudos-administrators | grep -q 'Member users:.*admin'; then
   ipa group-add-member kudos-administrators --users=admin
+fi
+ipa group-add kudos-security-officers --desc='KUDOS security policy officers' || true
+if ! ipa group-show kudos-security-officers | grep -q 'Member users:.*security-officer'; then
+  ipa group-add-member kudos-security-officers --users=security-officer
 fi
 
 # Fresh realms already use IPA_TEST_PASSWORD as their installer password. Make
@@ -70,7 +91,7 @@ ipa host-add kyuubi.test.local --force || true
 ipa service-add kyuubi/kyuubi.test.local --force || true
 
 for host in hdfs.test.local ozone.test.local hbase.test.local trino.test.local \
-  sparkhistory.test.local flink.test.local; do
+  sparkhistory.test.local flink.test.local gravitino.test.local; do
   ipa host-add "$host" --force || true
 done
 
@@ -84,6 +105,8 @@ service_principals=(
   scm/ozone.test.local
   dn/ozone.test.local
   HTTP/ozone.test.local
+  # The Ozone S3 Gateway exposes the warehouse over the S3 API for Trino/StarRocks.
+  s3g/ozone.test.local
   hbase/hbase.test.local
   HTTP/hbase.test.local
   HTTP/trino.test.local
@@ -94,6 +117,11 @@ service_principals=(
   # Flink JobManager and History Server write and read completed-job archives in
   # Ozone under this identity.
   flink/flink.test.local
+  # Gravitino's Iceberg REST catalog authenticates to Ozone as this identity to
+  # read/write table metadata in ofs://…/warehouse, and serves its REST API and
+  # web UI over SPNEGO.
+  gravitino/gravitino.test.local
+  HTTP/gravitino.test.local
 )
 
 for principal in "${service_principals[@]}"; do
@@ -154,6 +182,12 @@ install -m 0644 /shared/HTTP-trino.test.local.keytab /shared/trino.keytab
 # world-readable so Flink can log in. Test-only realm; see README security notes.
 if test -s /shared/flink-flink.test.local.keytab; then
   chmod 0644 /shared/flink-flink.test.local.keytab
+fi
+
+# The Gravitino Iceberg REST server runs as the unprivileged uid 1000 and logs in
+# with its own keytab, so it too needs the keytab world-readable. Test-only realm.
+if test -s /shared/gravitino-gravitino.test.local.keytab; then
+  chmod 0644 /shared/gravitino-gravitino.test.local.keytab
 fi
 
 cat > /shared/krb5.conf <<'EOF'

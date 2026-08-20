@@ -24,6 +24,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.kudos.ui.service.EngineVisibilityStore;
 import com.kudos.ui.service.ToolVisibilityStore;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -92,7 +93,7 @@ class UiPageRenderingTests {
                             + "  height: 100vh;\n"
                             + "  min-height: 0;\n"
                             + "  margin-left: 252px;\n"
-                            + "  padding: 26px 30px;\n"
+                            + "  padding: 20px;\n"
                             + "  box-sizing: border-box;\n"
                             + "  background: var(--k8s-window);\n"
                             + "  overflow-y: auto;")));
@@ -101,6 +102,73 @@ class UiPageRenderingTests {
   @Test
   void anonymousUserIsSentToTheLoginPage() throws Exception {
     mockMvc.perform(get("/editor")).andExpect(status().is3xxRedirection());
+  }
+
+  @Test
+  void securityPoliciesScreenIsOfficerOnly() throws Exception {
+    mockMvc
+        .perform(get("/security/policies").with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user("admin").authorities(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMINISTRATOR"))))
+        .andExpect(status().isForbidden());
+    mockMvc
+        .perform(get("/security/policies").with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user("security-officer").authorities(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_SECURITY_OFFICER"))))
+        .andExpect(status().isOk())
+        .andExpect(content().string(org.hamcrest.Matchers.containsString("Security policies")))
+        .andExpect(content().string(org.hamcrest.Matchers.containsString("id=\"policyGrant\"")))
+        .andExpect(content().string(org.hamcrest.Matchers.containsString("id=\"gravitinoPolicies\"")))
+        .andExpect(content().string(org.hamcrest.Matchers.containsString("are planned")));
+  }
+
+  @Test
+  void securityOfficerOnlySeesPoliciesAndPoliciesIsFirstSidebarItem() throws Exception {
+    String page =
+        mockMvc
+            .perform(
+                get("/security/policies")
+                    .with(
+                        org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+                            .user("security-officer")
+                            .authorities(
+                                new org.springframework.security.core.authority.SimpleGrantedAuthority(
+                                    "ROLE_SECURITY_OFFICER"))))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+
+    assertThat(page.indexOf("title=\"Security policies\"")).isLessThan(page.indexOf("id=\"uiSidebarCollapse\""));
+    assertThat(page)
+        .contains("title=\"Security policies\"")
+        .doesNotContain("data-ui-tool=\"editor\"")
+        .doesNotContain("data-ui-tool=\"files\"")
+        .doesNotContain("data-ui-tool=\"ozone\"")
+        .doesNotContain("data-ui-tool=\"hbase\"")
+        .doesNotContain("data-ui-tool=\"jobs\"")
+        .doesNotContain("title=\"Docs\"")
+        .contains("id=\"uiSettingsButton\"")
+        .contains("id=\"uiSettingsPanel\"")
+        .contains("data-ui-theme-choice=\"light\"")
+        .contains("data-ui-theme-choice=\"dark\"")
+        .contains("data-ui-theme-choice=\"system\"")
+        .doesNotContain("Visible tools")
+        .doesNotContain("data-ui-tool-setting=")
+        .doesNotContain("data-ui-engine-setting=");
+  }
+
+  @Test
+  void securityOfficerCannotOpenToolPages() throws Exception {
+    var officer =
+        org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+            .user("security-officer")
+            .authorities(
+                new org.springframework.security.core.authority.SimpleGrantedAuthority(
+                    "ROLE_SECURITY_OFFICER"));
+    mockMvc
+        .perform(get("/").with(officer))
+        .andExpect(status().is3xxRedirection())
+        .andExpect(header().string("Location", "/security/policies"));
+    for (String path : List.of("/editor", "/filebrowser", "/ozone", "/hbase", "/jobs", "/docs")) {
+      mockMvc.perform(get(path).with(officer)).andExpect(status().isForbidden());
+    }
   }
 
   @Test

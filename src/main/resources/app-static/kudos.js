@@ -44,7 +44,7 @@
     // Theme and the sidebar's collapsed state are personal and live in the
     // browser. Tool and engine visibility are deliberately absent: they are
     // deployment-wide settings an administrator changes on the server.
-    return { theme: 'system', sidebar: 'collapsed' };
+    return { theme: 'system', sidebar: 'collapsed', catalog: 'expanded' };
   }
 
   function loadUiPreferences() {
@@ -57,6 +57,7 @@
       var parsed = JSON.parse(storage.getItem(uiPreferencesKey()) || '{}');
       defaults.theme = ['light', 'dark', 'system'].indexOf(parsed.theme) >= 0 ? parsed.theme : 'system';
       defaults.sidebar = parsed.sidebar === 'expanded' ? 'expanded' : 'collapsed';
+      defaults.catalog = parsed.catalog === 'collapsed' ? 'collapsed' : 'expanded';
     } catch (ignored) {
       // Invalid or unavailable browser storage must leave the safe defaults intact.
     }
@@ -735,12 +736,158 @@
     return false;
   }
 
+  // Insert a table reference at the editor's cursor, whether Ace is mounted or
+  // the plain textarea is the fallback.
+  function insertIntoEditor(query, snippet) {
+    if (query && query.aceEditor) {
+      query.aceEditor.insert(snippet);
+      query.aceEditor.focus();
+      return;
+    }
+    var textarea = query;
+    if (!textarea || typeof textarea.value !== 'string') {
+      return;
+    }
+    var start = textarea.selectionStart == null ? textarea.value.length : textarea.selectionStart;
+    var end = textarea.selectionEnd == null ? start : textarea.selectionEnd;
+    textarea.value = textarea.value.slice(0, start) + snippet + textarea.value.slice(end);
+    var caret = start + snippet.length;
+    textarea.selectionStart = caret;
+    textarea.selectionEnd = caret;
+    if (textarea.focus) {
+      textarea.focus();
+    }
+  }
+
+  function renderCatalogTree(query, treeHost, tree) {
+    treeHost.textContent = '';
+    if (!tree || tree.status === 'forbidden') {
+      var forbidden = document.createElement('div');
+      forbidden.className = 'k8s-muted k8s-catalog-status';
+      forbidden.appendChild(text('Catalog access is denied'));
+      treeHost.appendChild(forbidden);
+      return;
+    }
+    if (!tree || tree.status === 'unavailable') {
+      var unavailable = document.createElement('div');
+      unavailable.className = 'k8s-muted k8s-catalog-status';
+      unavailable.appendChild(text('Catalog is unavailable'));
+      treeHost.appendChild(unavailable);
+      return;
+    }
+    if (!tree.schemas || !tree.schemas.length) {
+      var status = document.createElement('div');
+      status.className = 'k8s-muted k8s-catalog-status';
+      status.appendChild(text('Catalog is empty'));
+      treeHost.appendChild(status);
+      return;
+    }
+    var catalog = tree.catalog || 'iceberg';
+    tree.schemas.forEach(function (schema) {
+      var group = document.createElement('div');
+      group.className = 'k8s-catalog-schema';
+
+      var header = document.createElement('button');
+      header.type = 'button';
+      header.className = 'k8s-catalog-node k8s-catalog-schema-toggle';
+      header.setAttribute('aria-expanded', 'true');
+      var caret = document.createElement('i');
+      caret.className = 'fa fa-fw fa-caret-down';
+      header.appendChild(caret);
+      header.appendChild(text(' ' + schema.name));
+
+      var tables = document.createElement('div');
+      tables.className = 'k8s-catalog-tables';
+      (schema.tables || []).forEach(function (table) {
+        var qualified = catalog + '.' + schema.name + '.' + table;
+        var item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'k8s-catalog-node k8s-catalog-table';
+        item.title = 'Insert ' + qualified;
+        var icon = document.createElement('i');
+        icon.className = 'fa fa-fw fa-table';
+        item.appendChild(icon);
+        item.appendChild(text(' ' + table));
+        item.addEventListener('click', function () {
+          insertIntoEditor(query, qualified);
+        });
+        tables.appendChild(item);
+      });
+
+      header.addEventListener('click', function () {
+        var expanded = header.getAttribute('aria-expanded') !== 'false';
+        header.setAttribute('aria-expanded', String(!expanded));
+        caret.className = 'fa fa-fw ' + (expanded ? 'fa-caret-right' : 'fa-caret-down');
+        tables.hidden = expanded;
+      });
+
+      group.appendChild(header);
+      group.appendChild(tables);
+      treeHost.appendChild(group);
+    });
+  }
+
+  // Load the shared Iceberg catalog tree. An unreachable catalog only shows a
+  // muted note; it never breaks the Editor.
+  function initCatalogPanel(query) {
+    var layout = el('editorLayout');
+    var treeHost = el('catalogTree');
+    var toggle = el('catalogToggle');
+    if (!layout || !treeHost) {
+      return;
+    }
+
+    function applyState() {
+      var preferences = loadUiPreferences();
+      layout.setAttribute('data-editor-catalog', preferences.catalog);
+      if (toggle) {
+        var collapsed = preferences.catalog === 'collapsed';
+        toggle.setAttribute('aria-pressed', String(collapsed));
+        toggle.setAttribute('aria-label', collapsed ? 'Show catalog' : 'Hide catalog');
+        toggle.setAttribute('title', collapsed ? 'Show catalog' : 'Hide catalog');
+        // The panel folds to the right: expanded shows a right-pointing collapse
+        // chevron, collapsed shows a left-pointing expand chevron.
+        var chevron = toggle.querySelector('.k8s-catalog-chevron');
+        if (chevron) {
+          chevron.className = 'fa fa-fw k8s-catalog-chevron ' +
+            (collapsed ? 'fa-angle-double-left' : 'fa-angle-double-right');
+        }
+      }
+    }
+    applyState();
+    if (toggle) {
+      toggle.addEventListener('click', function () {
+        var preferences = loadUiPreferences();
+        preferences.catalog = preferences.catalog === 'collapsed' ? 'expanded' : 'collapsed';
+        saveUiPreferences(preferences);
+        applyState();
+      });
+    }
+
+    var loading = document.createElement('div');
+    loading.className = 'k8s-muted k8s-catalog-status';
+    loading.appendChild(text('Loading catalog…'));
+    treeHost.appendChild(loading);
+    request(UI_API + '/catalog/tree')
+      .then(function (tree) {
+        renderCatalogTree(query, treeHost, tree);
+      })
+      .catch(function () {
+        treeHost.textContent = '';
+        var box = document.createElement('div');
+        box.className = 'k8s-muted k8s-catalog-status';
+        box.appendChild(text('Catalog unavailable'));
+        treeHost.appendChild(box);
+      });
+  }
+
   function initEditor() {
     var run = el('executeQuery');
     var runAll = el('executeAllQuery');
     var engineTabs = Array.prototype.slice.call(document.querySelectorAll('[data-sql-engine]'));
     var selectedEngine = engineTabs.length ? engineTabs[0].getAttribute('data-sql-engine') : 'kyuubi';
     var query = createSqlEditor(el('queryField'), el('queryEditor'));
+    initCatalogPanel(query);
     var results = el('queryResults');
     var activeMarker = null;
     var clearResultsBtn = el('clearResults');
@@ -1214,7 +1361,11 @@
       });
       var supportsSessions = engineSupportsSessions();
       var hasHistory = engineSupportsHistory();
-      sessionBar.classList.toggle('k8s-hidden', !supportsSessions);
+      // Keep the session bar visible for every engine so the layout doesn't jump
+      // between tabs; engines without sessions (Trino, StarRocks) show it empty
+      // (its controls are hidden by CSS on this attribute).
+      sessionBar.classList.remove('k8s-hidden');
+      sessionBar.setAttribute('data-empty', String(!supportsSessions));
       sessionMonitor.classList.toggle('k8s-hidden', !supportsSessions);
       noSessions.classList.toggle('k8s-hidden', !supportsSessions);
       // Live operation logs come from a Kyuubi session monitor; engines without
@@ -3349,6 +3500,85 @@
     showJobsTab(initialType);
   }
 
+  function initSecurityPolicies() {
+    var list = el('gravitinoPolicies');
+    var message = el('policyMessage');
+    var grant = el('policyGrant');
+    var revoke = el('policyRevoke');
+    if (!list || !grant || !revoke) {
+      return;
+    }
+
+    function setMessage(value, error) {
+      message.textContent = value || '';
+      message.className = error ? 'k8s-error' : 'k8s-muted';
+    }
+
+    function policyForm() {
+      return {
+        role: el('policyRole').value.trim(),
+        subject: el('policySubject').value.trim(),
+        resource: el('policyResource').value.trim(),
+        privilege: el('policyPrivilege').value
+      };
+    }
+
+    function render(policies) {
+      if (!policies.length) {
+        list.innerHTML = '';
+        list.appendChild(element('div', { class: 'k8s-muted', text: 'No policies found.' }));
+        return;
+      }
+      list.innerHTML = '';
+      list.appendChild(buildTable(['Resource', 'Subject', 'Privileges', 'Effect', 'Source', ''], policies,
+        function (policy) {
+          var actions = element('span', {}, []);
+          (policy.actions || []).forEach(function (privilege) {
+            actions.appendChild(button('Revoke ' + privilege, 'btn btn-small', function () {
+            var subject = policy.subject || '';
+            var role = subject.indexOf('role:') === 0 ? subject.substring(5) : '';
+            if (!role || !window.confirm('Revoke ' + privilege + ' for ' + subject + '?')) {
+              return;
+            }
+            send(UI_API + '/security/policies/gravitino/revoke', {
+              role: role, subject: subject, resource: policy.resource,
+              privilege: privilege
+            }).then(function () {
+              setMessage('Policy revoked.');
+              load();
+            }).catch(function (error) { setMessage(error.message, true); });
+            }));
+          });
+          return [policy.resource, policy.subject, (policy.actions || []).join(', '),
+            policy.effect, policy.source, actions];
+        }));
+    }
+
+    function load() {
+      list.innerHTML = '<div class="k8s-muted">Loading policies…</div>';
+      request(UI_API + '/security/policies').then(render)
+        .catch(function (error) { showError(list, error); });
+    }
+
+    function mutate(operation) {
+      var values = policyForm();
+      if (!values.role || !values.subject || !values.resource) {
+        setMessage('Fill in role, subject, and resource.', true);
+        return;
+      }
+      if (!window.confirm((operation === 'grant' ? 'Grant ' : 'Revoke ') + values.privilege + '?')) {
+        return;
+      }
+      setMessage('Saving…');
+      send(UI_API + '/security/policies/gravitino/' + operation, values)
+        .then(function () { setMessage('Changes saved.'); load(); })
+        .catch(function (error) { setMessage(error.message, true); });
+    }
+    grant.addEventListener('click', function () { mutate('grant'); });
+    revoke.addEventListener('click', function () { mutate('revoke'); });
+    load();
+  }
+
   function pad(value) {
     return (value < 10 ? '0' : '') + value;
   }
@@ -3421,6 +3651,8 @@
       initHbase();
     } else if (app === 'jobs') {
       initJobs();
+    } else if (app === 'security-policies') {
+      initSecurityPolicies();
     }
   });
 })();

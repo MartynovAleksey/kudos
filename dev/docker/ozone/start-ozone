@@ -20,6 +20,12 @@ export HADOOP_CONF_DIR=/opt/hadoop/etc/hadoop
 export KRB5_CONFIG=/shared/krb5.conf
 export OZONE_OPTS="${OZONE_OPTS:-} -Djava.security.krb5.conf=/shared/krb5.conf"
 
+# Remove any S3 credentials file left by a previous run before we (re)generate the
+# secret below. The healthcheck gates dependants on this file, so clearing it here
+# means it only reappears with the fresh secret — on a restart, engines gated on
+# ozone-healthy never read a stale secret.
+rm -f /shared/s3-credentials.env
+
 until test -r /shared/om-ozone.test.local.keytab &&
   test -r /shared/scm-ozone.test.local.keytab &&
   test -r /shared/dn-ozone.test.local.keytab; do
@@ -45,6 +51,12 @@ ozone --daemon start om
 kinit -kt /shared/dn-ozone.test.local.keytab dn/ozone.test.local@TEST.LOCAL
 ozone --daemon start datanode
 
+# S3 Gateway: exposes Ozone buckets over the S3 API (port 9878). Trino and
+# StarRocks have no ofs:// client, so the Iceberg warehouse is addressed as
+# s3a://warehouse/iceberg, which all four engines (and Gravitino) can read.
+kinit -kt /shared/s3g-ozone.test.local.keytab s3g/ozone.test.local@TEST.LOCAL
+ozone --daemon start s3g
+
 # Spark event logs live in Ozone: Kyuubi's engines write them and the history
 # server reads them. Both need the location to exist before they start, and
 # neither creates volumes. Ownership stays with admin, the identity the engines
@@ -67,7 +79,38 @@ ozone sh volume create /flink --user=flink 2>/dev/null || true
 ozone sh bucket create /flink/completed-jobs 2>/dev/null || true
 ozone sh bucket info /flink/completed-jobs >/dev/null
 
+# The Iceberg lakehouse warehouse lives in Ozone, addressed as s3a://warehouse/iceberg
+# through the S3 Gateway so all four engines can reach it. S3 buckets live in the
+# S3 volume (s3v); the warehouse bucket holds the Iceberg tables. Owned by admin,
+# the identity the engines impersonate.
+ozone sh volume create /s3v --user=admin 2>/dev/null || true
+ozone sh bucket create /s3v/warehouse 2>/dev/null || true
+ozone sh bucket info /s3v/warehouse >/dev/null
+
+# An S3 secret for admin so Gravitino and every engine can sign S3 Gateway
+# requests (awsAccessKey is the Kerberos principal, admin@TEST.LOCAL). This Ozone
+# build's `setsecret` cannot pin a chosen value — it only updates an accessId that
+# already holds a secret, a state unreachable on a fresh OM — so instead we let
+# `getsecret` mint a random secret and publish it to the shared volume, where each
+# engine templates it into its S3 config at startup. `revoke` first so a restart
+# re-mints cleanly and the value is always printable (getsecret errors instead of
+# printing when a secret already exists). The OM S3-secret service lags OM startup
+# on a fresh secure OM, so retry until it answers. Test-only realm.
+creds=
+until
+  timeout 45 ozone s3 revokesecret -y >/dev/null 2>&1 || true
+  creds=$(timeout 60 ozone s3 getsecret -e 2>/dev/null) &&
+  printf '%s\n' "$creds" | grep -q AWS_SECRET_ACCESS_KEY
+do
+  sleep 5
+done
+# getsecret -e prints sourceable `export AWS_ACCESS_KEY_ID=...` /
+# `export AWS_SECRET_ACCESS_KEY=...` lines; consumers source this file directly.
+printf '%s\n' "$creds" > /shared/s3-credentials.env
+echo "KUDOS_S3_SECRET_PUBLISHED"
+
 stop_ozone() {
+  ozone --daemon stop s3g
   ozone --daemon stop datanode
   ozone --daemon stop om
   ozone --daemon stop scm

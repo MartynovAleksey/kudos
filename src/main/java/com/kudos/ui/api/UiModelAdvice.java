@@ -67,6 +67,11 @@ public class UiModelAdvice {
     return roles.isAdministrator(authentication);
   }
 
+  @ModelAttribute("securityOfficer")
+  boolean securityOfficer(Authentication authentication) {
+    return roles.isSecurityOfficer(authentication);
+  }
+
   @ModelAttribute("toolVisibility")
   Map<String, Boolean> toolVisibility() {
     return toolVisibility.visibility();

@@ -31,6 +31,7 @@ services (HDFS, Ozone, HBase, Kyuubi), never by the UI.
 **SQL Editor**
 - Run SQL on **Kyuubi Spark SQL**, **Kyuubi Flink SQL**, **Trino** and **StarRocks** from one editor.
 - Named Kyuubi sessions or per-query mode; **Result / Log / Session History** tabs; export to Excel.
+- A shared **Iceberg lakehouse**: one Gravitino REST catalog over an Ozone S3 warehouse that all four engines read; a collapsible catalog panel lists its schemas and tables, click to insert.
 
 **Data & storage**
 - **Files** — browse HDFS over WebHDFS: navigate, preview, upload, manage permissions.
@@ -41,8 +42,9 @@ services (HDFS, Ozone, HBase, Kyuubi), never by the UI.
 - **Spark** and **Flink** applications on separate tabs, with the engine dashboards embedded (reverse-proxied) inside the KUDOS chrome.
 
 **Administration & UX**
-- Two LDAP roles (administrator / user); administrators toggle which tools and SQL engines are visible to everyone.
-- Light / dark / system themes and a collapsible sidebar.
+- LDAP roles are separated by responsibility: `administrator` manages the KUDOS platform, while `security-officer` can access only the `Security policies` center and their personal Light/Dark/System theme preference; tool pages and APIs are unavailable to that role.
+- **Gravitino is the sole metadata and policy source for the lakehouse.** Ranger is not used: `admin` can access the full `catalog_iceberg`, while `analyst` can access only `iceberg.demo.customers`; integrations for the remaining tools are planned.
+- Light, dark, and system themes with a collapsible sidebar.
 
 ## Screenshots
 
@@ -68,6 +70,8 @@ HBase, Kyuubi, Trino, StarRocks) is included.
 Then open `https://app.test.local:8443/` and sign in with the demo LDAP
 credentials from the docs. Full setup, configuration and verification steps:
 **[docs/README.md](docs/README.md)**.
+
+For policy boundaries and the rollout plan, see the [centralized roles and policy model](docs/README.md).
 
 ## License
 

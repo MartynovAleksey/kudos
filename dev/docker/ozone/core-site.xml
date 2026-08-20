@@ -54,4 +54,33 @@
       DEFAULT
     </value>
   </property>
+  <!-- Ozone client settings, kept in core-site.xml (not just ozone-site.xml)
+       because Iceberg's HadoopFileIO builds a plain org.apache.hadoop.conf.
+       Configuration, which loads core-site.xml but not ozone-site.xml. Ozone 2.2's
+       shaded filesystem jar therefore never sees ozone-site.xml, so a client
+       (e.g. Gravitino) would otherwise default to RATIS/THREE and fail to name the
+       OM's Kerberos principal on this single-node stand. Harmless for the Ozone
+       server, which reads the full ozone-site.xml. -->
+  <property>
+    <name>ozone.om.kerberos.principal</name>
+    <value>om/_HOST@TEST.LOCAL</value>
+  </property>
+  <property>
+    <name>ozone.om.kerberos.principal.pattern</name>
+    <value>*</value>
+  </property>
+  <property>
+    <name>ozone.security.enabled</name>
+    <value>true</value>
+  </property>
+  <!-- Match the server's single-node write path (RATIS/ONE). A STAND_ALONE client
+       request would force STANDALONE pipelines, which never allocate on one node. -->
+  <property>
+    <name>ozone.replication</name>
+    <value>1</value>
+  </property>
+  <property>
+    <name>ozone.replication.type</name>
+    <value>RATIS</value>
+  </property>
 </configuration>

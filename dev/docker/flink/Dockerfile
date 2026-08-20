@@ -20,7 +20,7 @@
 # (unshaded) FileSystem and UGI its Hadoop integration needs, and the plain
 # (non-client) Ozone filesystem jar from the same Ozone build adds ofs:// on top.
 FROM apache/hadoop:3.4.2 AS hadoop
-FROM apache/ozone:2.0.0 AS ozone
+FROM apache/ozone:2.2.0 AS ozone
 
 FROM flink:1.20
 
@@ -36,8 +36,8 @@ RUN apt-get update && \
 
 COPY --from=hadoop /opt/hadoop /opt/hadoop
 COPY --from=ozone \
-  /opt/hadoop/share/ozone/lib/ozone-filesystem-hadoop3-2.0.0.jar \
-  /opt/hadoop/share/hadoop/common/lib/ozone-filesystem-hadoop3-2.0.0.jar
+  /opt/hadoop/share/ozone/lib/ozone-filesystem-hadoop3-2.2.0.jar \
+  /opt/hadoop/share/hadoop/common/lib/ozone-filesystem-hadoop3-2.2.0.jar
 
 COPY ozone/ozone-site.xml /opt/hadoop/etc/hadoop/ozone-site.xml
 COPY flink/core-site.xml /opt/hadoop/etc/hadoop/core-site.xml

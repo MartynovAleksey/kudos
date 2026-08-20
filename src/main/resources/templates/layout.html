@@ -42,8 +42,15 @@
       </a>
     </div>
     <nav class="sidebar-body">
+      <div class="sidebar-accordion-item" th:if="${securityOfficer}"
+           th:classappend="${app == 'security-policies'} ? ' sidebar-active'">
+        <a class="sidebar-sidebar-item" th:href="@{/security/policies}" title="Security policies" aria-label="Security policies">
+          <div class="sidebar-sidebar-item-icon"><i class="fa fa-fw fa-shield"></i></div>
+          <span>Security policies</span>
+        </a>
+      </div>
       <div class="sidebar-accordion-item" data-ui-tool="editor"
-           th:if="${features.editor and (administrator or toolVisibility.editor)}"
+           th:if="${(!securityOfficer or administrator) and features.editor and (administrator or toolVisibility.editor)}"
            th:hidden="${administrator and !toolVisibility.editor}"
            th:classappend="${app == 'editor'} ? ' sidebar-active'">
         <a class="sidebar-sidebar-item" th:href="@{/editor}" title="Editor" aria-label="Editor">
@@ -52,7 +59,7 @@
         </a>
       </div>
       <div class="sidebar-accordion-item" data-ui-tool="files"
-           th:if="${features.files and (administrator or toolVisibility.files)}"
+           th:if="${(!securityOfficer or administrator) and features.files and (administrator or toolVisibility.files)}"
            th:hidden="${administrator and !toolVisibility.files}"
            th:classappend="${app == 'filebrowser'} ? ' sidebar-active'">
         <a class="sidebar-sidebar-item" th:href="@{/filebrowser}" title="Files" aria-label="Files">
@@ -61,7 +68,7 @@
         </a>
       </div>
       <div class="sidebar-accordion-item" data-ui-tool="ozone"
-           th:if="${features.ozone and (administrator or toolVisibility.ozone)}"
+           th:if="${(!securityOfficer or administrator) and features.ozone and (administrator or toolVisibility.ozone)}"
            th:hidden="${administrator and !toolVisibility.ozone}"
            th:classappend="${app == 'ozone'} ? ' sidebar-active'">
         <a class="sidebar-sidebar-item" th:href="@{/ozone}" title="Ozone" aria-label="Ozone">
@@ -70,7 +77,7 @@
         </a>
       </div>
       <div class="sidebar-accordion-item" data-ui-tool="hbase"
-           th:if="${features.hbase and (administrator or toolVisibility.hbase)}"
+           th:if="${(!securityOfficer or administrator) and features.hbase and (administrator or toolVisibility.hbase)}"
            th:hidden="${administrator and !toolVisibility.hbase}"
            th:classappend="${app == 'hbase'} ? ' sidebar-active'">
         <a class="sidebar-sidebar-item" th:href="@{/hbase}" title="HBase" aria-label="HBase">
@@ -79,7 +86,7 @@
         </a>
       </div>
       <div class="sidebar-accordion-item" data-ui-tool="jobs"
-           th:if="${features.jobs and (administrator or toolVisibility.jobs)}"
+           th:if="${(!securityOfficer or administrator) and features.jobs and (administrator or toolVisibility.jobs)}"
            th:hidden="${administrator and !toolVisibility.jobs}"
            th:classappend="${app == 'jobs'} ? ' sidebar-active'">
         <a class="sidebar-sidebar-item" th:href="@{/jobs}" title="Jobs" aria-label="Jobs">
@@ -88,7 +95,7 @@
         </a>
       </div>
       <div class="sidebar-sidebar-spacer"></div>
-      <div class="sidebar-accordion-item"
+      <div class="sidebar-accordion-item" th:if="${!securityOfficer or administrator}"
            th:classappend="${app == 'docs'} ? ' sidebar-active'">
         <a class="sidebar-sidebar-item" th:href="@{/docs}" title="Docs" aria-label="Docs">
           <div class="sidebar-sidebar-item-icon"><i class="fa fa-fw fa-book"></i></div>

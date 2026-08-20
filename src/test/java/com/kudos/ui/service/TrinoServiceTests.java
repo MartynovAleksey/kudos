@@ -69,7 +69,7 @@ class TrinoServiceTests {
           }
         };
     return new TrinoService(
-        new ClusterProperties("", "", "", "jdbc:trino://test", "", "", "", "", "", "", "", ""),
+        new ClusterProperties("", "", "", "jdbc:trino://test", "", "", "", "", "", "", "", "", ""),
         kerberos,
         new SqlQueryHistory()) {
       @Override

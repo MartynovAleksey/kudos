@@ -44,4 +44,32 @@ class LdapRoleMappingTests {
         .extracting(SimpleGrantedAuthority::getAuthority)
         .containsExactly("ROLE_USER");
   }
+
+  @Test
+  void securityOfficerRoleIsIndependentFromAdministratorRole() {
+    var ldapAuthentication =
+        UsernamePasswordAuthenticationToken.authenticated(
+            "security-officer",
+            "n/a",
+            List.of(new SimpleGrantedAuthority("ROLE_KUDOS-SECURITY-OFFICERS")));
+
+    assertThat(LdapSecurityConfig.uiAuthorities(ldapAuthentication))
+        .extracting(SimpleGrantedAuthority::getAuthority)
+        .containsExactly("ROLE_USER", "ROLE_SECURITY_OFFICER");
+  }
+
+  @Test
+  void administratorAndSecurityOfficerRolesCanCoexist() {
+    var ldapAuthentication =
+        UsernamePasswordAuthenticationToken.authenticated(
+            "admin",
+            "n/a",
+            List.of(
+                new SimpleGrantedAuthority("ROLE_KUDOS-ADMINISTRATORS"),
+                new SimpleGrantedAuthority("ROLE_KUDOS-SECURITY-OFFICERS")));
+
+    assertThat(LdapSecurityConfig.uiAuthorities(ldapAuthentication))
+        .extracting(SimpleGrantedAuthority::getAuthority)
+        .containsExactly("ROLE_ADMINISTRATOR", "ROLE_SECURITY_OFFICER");
+  }
 }

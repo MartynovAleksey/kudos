@@ -43,6 +43,8 @@
     <button id="closeAllSessions" class="btn btn-small" type="button">Close all tabs</button>
   </div>
 
+  <div id="editorLayout" class="k8s-editor-layout" data-editor-catalog="expanded">
+  <div class="k8s-editor-main">
   <div class="card card-small">
     <div class="card-body">
       <div id="sessionMonitor" class="k8s-session-monitor">
@@ -110,6 +112,20 @@
         </div>
       </div>
     </div>
+  </div>
+  </div>
+
+  <aside id="catalogPanel" class="k8s-catalog-panel" aria-label="Catalog">
+    <div class="k8s-catalog-header">
+      <button id="catalogToggle" class="k8s-catalog-toggle" type="button"
+              aria-pressed="false" title="Hide catalog" aria-label="Hide catalog">
+        <i class="fa fa-fw fa-database"></i>
+        <span class="k8s-catalog-title">Catalog</span>
+        <i class="fa fa-fw fa-angle-double-right k8s-catalog-chevron"></i>
+      </button>
+    </div>
+    <div id="catalogTree" class="k8s-catalog-tree"></div>
+  </aside>
   </div>
 
   <!-- Ace SQL editor (loaded only on this page). These execute during parse,

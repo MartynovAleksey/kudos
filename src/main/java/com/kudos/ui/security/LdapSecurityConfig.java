@@ -40,6 +40,7 @@ import org.springframework.security.web.authentication.logout.SecurityContextLog
 import org.springframework.security.web.authentication.www.BasicAuthenticationEntryPoint;
 import org.springframework.security.web.context.SecurityContextHolderFilter;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.authorization.AuthorizationDecision;
 
 @Configuration
 public class LdapSecurityConfig {
@@ -98,8 +99,17 @@ public class LdapSecurityConfig {
         authentication.getAuthorities().stream()
             .map(authority -> authority.getAuthority())
             .anyMatch("ROLE_KUDOS-ADMINISTRATORS"::equalsIgnoreCase);
-    return java.util.List.of(
+    boolean securityOfficer =
+        authentication.getAuthorities().stream()
+            .map(authority -> authority.getAuthority())
+            .anyMatch("ROLE_KUDOS-SECURITY-OFFICERS"::equalsIgnoreCase);
+    var authorities = new java.util.ArrayList<SimpleGrantedAuthority>();
+    authorities.add(
         new SimpleGrantedAuthority(administrator ? "ROLE_ADMINISTRATOR" : "ROLE_USER"));
+    if (securityOfficer) {
+      authorities.add(new SimpleGrantedAuthority("ROLE_SECURITY_OFFICER"));
+    }
+    return java.util.List.copyOf(authorities);
   }
 
   /**
@@ -118,14 +128,21 @@ public class LdapSecurityConfig {
   @Bean
   @Order(1)
   SecurityFilterChain apiSecurity(
-      HttpSecurity http, AuthenticationManager ldapAuthenticationManager) throws Exception {
+      HttpSecurity http, AuthenticationManager ldapAuthenticationManager, RoleAccess roles) throws Exception {
     return http
         .securityMatcher("/api/**")
         // Token-free so curl and scripts stay simple: a call carries Basic, or a
         // browser carries the session cookie from its form login.
         .csrf(csrf -> csrf.disable())
         .authenticationManager(ldapAuthenticationManager)
-        .authorizeHttpRequests(authorization -> authorization.anyRequest().authenticated())
+        .authorizeHttpRequests(
+            authorization ->
+                authorization
+                    .anyRequest()
+                    .access(
+                        (authentication, context) ->
+                            new AuthorizationDecision(
+                                roles.canUseToolApis(authentication.get()))))
         .httpBasic(basic -> basic.authenticationEntryPoint(basicAuthenticationEntryPoint()))
         // Pin the challenge to Basic explicitly. Without this a missing
         // credential is handled by the default entry point, which saves the
@@ -148,10 +165,19 @@ public class LdapSecurityConfig {
 
   @Bean
   @Order(2)
-  SecurityFilterChain uiApiSecurity(HttpSecurity http) throws Exception {
+  SecurityFilterChain uiApiSecurity(HttpSecurity http, RoleAccess roles) throws Exception {
     return http
         .securityMatcher("/ui-api/**")
-        .authorizeHttpRequests(authorization -> authorization.anyRequest().authenticated())
+        .authorizeHttpRequests(
+            authorization ->
+                authorization
+                    .requestMatchers("/ui-api/security/policies/**")
+                    .hasRole("SECURITY_OFFICER")
+                    .anyRequest()
+                    .access(
+                        (authentication, context) ->
+                            new AuthorizationDecision(
+                                roles.canUseToolApis(authentication.get()))))
         // Fetch callers need a status, not a form-login redirect. HTTP Basic is
         // deliberately absent: only the session established by form login is
         // accepted on this internal transport.
@@ -173,7 +199,8 @@ public class LdapSecurityConfig {
   SecurityFilterChain uiSecurity(
       HttpSecurity http,
       AuthenticationManager ldapAuthenticationManager,
-      LoginAttemptService attempts)
+      LoginAttemptService attempts,
+      RoleAccess roles)
       throws Exception {
     return http
         .authenticationManager(ldapAuthenticationManager)
@@ -186,8 +213,15 @@ public class LdapSecurityConfig {
                     .dispatcherTypeMatchers(DispatcherType.ERROR)
                     .permitAll()
                     .requestMatchers(
+                        "/security/policies",
+                        "/security/policies/**")
+                    .hasRole("SECURITY_OFFICER")
+                    .requestMatchers("/")
+                    .authenticated()
+                    .requestMatchers(
                         "/actuator/health",
                         "/login",
+                        "/logout",
                         "/static/**",
                         "/error",
                         "/swagger-ui.html",
@@ -195,7 +229,10 @@ public class LdapSecurityConfig {
                         "/v3/api-docs/**")
                     .permitAll()
                     .anyRequest()
-                    .authenticated())
+                    .access(
+                        (authentication, context) ->
+                            new AuthorizationDecision(
+                                roles.canUseToolPages(authentication.get()))))
         .formLogin(
             login ->
                 login

@@ -50,7 +50,7 @@
   </property>
   <property>
     <name>ozone.server.default.replication.type</name>
-    <value>STAND_ALONE</value>
+    <value>RATIS</value>
   </property>
   <!-- Docker Desktop has a small writable virtual disk. A test archive is only
        a few kilobytes, so allocating the production 5 GB container rejects all
@@ -59,16 +59,48 @@
     <name>ozone.scm.container.size</name>
     <value>256MB</value>
   </property>
-  <!-- A one-DataNode test stand must not create a Raft data pipeline: after a
-       DataNode restart its old RATIS/ONE pipeline can no longer accept archive
-       writes. Stand-alone containers are sufficient for test event archives. -->
+  <!-- Single DataNode data pipeline: RATIS/ONE, not STAND_ALONE. On a one-node
+       cluster in Ozone 2.2 a STANDALONE/ONE pipeline never becomes container-
+       allocatable, so every write asks SCM to create a *second* STANDALONE
+       pipeline on the same node and fails ("Cannot create pipeline STANDALONE/ONE
+       using 0 nodes. Used 1 nodes. Healthy nodes 1"). RATIS/ONE is the standard
+       single-node write path and allocates containers in the existing pipeline.
+       factor.one auto-creation (below) re-forms the pipeline after a DataNode
+       restart, so writes resume without a manual recreate. -->
   <property>
     <name>ozone.replication</name>
     <value>1</value>
   </property>
   <property>
     <name>ozone.replication.type</name>
-    <value>STAND_ALONE</value>
+    <value>RATIS</value>
+  </property>
+  <!-- Keep the block size below the 256MB container so a container holds several
+       blocks (production default 256MB would make one block fill a whole
+       container). -->
+  <property>
+    <name>ozone.scm.block.size</name>
+    <value>64MB</value>
+  </property>
+  <!-- Auto-create the factor-ONE pipeline the single node needs (and re-create it
+       after a restart) instead of waiting for a multi-node quorum. -->
+  <property>
+    <name>ozone.scm.pipeline.creation.auto.factor.one</name>
+    <value>true</value>
+  </property>
+  <!-- The DataNode dir sits on the shared 220GB Docker VM disk, which other images
+       keep ~92% full (only ~18GB free). Ozone's default free-space reserve is a
+       percentage of the whole 220GB volume, which exceeds the free space, so the
+       node reports 0 usable bytes and RATIS/ONE block allocation fails ("space
+       requirement ... Found: 0"). Pin a small absolute reserve so the free space is
+       actually usable for the tiny test warehouse. -->
+  <property>
+    <name>hdds.datanode.volume.min.free.space</name>
+    <value>1GB</value>
+  </property>
+  <property>
+    <name>hdds.datanode.volume.min.free.space.percent</name>
+    <value>0.001</value>
   </property>
   <property>
     <name>ozone.scm.names</name>
@@ -102,15 +134,32 @@
     <name>ozone.acl.enabled</name>
     <value>true</value>
   </property>
+  <!-- Single-node stand: safe mode's multi-datanode/pipeline guarantees don't
+       apply, and after a container recreate SCM can otherwise get stuck waiting
+       for pipelines to re-form, refusing block allocation (SCM_IN_SAFE_MODE).
+       Disabling it lets writes proceed immediately on every (re)start. -->
+  <property>
+    <name>hdds.scm.safemode.enabled</name>
+    <value>false</value>
+  </property>
   <property>
     <name>ozone.administrators</name>
     <!-- spark is the local name the history server's principal maps to; it has
-         to read the event logs the Kyuubi engines write as admin. -->
-    <value>admin,spark</value>
+         to read the event logs the Kyuubi engines write as admin. gravitino is
+         the Iceberg REST catalog identity; it writes table metadata under
+         ofs://…/warehouse and needs to bypass bucket ACLs like the engines do. -->
+    <value>admin,spark,gravitino</value>
   </property>
   <property>
     <name>ozone.om.kerberos.principal</name>
     <value>om/_HOST@TEST.LOCAL</value>
+  </property>
+  <!-- Clients (the engines copy this file as their core-site) must accept the
+       OM's principal om/ozone.test.local@TEST.LOCAL. Without the pattern the SASL
+       client rejects it: "Server has invalid Kerberos principal". -->
+  <property>
+    <name>ozone.om.kerberos.principal.pattern</name>
+    <value>*</value>
   </property>
   <property>
     <name>ozone.om.kerberos.keytab.file</name>
@@ -135,5 +184,24 @@
   <property>
     <name>hadoop.security.authentication</name>
     <value>kerberos</value>
+  </property>
+  <!-- S3 Gateway: serves the warehouse over the S3 API for every engine. -->
+  <property>
+    <name>ozone.s3g.kerberos.principal</name>
+    <value>s3g/_HOST@TEST.LOCAL</value>
+  </property>
+  <property>
+    <name>ozone.s3g.kerberos.keytab.file</name>
+    <value>/shared/s3g-ozone.test.local.keytab</value>
+  </property>
+  <property>
+    <name>ozone.s3g.http-address</name>
+    <value>0.0.0.0:9878</value>
+  </property>
+  <!-- Path-style S3 URLs (s3a://warehouse/…) instead of virtual-host style, so no
+       per-bucket DNS is needed on the single-node stand. -->
+  <property>
+    <name>ozone.s3g.domain.name</name>
+    <value>ozone.test.local</value>
   </property>
 </configuration>

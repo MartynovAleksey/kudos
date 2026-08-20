@@ -37,7 +37,8 @@ class FlinkServiceTests {
     when(upstream.getInputStream())
         .thenReturn(new ByteArrayInputStream(overviewJson.getBytes(StandardCharsets.UTF_8)));
     ClusterProperties properties =
-        new ClusterProperties("", "", "", "", "", "", "", "", "", "", jobmanagerUrl, historyUrl);
+        new ClusterProperties(
+            "", "", "", "", "", "", "", "", "", "", jobmanagerUrl, historyUrl, "");
     return new FlinkService(properties) {
       @Override
       HttpURLConnection open(URL target) {
@@ -87,7 +88,7 @@ class FlinkServiceTests {
     HttpURLConnection failing = mock(HttpURLConnection.class);
     when(failing.getResponseCode()).thenReturn(503);
     ClusterProperties properties =
-        new ClusterProperties("", "", "", "", "", "", "", "", "", "", "http://jm", "http://hs");
+        new ClusterProperties("", "", "", "", "", "", "", "", "", "", "http://jm", "http://hs", "");
     FlinkService service =
         new FlinkService(properties) {
           @Override

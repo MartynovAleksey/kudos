@@ -26,6 +26,7 @@ Environment="IPA_ADMIN_INITIAL_PASSWORD=KudosAdmin2026Secure!"
 Environment="IPA_DM_PASSWORD=DirectoryManager1"
 Environment="IPA_TEST_PASSWORD=KudosAdmin2026Secure!"
 Environment="IPA_ANALYST_PASSWORD=KudosAnalyst2026Secure!"
+Environment="IPA_SECURITY_OFFICER_PASSWORD=KudosSecurityOfficer2026Secure!"
 ExecStart=/usr/local/sbin/bootstrap-test-identities
 RemainAfterExit=yes
 

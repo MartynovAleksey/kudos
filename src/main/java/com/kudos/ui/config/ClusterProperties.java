@@ -35,4 +35,9 @@ public record ClusterProperties(
     /** Flink JobManager REST base; blank disables the Flink running-jobs source. */
     String flinkJobmanagerUrl,
     /** Flink History Server base, reverse-proxied under {@code /flink-ui}. */
-    String flinkHistoryUrl) {}
+    String flinkHistoryUrl,
+    /**
+     * Gravitino Iceberg REST catalog base (e.g. {@code http://host:9001/iceberg/}); blank
+     * disables the Editor catalog tree panel.
+     */
+    String gravitinoIcebergUri) {}

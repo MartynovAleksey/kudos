@@ -34,6 +34,7 @@ services:
       IPA_ADMIN_INITIAL_PASSWORD: KudosAdmin2026Secure!
       IPA_TEST_PASSWORD: KudosAdmin2026Secure!
       IPA_ANALYST_PASSWORD: KudosAnalyst2026Secure!
+      IPA_SECURITY_OFFICER_PASSWORD: KudosSecurityOfficer2026Secure!
     # Docker Desktop tmpfs lacks POSIX ACL support, while 389 Directory Server
     # uses setfacl under /run. Docker-managed ext4 volumes provide it.
     volumes:
@@ -82,6 +83,9 @@ services:
       ozone:
         condition: service_healthy
       flink-jobmanager:
+        condition: service_healthy
+      # The Iceberg lakehouse catalog the Spark/Flink engines resolve.
+      gravitino:
         condition: service_healthy
     volumes:
       - kerberos-shared:/shared:ro
@@ -178,7 +182,9 @@ services:
       freeipa:
         condition: service_healthy
     volumes:
-      - kerberos-shared:/shared:ro
+      # rw: start-ozone publishes the generated S3 secret to
+      # /shared/s3-credentials.env for the engines to template into their configs.
+      - kerberos-shared:/shared
       - ozone-data:/data
     ports:
       - "9862:9862"
@@ -189,6 +195,8 @@ services:
       - "9860:9860"
       - "9859:9859"
       - "9858:9858"
+      # S3 Gateway (S3-compatible REST API for the warehouse).
+      - "9878:9878"
     networks:
       default:
         aliases:
@@ -204,7 +212,9 @@ services:
           && ps -ef
           | grep -q '[o]rg.apache.hadoop.ozone.HddsDatanodeService'
           && test -f /data/ozone/.eventlogs-ready
+          && test -f /shared/s3-credentials.env
           && bash -c ': > /dev/tcp/ozone.test.local/9862'
+          && bash -c ': > /dev/tcp/ozone.test.local/9878'
       interval: 10s
       timeout: 5s
       retries: 30
@@ -441,6 +451,10 @@ services:
         condition: service_healthy
       trino-tls:
         condition: service_healthy
+      # Trino templates the runtime S3 secret from /shared at startup; wait for
+      # ozone to (re)publish it so a restart never picks up a stale secret.
+      ozone:
+        condition: service_healthy
     volumes:
       - kerberos-shared:/shared:ro
       - trino-tls:/tls:ro
@@ -467,10 +481,13 @@ services:
   # wire protocol and deliberately stays outside the Kerberos data path.
   starrocks:
     image: starrocks/allin1-ubuntu:3.5.20
-    platform: linux/amd64
+    # No platform pin: the image is multi-arch, so Docker runs it natively —
+    # arm64 on Apple Silicon, amd64 on Intel. Pinning amd64 forced QEMU emulation
+    # on Apple Silicon, where the emulated BE (compute node) crash-loops on start.
     hostname: starrocks.test.local
     ports:
       - "9030:9030"
+      - "8030:8030"
     networks:
       default:
         aliases:
@@ -486,18 +503,70 @@ services:
   # are ready. The password is rendered by Vault, never kept in Compose.
   starrocks-bootstrap:
     image: starrocks/allin1-ubuntu:3.5.20
-    platform: linux/amd64
+    # Native arch, same as the starrocks service above.
     depends_on:
       starrocks:
         condition: service_healthy
       vault-agent:
         condition: service_healthy
+      # The catalog DDL templates the runtime S3 secret from /shared; wait for
+      # ozone to (re)publish it so a restart never bakes a stale secret.
+      ozone:
+        condition: service_healthy
     entrypoint: ["bash", "/bootstrap/bootstrap.sh"]
     volumes:
       - app-tls:/vault/secrets:ro
+      # The generated S3 secret for the Iceberg external catalog's warehouse.
+      - kerberos-shared:/shared:ro
       - ./dev/docker/starrocks/bootstrap.sql:/bootstrap/bootstrap.sql:ro
       - ./dev/docker/starrocks/bootstrap.sh:/bootstrap/bootstrap.sh:ro
     restart: "no"
+
+  # Full Apache Gravitino server. The Iceberg REST catalog runs as an auxiliary
+  # service under Gravitino's authorization, so the shared :9001/iceberg endpoint
+  # is the metadata gate for the lakehouse (deny-by-default). Warehouse is Ozone
+  # over S3 (s3://warehouse/iceberg); the
+  # image is multi-arch (native on Intel and Apple Silicon).
+  # REST API for policy/grant management: http://gravitino.test.local:8090
+  gravitino:
+    build:
+      context: ./dev/docker
+      dockerfile: gravitino/Dockerfile
+    hostname: gravitino.test.local
+    depends_on:
+      # The warehouse volume/bucket must exist before the catalog writes to it.
+      ozone:
+        condition: service_healthy
+    volumes:
+      - kerberos-shared:/shared:ro
+      # Iceberg catalog backend (SQLite) — carries over the demo tables.
+      - gravitino-data:/data/gravitino
+      # Gravitino server entity store (H2): metalakes, catalogs, roles, grants.
+      # The Ranger-backed schema is preserved in the old volume for rollback;
+      # this clean store contains the native Gravitino-only policy model.
+      - gravitino-h2-security-console:/opt/gravitino/data
+    ports:
+      # Iceberg REST endpoint: http://gravitino.test.local:9001/iceberg/
+      - "9001:9001"
+      # Gravitino REST API (metalake/catalog/role/grant management).
+      - "8090:8090"
+    networks:
+      default:
+        aliases:
+          - gravitino.test.local
+    healthcheck:
+      # Healthy only once the server is up AND start-gravitino has registered the
+      # Iceberg catalog (so the metadata endpoint actually resolves tables).
+      test:
+        - CMD-SHELL
+        - >-
+          curl -fsS -H "Authorization: Basic YW5vbnltb3VzOng="
+          http://localhost:8090/api/metalakes/metalake_demo/catalogs/catalog_iceberg
+          >/dev/null
+      interval: 10s
+      timeout: 10s
+      retries: 40
+      start_period: 30s
 
   app:
     # Thin distroless runtime built from the pre-built jar in ./dist. Populate
@@ -569,6 +638,9 @@ services:
       KUDOS_UI_TOOL_VISIBILITY_FILE: /var/log/kudos/ui-tool-visibility.json
       # Same, for the administrator's choice of visible SQL engines.
       KUDOS_UI_ENGINE_VISIBILITY_FILE: /var/log/kudos/ui-engine-visibility.json
+      # The policy adapter must use the Gravitino service name inside Compose;
+      # localhost would point back to this application container.
+      GRAVITINO_REST_URI: http://gravitino.test.local:8090
       # Operators can override this for an API-disabled deployment without
       # changing the mounted YAML: KUDOS_API_ENABLED=false docker compose up -d app
       KUDOS_API_ENABLED: ${KUDOS_API_ENABLED:-true}
@@ -602,6 +674,11 @@ volumes:
   hdfs-data:
   hbase-data:
   ozone-data:
+  # Gravitino's SQLite Iceberg-catalog database (namespace/table pointers).
+  gravitino-data:
+  # Full Gravitino server entity store (H2): metalakes, catalogs, roles, grants.
+  # Kept separate from the legacy Ranger-backed metadata volume.
+  gravitino-h2-security-console:
   # AppRole role_id/secret_id written by vault-bootstrap, read by vault-agent.
   vault-approle:
   # Vault-issued TLS PEM (tls.crt/tls.key/ca.crt) shared from vault-agent to app.

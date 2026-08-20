@@ -1,0 +1,225 @@
+#!/usr/bin/env bash
+# Copyright 2026 Aleksey Martynov and contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Starts the full Gravitino server, then registers the metalake + Iceberg catalog
+# that the Iceberg REST auxiliary service (:9001/iceberg) serves to every engine.
+#
+# The warehouse is Iceberg-on-Ozone addressed over S3; the catalog backend is the
+# same SQLite DB the standalone server used, so the demo tables survive. The S3
+# secret is minted by Ozone at runtime, so it is written into the catalog's
+# properties here (create) and refreshed on every start (alter) — the restart
+# self-heal, moved from a static conf file to the Gravitino catalog.
+set -euo pipefail
+
+GRAVITINO=http://localhost:8090
+METALAKE=metalake_demo
+CATALOG=catalog_iceberg
+# Every bootstrap call acts as `anonymous`, the service admin (see gravitino.conf).
+ADMIN_AUTH="Authorization: Basic $(printf 'anonymous:x' | base64)"
+JV="Accept: application/vnd.gravitino.v1+json"
+CT="Content-Type: application/json"
+
+# --- Runtime S3 secret (published by Ozone to the shared volume) ----------
+until test -r /shared/s3-credentials.env; do echo "waiting for s3 credentials ..."; sleep 2; done
+. /shared/s3-credentials.env
+S3_SECRET="${AWS_SECRET_ACCESS_KEY}"
+
+# --- Start the server in the background -----------------------------------
+echo "starting Gravitino server ..."
+/opt/gravitino/bin/gravitino.sh start
+
+echo "waiting for Gravitino REST API ..."
+until API_STATUS=$(curl -sS -o /dev/null -w '%{http_code}' -H "$ADMIN_AUTH" \
+    "${GRAVITINO}/api/metalakes" 2>/dev/null) && [ "$API_STATUS" != 000 ]; do
+  sleep 2
+done
+echo "Gravitino REST API is up"
+
+api() {  # method path [json]
+  local method="$1" path="$2" body="${3:-}"
+  if [ -n "$body" ]; then
+    curl -fsS -X "$method" -H "$ADMIN_AUTH" -H "$JV" -H "$CT" -d "$body" "${GRAVITINO}${path}"
+  else
+    curl -fsS -X "$method" -H "$ADMIN_AUTH" -H "$JV" "${GRAVITINO}${path}"
+  fi
+}
+
+http_status() {
+  local method="$1" path="$2" body="${3:-}"
+  if [ -n "$body" ]; then
+    curl -sS -o /dev/null -w '%{http_code}' -X "$method" \
+      -H "$ADMIN_AUTH" -H "$JV" -H "$CT" -d "$body" "${GRAVITINO}${path}"
+  else
+    curl -sS -o /dev/null -w '%{http_code}' -X "$method" \
+      -H "$ADMIN_AUTH" -H "$JV" "${GRAVITINO}${path}"
+  fi
+}
+
+ensure_user() {
+  local user="$1"
+  if ! api GET "/api/metalakes/${METALAKE}/users" \
+      | jq -e --arg user "$user" '.names | index($user) != null' >/dev/null; then
+    echo "creating user ${user}"
+    local response
+    response=$(api POST "/api/metalakes/${METALAKE}/users" "{\"name\":\"${user}\"}")
+    printf '%s' "$response" | jq -e --arg user "$user" \
+      '.code == 0 and .user.name == $user' >/dev/null || {
+      echo "failed to create Gravitino user ${user}: ${response}" >&2
+      return 1
+    }
+  fi
+}
+
+ensure_role() {
+  local role="$1" body="$2"
+  local role_status
+  role_status=$(http_status GET "/api/metalakes/${METALAKE}/roles/${role}")
+  if [ "$role_status" = 200 ]; then
+    # Override is intentionally used on every start: it makes the bootstrap
+    # idempotent and repairs a role left by an older stand configuration.
+    # Gravitino applies catalog privileges hierarchically to all schemas and
+    # tables below that catalog, including objects created later.
+    echo "refreshing role ${role} privileges"
+    local response
+    response=$(api PUT "/api/metalakes/${METALAKE}/permissions/roles/${role}/" \
+      "$(printf '%s' "$body" | jq -c '{overrides: .securableObjects}')")
+    printf '%s' "$response" | jq -e --arg role "$role" \
+      '.code == 0 and .role.name == $role' >/dev/null || {
+      echo "failed to refresh Gravitino role ${role}: ${response}" >&2
+      return 1
+    }
+  elif [ "$role_status" = 404 ]; then
+    echo "creating role ${role}"
+    local response
+    response=$(api POST "/api/metalakes/${METALAKE}/roles" "$body")
+    printf '%s' "$response" | jq -e --arg role "$role" \
+      '.code == 0 and .role.name == $role' >/dev/null || {
+      echo "failed to create Gravitino role ${role}: ${response}" >&2
+      return 1
+    }
+  else
+    echo "failed to load Gravitino role ${role}: HTTP ${role_status}" >&2
+    return 1
+  fi
+}
+
+grant_role() {
+  local user="$1" role="$2" response
+  response=$(api PUT "/api/metalakes/${METALAKE}/permissions/users/${user}/grant" \
+    "{\"roleNames\":[\"${role}\"]}")
+  printf '%s' "$response" | jq -e --arg user "$user" --arg role "$role" \
+    '.code == 0 and (.user.name == $user) and (.user.roles | index($role) != null)' >/dev/null || {
+    echo "failed to grant Gravitino role ${role} to ${user}: ${response}" >&2
+    return 1
+  }
+}
+
+# --- Metalake -------------------------------------------------------------
+echo "ensuring metalake ${METALAKE}"
+METALAKE_CREATE_STATUS=$(http_status POST "/api/metalakes" \
+  "{\"name\":\"${METALAKE}\",\"comment\":\"KUDOS lakehouse\",\"properties\":{}}")
+case "$METALAKE_CREATE_STATUS" in
+  2*) ;;
+  409) echo "metalake ${METALAKE} already exists" ;;
+  *) echo "failed to create metalake ${METALAKE}: HTTP ${METALAKE_CREATE_STATUS}" >&2; exit 1 ;;
+esac
+
+# The simple authorizer rejects requests from a service admin until that
+# identity exists in the metalake. Create it before any catalog or role lookup.
+echo "ensuring service user anonymous"
+ANONYMOUS_CREATE_STATUS=$(http_status POST "/api/metalakes/${METALAKE}/users" \
+  '{"name":"anonymous"}')
+case "$ANONYMOUS_CREATE_STATUS" in
+  2*) ;;
+  409) echo "user anonymous already exists" ;;
+  *) echo "failed to create Gravitino user anonymous: HTTP ${ANONYMOUS_CREATE_STATUS}" >&2; exit 1 ;;
+esac
+
+# --- Iceberg catalog (Gravitino-governed) ---------------------------------
+# Gravitino's own deny-by-default authorization enforces metadata access at the
+# REST catalog. Policies are stored and managed in Gravitino only.
+read -r -d '' CATALOG_PROPS <<JSON || true
+{
+  "catalog-backend": "jdbc",
+  "uri": "jdbc:sqlite:/data/gravitino/iceberg_rest.db",
+  "jdbc-driver": "org.sqlite.JDBC",
+  "jdbc-user": "gravitino",
+  "jdbc-password": "gravitino",
+  "jdbc-initialize": "true",
+  "warehouse": "s3://warehouse/iceberg",
+  "io-impl": "org.apache.iceberg.aws.s3.S3FileIO",
+  "s3-endpoint": "http://ozone.test.local:9878",
+  "s3-region": "us-east-1",
+  "s3-path-style-access": "true",
+  "s3-access-key-id": "admin@TEST.LOCAL",
+  "s3-secret-access-key": "${S3_SECRET}"
+}
+JSON
+
+CATALOG_STATUS=$(http_status GET "/api/metalakes/${METALAKE}/catalogs/${CATALOG}")
+if [ "$CATALOG_STATUS" = 200 ]; then
+  echo "catalog ${CATALOG} exists; refreshing the runtime S3 secret"
+  api PUT "/api/metalakes/${METALAKE}/catalogs/${CATALOG}" \
+    "{\"updates\":[{\"@type\":\"setProperty\",\"property\":\"s3-secret-access-key\",\"value\":\"${S3_SECRET}\"}]}" >/dev/null
+elif [ "$CATALOG_STATUS" = 404 ]; then
+  echo "creating catalog ${CATALOG}"
+  CATALOG_CREATE_STATUS=$(http_status POST "/api/metalakes/${METALAKE}/catalogs" \
+    "{\"name\":\"${CATALOG}\",\"type\":\"RELATIONAL\",\"provider\":\"lakehouse-iceberg\",\"comment\":\"Iceberg on Ozone S3\",\"properties\":${CATALOG_PROPS}}")
+  case "$CATALOG_CREATE_STATUS" in
+    2*) ;;
+    409) echo "catalog ${CATALOG} already exists" ;;
+    *) echo "failed to create catalog ${CATALOG}: HTTP ${CATALOG_CREATE_STATUS}" >&2; exit 1 ;;
+  esac
+else
+  echo "cannot determine whether catalog ${CATALOG} exists (HTTP ${CATALOG_STATUS}); skipping create" >&2
+fi
+
+# --- Demo authorization -----------------------------------------------------
+# A worked example of the metadata gate: the `analyst` user may see and load
+# only demo.customers. Idempotent: re-running just re-asserts the grant.
+echo "provisioning demo authorization (analyst -> demo.customers)"
+ensure_user analyst
+ensure_role demo_customers_reader '{
+  "name":"demo_customers_reader",
+  "properties":{},
+  "securableObjects":[
+    {"fullName":"catalog_iceberg","type":"CATALOG","privileges":[{"name":"USE_CATALOG","condition":"ALLOW"}]},
+    {"fullName":"catalog_iceberg.demo","type":"SCHEMA","privileges":[{"name":"USE_SCHEMA","condition":"ALLOW"}]},
+    {"fullName":"catalog_iceberg.demo.customers","type":"TABLE","privileges":[{"name":"SELECT_TABLE","condition":"ALLOW"}]}
+  ]}'
+grant_role analyst demo_customers_reader
+
+# The LDAP administrator also needs an explicit Gravitino grant. Service-admin
+# is intentionally kept as `anonymous` for engine query-path compatibility;
+# this named-user grant is what makes the complete Iceberg catalog visible to
+# admin. Catalog-level privileges are inherited by every schema and table.
+echo "provisioning catalog authorization (admin -> catalog_iceberg)"
+ensure_user admin
+ensure_role demo_catalog_reader '{
+  "name":"demo_catalog_reader",
+  "properties":{},
+  "securableObjects":[
+    {"fullName":"catalog_iceberg","type":"CATALOG","privileges":[{"name":"USE_CATALOG","condition":"ALLOW"},{"name":"USE_SCHEMA","condition":"ALLOW"},{"name":"SELECT_TABLE","condition":"ALLOW"}]}
+  ]}'
+grant_role admin demo_catalog_reader
+
+echo "GRAVITINO_BOOTSTRAP_DONE"
+
+# --- Follow the server log (keeps PID 1 alive) ----------------------------
+LOG=/opt/gravitino/logs/gravitino-server.log
+mkdir -p /opt/gravitino/logs
+for _ in $(seq 1 60); do [ -f "$LOG" ] && break; sleep 1; done
+touch "$LOG"
+exec tail -F "$LOG"

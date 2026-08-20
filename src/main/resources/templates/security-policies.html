@@ -1,0 +1,62 @@
+<!--
+  Copyright 2026 Aleksey Martynov and contributors
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{layout :: page('security-policies', 'Security policies', ~{:: #content})}">
+<body>
+<div id="content">
+  <nav class="navbar k8s-title-bar nokids">
+    <div class="navbar-inner"><div class="container-fluid">
+      <ul class="nav editor-nav">
+        <li class="app-header"><i class="fa fa-fw fa-shield"></i> Security policies</li>
+      </ul>
+    </div></div>
+  </nav>
+  <div class="card card-small"><div class="card-body">
+    <h3>Access policies</h3>
+    <p class="k8s-muted">Policy management for connected tools is available here. Gravitino is the first supported tool.</p>
+    <div id="securityPolicies" aria-live="polite">
+      <div class="k8s-field-row">
+        <div class="k8s-field"><label for="policyRole">Role</label><input id="policyRole" type="text" placeholder="analyst" required="required"/></div>
+        <div class="k8s-field"><label for="policySubject">Subject</label><input id="policySubject" type="text" placeholder="role:analyst" required="required"/></div>
+        <div class="k8s-field"><label for="policyResource">Resource</label><input id="policyResource" type="text" placeholder="catalog.schema.table" required="required"/></div>
+        <div class="k8s-field"><label for="policyPrivilege">Privilege</label>
+          <select id="policyPrivilege">
+            <option>USE_CATALOG</option><option>USE_SCHEMA</option><option>SELECT_TABLE</option>
+            <option>INSERT_TABLE</option><option>UPDATE_TABLE</option><option>DELETE_TABLE</option>
+            <option>ALTER_TABLE</option><option>CREATE_TABLE</option><option>DROP_TABLE</option>
+          </select>
+        </div>
+      </div>
+      <div class="k8s-field-row">
+        <button id="policyGrant" type="button" class="btn btn-small">Grant</button>
+        <button id="policyRevoke" type="button" class="btn btn-small">Revoke</button>
+        <span id="policyMessage" class="k8s-muted" role="status"></span>
+      </div>
+      <section aria-labelledby="gravitinoPoliciesTitle">
+        <h4 id="gravitinoPoliciesTitle">Gravitino</h4>
+        <div id="gravitinoPolicies" class="k8s-muted">Loading policies…</div>
+      </section>
+      <section aria-labelledby="plannedPoliciesTitle">
+        <h4 id="plannedPoliciesTitle">Other tools</h4>
+        <div class="k8s-muted">HDFS, Ozone, HBase, Kyuubi Spark/Flink, Trino, StarRocks, and Jobs are planned.</div>
+      </section>
+    </div>
+  </div></div>
+</div>
+</body>
+</html>

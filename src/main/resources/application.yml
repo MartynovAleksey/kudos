@@ -61,4 +61,6 @@ kudos.cluster:
   flink-jobmanager-url: ${FLINK_JOBMANAGER_URL:}
   # Flink History Server, reverse-proxied under /flink-ui for administrators.
   flink-history-url: ${FLINK_HISTORY_URL:}
+  # Gravitino Iceberg REST catalog for the Editor catalog tree; blank disables it.
+  gravitino-iceberg-uri: ${GRAVITINO_ICEBERG_URI:}
 kudos.api.enabled: ${KUDOS_API_ENABLED:true}

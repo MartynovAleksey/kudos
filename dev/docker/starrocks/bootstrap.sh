@@ -17,5 +17,12 @@ set -euo pipefail
 
 password="$(cat /vault/secrets/starrocks-password)"
 escaped_password="$(printf '%s' "$password" | sed "s/'/''/g")"
-sed "s/__KUDOS_STARROCKS_PASSWORD__/$escaped_password/g" /bootstrap/bootstrap.sql \
+
+# The Iceberg external catalog's warehouse S3 secret is minted by Ozone at runtime
+# and published to the shared volume; template it into the catalog DDL.
+until test -r /shared/s3-credentials.env; do sleep 2; done
+. /shared/s3-credentials.env
+
+sed -e "s/__KUDOS_STARROCKS_PASSWORD__/$escaped_password/g" \
+    -e "s|__KUDOS_S3_SECRET__|$AWS_SECRET_ACCESS_KEY|g" /bootstrap/bootstrap.sql \
   | mysql -h starrocks.test.local -P 9030 -uroot

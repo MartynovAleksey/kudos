@@ -144,6 +144,17 @@ class EnabledApiCompatibilityTests {
     assertThat(script).contains("var UI_API = '/ui-api';").doesNotContain("'/api", "\"/api");
   }
 
+  @Test
+  void browserCatalogUsesStatusFromCatalogTreeResponse() throws Exception {
+    String script =
+        new ClassPathResource("app-static/kudos.js")
+            .getContentAsString(StandardCharsets.UTF_8);
+
+    assertThat(script)
+        .contains("tree.status === 'unavailable'")
+        .doesNotContain("tree.status === 'unavailable' || !tree.available");
+  }
+
   private static MockHttpSession session() {
     var context = SecurityContextHolder.createEmptyContext();
     context.setAuthentication(

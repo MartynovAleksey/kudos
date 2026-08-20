@@ -41,6 +41,7 @@ import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -79,6 +80,29 @@ class UiApiSecurityTests {
         .andExpect(header().doesNotExist("WWW-Authenticate"));
 
     verifyNoInteractions(kyuubi);
+  }
+
+  @Test
+  void securityPolicyApiEnforcesSecurityOfficerBoundary() throws Exception {
+    mockMvc
+        .perform(get("/ui-api/security/policies").session(sessionWithRole("analyst", "ROLE_USER")))
+        .andExpect(status().isForbidden());
+    mockMvc
+        .perform(
+            get("/ui-api/security/policies")
+                .session(sessionWithRole("admin", "ROLE_ADMINISTRATOR")))
+        .andExpect(status().isForbidden());
+    mockMvc
+        .perform(
+            get("/ui-api/security/policies").session(sessionWithRole("security-officer", "ROLE_SECURITY_OFFICER")))
+        // Authorized requests reach the adapter; no Gravitino upstream is
+        // available in this test context, so the dependency failure is 502.
+        .andExpect(status().isBadGateway());
+    mockMvc
+        .perform(
+            get("/ui-api/security/policies")
+                .session(sessionWithRole("both", "ROLE_ADMINISTRATOR", "ROLE_SECURITY_OFFICER")))
+        .andExpect(status().isBadGateway());
   }
 
   @Test
@@ -143,9 +167,18 @@ class UiApiSecurityTests {
   }
 
   private static MockHttpSession session() {
+    return sessionWithRole("admin");
+  }
+
+  private static MockHttpSession sessionWithRole(String username, String... authorities) {
     var context = SecurityContextHolder.createEmptyContext();
     context.setAuthentication(
-        UsernamePasswordAuthenticationToken.authenticated("admin", "n/a", List.of()));
+        UsernamePasswordAuthenticationToken.authenticated(
+            username,
+            "n/a",
+            java.util.Arrays.stream(authorities)
+                .map(SimpleGrantedAuthority::new)
+                .toList()));
     var session = new MockHttpSession();
     session.setAttribute(
         HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, context);

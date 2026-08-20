@@ -423,3 +423,171 @@ legend {
   width: 100%;
   margin-top: 2px;
 }
+
+/* ------------------------------------------- Editor catalog tree panel */
+/* The panel sits to the RIGHT of the editor+results column and spans their
+   height. Colors come from the modern theme's CSS variables when present, with
+   light fallbacks so it still reads in the classic theme. */
+.k8s-editor-layout {
+  display: flex;
+  align-items: stretch;
+  gap: 20px;
+}
+/* The editor input card and the results card stack in this column; the panel is
+   its sibling on the right, so it lines up symmetrically with both cards. */
+.k8s-editor-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+/* Three classes so this beats the modern theme's `.card { margin: 20px 0 }` —
+   the flex gap alone provides the 20px, matching every other spacing. */
+.k8s-editor-layout .k8s-editor-main > .card {
+  margin: 0;
+}
+.k8s-catalog-panel {
+  flex: 0 0 264px;
+  width: 264px;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--k8s-panel, #ffffff);
+  border: 1px solid var(--k8s-line, #e5e5e5);
+  border-radius: 11px;
+  overflow: hidden;
+}
+.k8s-catalog-header {
+  border-bottom: 1px solid var(--k8s-line, #e5e5e5);
+}
+.k8s-catalog-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 12px;
+  background: transparent;
+  border: 0;
+  color: var(--k8s-text, #232329);
+  font-weight: 600;
+  cursor: pointer;
+}
+.k8s-catalog-toggle:hover {
+  background: var(--k8s-subtle, #f0f0f3);
+}
+.k8s-catalog-toggle .fa-database {
+  color: var(--k8s-blue, #1479ec);
+}
+.k8s-catalog-title {
+  flex: 1 1 auto;
+  text-align: left;
+}
+.k8s-catalog-chevron {
+  color: var(--k8s-muted, #8a9096);
+}
+.k8s-catalog-tree {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 6px 0;
+}
+.k8s-catalog-status {
+  padding: 8px 12px;
+  font-size: 12px;
+}
+.k8s-catalog-node {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 4px 10px;
+  background: transparent;
+  border: 0;
+  color: var(--k8s-text, #232329);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.k8s-catalog-node:hover {
+  background: var(--k8s-subtle, #f0f0f3);
+}
+.k8s-catalog-schema-toggle {
+  font-weight: 600;
+}
+.k8s-catalog-table {
+  padding-left: 26px;
+}
+.k8s-catalog-table .fa {
+  color: var(--k8s-muted, #8a9096);
+}
+
+/* ---- collapsed: a slim vertical toolbar rail ---- */
+.k8s-editor-layout[data-editor-catalog="collapsed"] .k8s-catalog-panel {
+  flex-basis: 46px;
+  width: 46px;
+  background: var(--k8s-sidebar, #fafafa);
+}
+.k8s-editor-layout[data-editor-catalog="collapsed"] .k8s-catalog-header {
+  border-bottom: 0;
+}
+.k8s-editor-layout[data-editor-catalog="collapsed"] .k8s-catalog-toggle {
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 0;
+  justify-content: flex-start;
+}
+.k8s-editor-layout[data-editor-catalog="collapsed"] .k8s-catalog-toggle:hover {
+  background: transparent;
+}
+/* the icon and chevron read as boxed tool buttons on the rail */
+.k8s-editor-layout[data-editor-catalog="collapsed"] .k8s-catalog-toggle .fa-database,
+.k8s-editor-layout[data-editor-catalog="collapsed"] .k8s-catalog-chevron {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--k8s-line, #e5e5e5);
+  border-radius: 7px;
+  background: var(--k8s-panel, #ffffff);
+}
+.k8s-editor-layout[data-editor-catalog="collapsed"] .k8s-catalog-toggle:hover .fa-database,
+.k8s-editor-layout[data-editor-catalog="collapsed"] .k8s-catalog-toggle:hover .fa-database.k8s-catalog-chevron {
+  background: var(--k8s-subtle, #f0f0f3);
+}
+.k8s-editor-layout[data-editor-catalog="collapsed"] .k8s-catalog-title {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  flex: 0 0 auto;
+  text-align: left;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 11px;
+  color: var(--k8s-muted, #8a9096);
+}
+.k8s-editor-layout[data-editor-catalog="collapsed"] .k8s-catalog-tree {
+  display: none;
+}
+
+@media (max-width: 720px) {
+  .k8s-editor-layout {
+    flex-direction: column;
+  }
+  .k8s-catalog-panel,
+  .k8s-editor-layout[data-editor-catalog="collapsed"] .k8s-catalog-panel {
+    flex-basis: auto;
+    width: auto;
+    max-height: 240px;
+  }
+  .k8s-editor-layout[data-editor-catalog="collapsed"] .k8s-catalog-toggle {
+    flex-direction: row;
+  }
+  .k8s-editor-layout[data-editor-catalog="collapsed"] .k8s-catalog-title {
+    writing-mode: horizontal-tb;
+    transform: none;
+  }
+}

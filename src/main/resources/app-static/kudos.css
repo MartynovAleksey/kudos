@@ -1251,7 +1251,7 @@ body[data-ui-mode="modern"] .main-page {
   height: 100vh;
   min-height: 0;
   margin-left: 252px;
-  padding: 26px 30px;
+  padding: 20px;
   box-sizing: border-box;
   background: var(--k8s-window);
   overflow-y: auto;
@@ -1354,6 +1354,17 @@ body[data-ui-mode="modern"] .k8s-session-bar {
   border: 0;
   border-radius: 11px;
   background: #ededf1;
+  /* Keep the bar this tall even when empty (Trino/StarRocks have no session
+     controls) so the layout doesn't jump between engine tabs. */
+  min-height: 50px;
+  box-sizing: border-box;
+}
+/* Empty the bar on engines without sessions. The IDs outrank the modern theme's
+   own display rules on these children, which a class could not. */
+.k8s-session-bar[data-empty="true"] #sessionsPanel,
+.k8s-session-bar[data-empty="true"] #newSession,
+.k8s-session-bar[data-empty="true"] #closeAllSessions {
+  display: none;
 }
 body[data-ui-mode="modern"] .k8s-session-tab {
   height: 42px;
@@ -1692,6 +1703,82 @@ body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"]
 body[data-ui-mode="modern"][data-ui-theme="dark"] .k8s-ace-editor .ace_gutter,
 body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .k8s-ace-editor .ace_gutter {
   background: #2d2d33;
+  color: #7f7f8c;
+}
+/* The bundled sqlserver theme is light-only (black text, navy keywords, black
+   cursor) — unreadable on the dark editor background. Repaint its syntax tokens
+   for the dark palette instead of shipping a second ace theme file. */
+body[data-ui-mode="modern"][data-ui-theme="dark"] .k8s-ace-editor .ace-sqlserver,
+body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .k8s-ace-editor .ace-sqlserver {
+  background-color: transparent;
+  color: #e4e4ea;
+}
+body[data-ui-mode="modern"][data-ui-theme="dark"] .k8s-ace-editor .ace_identifier,
+body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .k8s-ace-editor .ace_identifier,
+body[data-ui-mode="modern"][data-ui-theme="dark"] .k8s-ace-editor .ace_numeric,
+body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .k8s-ace-editor .ace_numeric,
+body[data-ui-mode="modern"][data-ui-theme="dark"] .k8s-ace-editor .ace_constant.ace_numeric,
+body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .k8s-ace-editor .ace_constant.ace_numeric {
+  color: #e4e4ea;
+}
+body[data-ui-mode="modern"][data-ui-theme="dark"] .k8s-ace-editor .ace_cursor,
+body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .k8s-ace-editor .ace_cursor {
+  color: #f5f5f7;
+}
+body[data-ui-mode="modern"][data-ui-theme="dark"] .k8s-ace-editor .ace_keyword,
+body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .k8s-ace-editor .ace_keyword,
+body[data-ui-mode="modern"][data-ui-theme="dark"] .k8s-ace-editor .ace_meta.ace_tag,
+body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .k8s-ace-editor .ace_meta.ace_tag,
+body[data-ui-mode="modern"][data-ui-theme="dark"] .k8s-ace-editor .ace_set.ace_statement,
+body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .k8s-ace-editor .ace_set.ace_statement {
+  color: #6ab0f3;
+}
+body[data-ui-mode="modern"][data-ui-theme="dark"] .k8s-ace-editor .ace_string,
+body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .k8s-ace-editor .ace_string,
+body[data-ui-mode="modern"][data-ui-theme="dark"] .k8s-ace-editor .ace_string.ace_regex,
+body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .k8s-ace-editor .ace_string.ace_regex {
+  color: #ce9178;
+}
+body[data-ui-mode="modern"][data-ui-theme="dark"] .k8s-ace-editor .ace_comment,
+body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .k8s-ace-editor .ace_comment {
+  color: #7fae6b;
+}
+body[data-ui-mode="modern"][data-ui-theme="dark"] .k8s-ace-editor .ace_support.ace_function,
+body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .k8s-ace-editor .ace_support.ace_function {
+  color: #dcdcaa;
+}
+body[data-ui-mode="modern"][data-ui-theme="dark"] .k8s-ace-editor .ace_keyword.ace_operator,
+body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .k8s-ace-editor .ace_keyword.ace_operator,
+body[data-ui-mode="modern"][data-ui-theme="dark"] .k8s-ace-editor .ace_paren,
+body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .k8s-ace-editor .ace_paren,
+body[data-ui-mode="modern"][data-ui-theme="dark"] .k8s-ace-editor .ace_punctuation,
+body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .k8s-ace-editor .ace_punctuation {
+  color: #b6b6c2;
+}
+body[data-ui-mode="modern"][data-ui-theme="dark"] .k8s-ace-editor .ace_storage,
+body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .k8s-ace-editor .ace_storage,
+body[data-ui-mode="modern"][data-ui-theme="dark"] .k8s-ace-editor .ace_variable,
+body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .k8s-ace-editor .ace_variable,
+body[data-ui-mode="modern"][data-ui-theme="dark"] .k8s-ace-editor .ace_constant.ace_language,
+body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .k8s-ace-editor .ace_constant.ace_language {
+  color: #4fc1ff;
+}
+body[data-ui-mode="modern"][data-ui-theme="dark"] .k8s-ace-editor .ace_marker-layer .ace_selection,
+body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .k8s-ace-editor .ace_marker-layer .ace_selection {
+  background: rgba(60, 96, 148, 0.55);
+}
+body[data-ui-mode="modern"][data-ui-theme="dark"] .k8s-ace-editor .ace_marker-layer .ace_active-line,
+body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .k8s-ace-editor .ace_marker-layer .ace_active-line {
+  background: rgba(255, 255, 255, 0.05);
+}
+body[data-ui-mode="modern"][data-ui-theme="dark"] .k8s-ace-editor .ace_gutter-active-line,
+body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .k8s-ace-editor .ace_gutter-active-line {
+  background-color: #3a3a43;
+}
+body[data-ui-mode="modern"][data-ui-theme="dark"] .k8s-ace-editor .ace_marker-layer .ace_selected-word,
+body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] .k8s-ace-editor .ace_marker-layer .ace_selected-word {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
 }
 body[data-ui-mode="modern"][data-ui-theme="dark"] #uiSettingsButton,
 body[data-ui-mode="modern"][data-ui-theme="system"][data-ui-system-theme="dark"] #uiSettingsButton,
