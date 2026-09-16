@@ -2879,8 +2879,52 @@
 
   /* -------------------------------------------------------------------- jobs */
 
+  // ---- Job detail: Spark UI / Logs tabs ----
+  // The engine log is fetched only when its tab is first opened: the Spark UI is
+  // the default view and a log can run to megabytes.
+  function initJob() {
+    var logsTab = el('jobLogsTab');
+    var uiTab = el('sparkUiTab');
+    if (!logsTab || !uiTab) {
+      // Engine logs are not configured, so there is nothing to switch between.
+      return;
+    }
+    var uiPane = el('sparkUiPane');
+    var logsPane = el('jobLogsPane');
+    var frame = el('jobLogs');
+
+    function show(logs) {
+      el('sparkUiTabItem').classList.toggle('active', !logs);
+      el('jobLogsTabItem').classList.toggle('active', logs);
+      uiPane.classList.toggle('active', !logs);
+      logsPane.classList.toggle('active', logs);
+      uiPane.hidden = logs;
+      logsPane.hidden = !logs;
+      uiTab.setAttribute('aria-selected', String(!logs));
+      logsTab.setAttribute('aria-selected', String(logs));
+      if (logs && !frame.getAttribute('src')) {
+        frame.setAttribute('src', frame.getAttribute('data-src'));
+      }
+    }
+
+    uiTab.addEventListener('click', function (event) {
+      event.preventDefault();
+      show(false);
+    });
+    logsTab.addEventListener('click', function (event) {
+      event.preventDefault();
+      show(true);
+    });
+  }
+
   function initJobs() {
     var list = el('jobList');
+    if (!list) {
+      // The job detail page shares data-app="jobs" with the list but carries
+      // none of its controls.
+      initJob();
+      return;
+    }
     var running = el('runningJobs');
     var pager = el('jobPager');
     var search = el('jobSearch');

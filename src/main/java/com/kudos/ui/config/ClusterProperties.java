@@ -40,4 +40,9 @@ public record ClusterProperties(
      * Gravitino Iceberg REST catalog base (e.g. {@code http://host:9001/iceberg/}); blank
      * disables the Editor catalog tree panel.
      */
-    String gravitinoIcebergUri) {}
+    String gravitinoIcebergUri,
+    /**
+     * Ozone path holding the collected Kyuubi engine logs (e.g. {@code /s3v/enginelogs});
+     * blank hides the Logs tab on the Spark job page.
+     */
+    String engineLogsPath) {}

@@ -61,7 +61,7 @@ class SparkUiProxyControllerTests {
             new RoleAccess());
     return new SparkUiProxyController(
         new ClusterProperties(
-            "", "", "", "", "", "", "", "", "http://spark-history", "", "", "", ""), access) {
+            "", "", "", "", "", "", "", "", "http://spark-history", "", "", "", "", ""), access) {
       @Override
       HttpURLConnection open(URL target) {
         return upstream;

@@ -28,6 +28,13 @@
             <a th:href="@{/jobs(type='spark')}">Spark Jobs</a>
             <span th:text="' / ' + ${applicationId}"> / application</span>
           </li>
+          <li class="k8s-titlebar-tab active" id="sparkUiTabItem">
+            <a id="sparkUiTab" href="#sparkUiPane" role="tab">Spark UI</a>
+          </li>
+          <!-- Only when the engine logs have somewhere to be read from. -->
+          <li class="k8s-titlebar-tab" id="jobLogsTabItem" th:if="${engineLogs}">
+            <a id="jobLogsTab" href="#jobLogsPane" role="tab">Logs</a>
+          </li>
         </ul>
       </div>
     </div>
@@ -39,6 +46,10 @@
        th:href="@{'/spark-ui/api/v1/applications/' + ${applicationId} + '/logs'}">
       <i class="fa fa-fw fa-download"></i> Download logs
     </a>
+    <a class="k8s-spaced" target="_blank" th:if="${engineLogs}"
+       th:href="@{'/jobs/' + ${applicationId} + '/engine-log'}">
+      <i class="fa fa-fw fa-align-left"></i> Engine log as text
+    </a>
     <a class="k8s-spaced" target="_blank"
        th:href="@{'/spark-ui/history/' + ${applicationId} + '/jobs/'}">
       <i class="fa fa-fw fa-external-link"></i> Open in a new tab
@@ -47,9 +58,19 @@
 
   <!-- The Spark UI itself, proxied through this application so it is served
        from the same origin and behind the same session. -->
-  <iframe id="sparkUi" class="k8s-spark-frame"
-          th:src="@{'/spark-ui/history/' + ${applicationId} + '/jobs/'}"
-          title="Spark UI"></iframe>
+  <div id="sparkUiPane" class="tab-pane active" role="tabpanel">
+    <iframe id="sparkUi" class="k8s-spark-frame"
+            th:src="@{'/spark-ui/history/' + ${applicationId} + '/jobs/'}"
+            title="Spark UI"></iframe>
+  </div>
+
+  <!-- The engine's raw stdout/stderr, read back from Ozone. The source is held
+       in data-src so a megabyte of log is fetched only if this tab is opened. -->
+  <div id="jobLogsPane" class="tab-pane" role="tabpanel" hidden th:if="${engineLogs}">
+    <iframe id="jobLogs" class="k8s-spark-frame"
+            th:attr="data-src=@{'/jobs/' + ${applicationId} + '/engine-log'}"
+            title="Engine log"></iframe>
+  </div>
 </div>
 </body>
 </html>

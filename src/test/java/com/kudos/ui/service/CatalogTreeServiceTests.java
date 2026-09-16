@@ -52,7 +52,7 @@ class CatalogTreeServiceTests {
   private CatalogTreeService service(String gravitinoUri) {
     ClusterProperties properties =
         new ClusterProperties(
-            "", "", "", "", "", "", "", "", "", "", "", "", gravitinoUri);
+            "", "", "", "", "", "", "", "", "", "", "", "", gravitinoUri, "");
     return new CatalogTreeService(properties, passthroughKerberos());
   }
 

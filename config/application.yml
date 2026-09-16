@@ -92,6 +92,11 @@ kudos:
     # Gravitino management REST API used by the security-policy console.
     gravitino-rest-uri: ${GRAVITINO_REST_URI:http://gravitino.test.local:8090}
 
+    # Ozone path where the log collector writes each Kyuubi engine's stdout and
+    # stderr. The Logs tab of a Spark job reads it back from here; blank hides
+    # that tab.
+    engine-logs-path: /s3v/enginelogs
+
   # UI-level settings.
   ui:
     # Optional HTML shown as a banner across the top of every screen. Trusted

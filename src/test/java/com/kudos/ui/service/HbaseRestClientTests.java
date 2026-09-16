@@ -92,7 +92,7 @@ class HbaseRestClientTests {
 
   private static HbaseRestClient client(String restUrl) {
     ClusterProperties properties =
-        new ClusterProperties("", "", "", "", "", restUrl, "", "", "", "", "", "", "");
+        new ClusterProperties("", "", "", "", "", restUrl, "", "", "", "", "", "", "", "");
     KerberosExecutor kerberos =
         new KerberosExecutor() {
           @Override

@@ -89,6 +89,10 @@ services:
         condition: service_healthy
     volumes:
       - kerberos-shared:/shared:ro
+      # Every engine's stdout/stderr lands in this directory as
+      # work/<user>/kyuubi-spark-sql-engine.log.<n>. Naming the volume lets the
+      # log collector tail the same files without running inside this container.
+      - kyuubi-work:/opt/kyuubi/work
     ports:
       - "10009:10009"
       # Kyuubi's built-in web UI and REST API.
@@ -107,6 +111,29 @@ services:
       interval: 10s
       timeout: 5s
       retries: 18
+
+  # Tails the Kyuubi engine log files and writes their raw lines to Ozone, where
+  # the Jobs screen reads them back per Spark application. Nothing depends on it:
+  # if it is down, queries keep running and only the Logs tab goes empty.
+  log-collector:
+    build: ./dev/docker/fluentbit
+    hostname: log-collector.test.local
+    depends_on:
+      kyuubi:
+        condition: service_healthy
+      ozone:
+        condition: service_healthy
+    volumes:
+      # The engine log files, and the S3 secret Ozone publishes at runtime.
+      - kyuubi-work:/opt/kyuubi/work:ro
+      - kerberos-shared:/shared:ro
+      # Tail offsets and the $INDEX counter, so a restart neither re-sends the
+      # whole backlog nor reuses object names.
+      - log-collector-data:/var/lib/fluent-bit
+    networks:
+      default:
+        aliases:
+          - log-collector.test.local
 
   hdfs:
     build: ./dev/docker/hdfs
@@ -666,6 +693,10 @@ services:
 
 volumes:
   freeipa-data:
+  # Kyuubi's engine working directory, tailed by the log collector.
+  kyuubi-work:
+  # Fluent Bit tail offsets and S3 object counter.
+  log-collector-data:
   kerberos-shared:
   app-secrets:
   app-logs:
