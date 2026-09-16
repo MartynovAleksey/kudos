@@ -1,0 +1,57 @@
+# Copyright 2026 Aleksey Martynov and contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# CoreDNS server blocks for the stand's Kerberos zone. __HOST_IP__ and
+# __NAMESPACE__ are substituted by the bring-up script.
+#
+# The services that stay in Docker Compose get their own zone blocks rather than
+# `hosts` entries inside the wildcard block. Plugin order inside one CoreDNS
+# block is fixed by the build, and `rewrite` runs before `hosts`, so a single
+# block would rewrite freeipa.test.local into a Service that does not exist
+# before `hosts` ever saw the name. CoreDNS picks the most specific matching
+# zone, so an exact-name block wins instead.
+
+freeipa.test.local:53 {
+    errors
+    hosts {
+        __HOST_IP__ freeipa.test.local
+        fallthrough
+    }
+}
+
+vault.test.local:53 {
+    errors
+    hosts {
+        __HOST_IP__ vault.test.local
+        fallthrough
+    }
+}
+
+test.local:53 {
+    errors
+    # `answer auto` restores the queried name in the response. Without it the
+    # reply carries the cluster.local canonical name, and a Kerberos client
+    # with dns_canonicalize_hostname on (the MIT default) would build its SPN
+    # from that name — a principal that does not exist, in a domain the
+    # realm mapping does not cover.
+    rewrite name regex (.*)\.test\.local {1}.__NAMESPACE__.svc.cluster.local answer auto
+    kubernetes cluster.local in-addr.arpa ip6.arpa {
+        pods insecure
+        ttl 30
+    }
+    forward . /etc/resolv.conf
+    cache 30
+    loop
+    reload
+}

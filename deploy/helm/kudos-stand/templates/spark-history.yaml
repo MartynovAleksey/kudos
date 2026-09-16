@@ -1,0 +1,83 @@
+# Spark History Server. No consumers depend on it (it is a reference UI only),
+# so it only waits on freeipa and ozone, matching compose.
+#
+# NOTE on naming: compose gives this container hostname `sparkhistory.test.local`
+# (no hyphen) -- that is the name baked into its Kerberos keytab
+# (/shared/HTTP-sparkhistory.test.local.keytab, minted by FreeIPA) and into
+# config/application.yml's spark-history-url. The chart-wide convention calls
+# for a Service literally named "sparkhistory" (the values key), but that
+# spelling would make CoreDNS rewrite `spark-history.test.local` to a Service
+# that doesn't hold the SPN this container actually authenticates as -- Kerberos
+# would break. So the Service below is named "sparkhistory" (no hyphen) to match
+# the real principal/hostname; the Deployment keeps the values-key spelling
+# ("sparkhistory") since only the Service name is DNS/SPN-load-bearing. See the
+# final report for this deliberate deviation from the literal naming list.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spark-history
+  labels:
+    {{- include "stand.labels" (dict "root" .) | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "stand.selectorLabels" (dict "name" "sparkhistory") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "stand.labels" (dict "root" .) | nindent 8 }}
+        {{- include "stand.selectorLabels" (dict "name" "sparkhistory") | nindent 8 }}
+    spec:
+      {{- include "stand.hostIdentity" (dict "root" $ "name" "sparkhistory") | nindent 6 }}
+      initContainers:
+        {{- include "stand.kerberosInit" (dict "root" .) | nindent 8 }}
+        {{- include "stand.waitFor" (dict "root" . "service" "freeipa" "port" 88) | nindent 8 }}
+        {{- include "stand.waitFor" (dict "root" . "service" "ozone" "port" 9862) | nindent 8 }}
+      containers:
+        - name: spark-history
+          image: "{{ index .Values.services "sparkhistory" "image" }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            {{- range index .Values.services "sparkhistory" "ports" }}
+            - containerPort: {{ . }}
+            {{- end }}
+          volumeMounts:
+            {{- include "stand.sharedMounts" (dict "root" .) | nindent 12 }}
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          readinessProbe:
+            exec:
+              command:
+                - bash
+                - -c
+                - >-
+                  ps -ef | grep -q '[o]rg.apache.spark.deploy.history.HistoryServer' &&
+                  (: > /dev/tcp/$POD_IP/18080)
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
+      volumes:
+        {{- include "stand.sharedVolumes" (dict "root" .) | nindent 8 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sparkhistory
+  labels:
+    {{- include "stand.labels" (dict "root" .) | nindent 4 }}
+spec:
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "stand.selectorLabels" (dict "name" "sparkhistory") | nindent 4 }}
+  ports:
+    {{- range index .Values.services "sparkhistory" "ports" }}
+    - name: "p{{ . }}"
+      port: {{ . }}
+      targetPort: {{ . }}
+    {{- end }}

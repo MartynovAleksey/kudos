@@ -1,0 +1,127 @@
+{{/*
+HDFS: single NameNode+DataNode container (dev/docker/hdfs), matching the compose
+`hdfs` service. Kerberized, so it needs the shared keytab volume and must wait
+for FreeIPA. No depends_on besides freeipa in compose.yaml.
+*/}}
+{{- $root := . -}}
+{{- $svc := $root.Values.services.hdfs -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: hdfs
+  labels:
+    {{- include "stand.labels" (dict "root" $root) | nindent 4 }}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "stand.selectorLabels" (dict "name" "hdfs") | nindent 4 }}
+  ports:
+    {{- range $svc.ports }}
+    - name: tcp-{{ . }}
+      port: {{ . }}
+      targetPort: {{ . }}
+    {{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hdfs
+  labels:
+    {{- include "stand.labels" (dict "root" $root) | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "stand.selectorLabels" (dict "name" "hdfs") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "stand.labels" (dict "root" $root) | nindent 8 }}
+        {{- include "stand.selectorLabels" (dict "name" "hdfs") | nindent 8 }}
+    spec:
+      {{- include "stand.hostIdentity" (dict "root" $root "name" "hdfs") | nindent 6 }}
+      # The secure DataNode listens on privileged ports 1004/1006 through JSVC,
+      # the model the compose stand uses. A pod cannot reproduce that in its own
+      # network namespace, so it shares the node's. ClusterFirstWithHostNet is
+      # required with it: the default policy would hand the pod the node's
+      # resolver and it would lose the test.local zone, and with it Kerberos.
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      # On the node's network the DataNode has to bind hdfs.test.local:1004 for
+      # real, and CoreDNS answers that name with the Service IP, which cannot be
+      # bound. Point it at the node itself, which is where this pod now lives.
+      {{- with $root.Values.nodeAddress }}
+      hostAliases:
+        - ip: {{ . | quote }}
+          hostnames:
+            - hdfs.{{ $root.Values.domain }}
+      {{- end }}
+      # compose: hdfs depends_on freeipa (service_healthy).
+      initContainers:
+        {{- include "stand.kerberosInit" (dict "root" $root) | nindent 8 }}
+        {{- include "stand.waitFor" (dict "root" $root "service" "freeipa" "port" 88) | nindent 8 }}
+      containers:
+        - name: hdfs
+          image: {{ if contains ":" $svc.image }}{{ $svc.image }}{{ else }}{{ $svc.image }}:{{ $root.Values.image.tag }}{{ end }}
+          imagePullPolicy: {{ $root.Values.image.pullPolicy }}
+          ports:
+            {{- range $svc.ports }}
+            - containerPort: {{ . }}
+            {{- end }}
+          volumeMounts:
+            - name: conf
+              mountPath: /opt/hadoop/etc/hadoop/core-site.xml
+              subPath: core-site.xml
+            - name: conf
+              mountPath: /opt/hadoop/etc/hadoop/hdfs-site.xml
+              subPath: hdfs-site.xml
+            {{- include "stand.sharedMounts" (dict "root" $root) | nindent 12 }}
+            - name: data
+              mountPath: {{ $svc.data.mountPath }}
+          # compose healthcheck: keytab present, DataNode process running, NameNode
+          # web UI port accepting connections.
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          readinessProbe:
+            exec:
+              command:
+                - bash
+                - -c
+                - >-
+                  test -r {{ $root.Values.shared.mountPath }}/nn-hdfs.{{ $root.Values.domain }}.keytab
+                  && ps -ef | grep -q '[o]rg.apache.hadoop.hdfs.server.datanode.DataNode'
+                  && bash -c ': > /dev/tcp/$POD_IP/9870'
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
+      volumes:
+        - name: conf
+          configMap:
+            name: kudos-stand-hdfs-conf
+        {{- with $svc.data }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: hdfs-data
+        {{- end }}
+        {{- include "stand.sharedVolumes" (dict "root" $root) | nindent 8 }}
+---
+{{- with $svc.data }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hdfs-data
+  labels:
+    {{- include "stand.labels" (dict "root" $root) | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: {{ .size }}
+{{- end }}
+

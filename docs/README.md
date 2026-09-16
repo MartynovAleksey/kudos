@@ -50,13 +50,21 @@ The project is divided into three independent parts:
 | **Test environment** — single-node setup (FreeIPA, HDFS, Kyuubi, Trino, StarRocks, HBase, Ozone, Vault) and running the application against it | Docker Compose (`compose.yaml`) | this README (below) |
 | **Image build** — multi-stage build with optional security scans | Docker (`dev/docker/app/Dockerfile`) | [docs/BUILD.md](BUILD.md) |
 | **Production deployment** of the ready application outside test mode | Helm (`deploy/helm/kudos`) | [docs/DEPLOY-HELM.md](DEPLOY-HELM.md) |
+| **Test stand in Kubernetes** — the data services and engines in a cluster, FreeIPA and Vault still in Compose | Helm (`deploy/helm/kudos-stand`), `dev/scripts/k8s-up.sh` | [docs/K8S-STAND.md](K8S-STAND.md) |
 | **Engine logs** — Kyuubi engine stdout/stderr collected into Ozone and shown on a Spark job's Logs tab | Fluent Bit (`dev/docker/fluentbit`), bucket `/s3v/enginelogs` | [docs/ENGINE-LOGS.md](ENGINE-LOGS.md) |
+| **Live Spark UI** — a running application's own Spark UI, announced by its driver and proxied under `/spark-ui/running/<appId>` | Spark plugin (`spark-plugin/`), `/engine-api` | [docs/SPARK-LIVE-UI.md](SPARK-LIVE-UI.md) |
 
 Project documents for SQL engines and new components are in [docs/design/](design/README.md).
 
 In production mode, HashiCorp Vault issues the TLS certificate (PKI + AppRole), while configuration and secrets come from external ConfigMaps/Secrets. The same contract (Vault issues the certificate and the Vault Agent sidecar places it in `/vault/secrets`) is reproduced in the test environment through dev-mode Vault.
 
 ## Quick start of the test environment
+
+> The **Kubernetes stand is the primary test environment** — see
+> [docs/K8S-STAND.md](K8S-STAND.md): `dev/scripts/k8s-up.sh` brings it up, the UI
+> answers at `http://localhost:30443/`, and `dev/scripts/k8s-redeploy.sh` applies a
+> change to it. The Compose stand below is still supported and `compose.yaml`
+> remains the source of truth for what each service is.
 
 
 
@@ -822,6 +830,7 @@ cd kudos
 | `kudos.cluster.ozone-conf-dir` | Directory containing Ozone `core-site.xml` and `ozone-site.xml`. |
 | `kudos.cluster.spark-history-url` | Spark History Server for the Jobs screen. |
 | `kudos.cluster.kerberos-principal` | User principal template; `{user}` is replaced with the LDAP login. The TGT for this principal is obtained from the password at login; no keytab is used. |
+| `kudos.spark.registration-token`, `kudos.spark.ui-hosts`, `kudos.spark.running-ttl` | How a running Spark driver announces its live UI so Jobs can open it. A blank token turns the `/engine-api` transport off entirely. See [docs/SPARK-LIVE-UI.md](SPARK-LIVE-UI.md). |
 
 
 

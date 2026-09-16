@@ -40,7 +40,7 @@ while [ $# -gt 0 ]; do
 done
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-root="$(cd -- "$script_dir/.." && pwd)"
+root="$(cd -- "$script_dir/../.." && pwd)"
 cd "$root"
 image="kudos:0.1.0"
 compose_bin="${DOCKER_COMPOSE_BIN:-$HOME/.docker/cli-plugins/docker-compose}"

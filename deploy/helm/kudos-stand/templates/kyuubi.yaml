@@ -1,0 +1,99 @@
+# Kyuubi (Thrift + REST). Waits on freeipa (keytabs), ozone (event-log store),
+# flink-jobmanager and gravitino, exactly like compose's depends_on chain.
+# Keeps its own engine work directory as a PersistentVolumeClaim so the
+# log-collector pod (a separate pod entirely, unlike compose's shared container
+# network) can tail the same files read-only. Two pods sharing one claim is why
+# it must be ReadWriteMany.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kudos-stand-kyuubi-work
+  labels:
+    {{- include "stand.labels" (dict "root" .) | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteMany
+  {{- with .Values.shared.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.services.kyuubi.work.size }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kyuubi
+  labels:
+    {{- include "stand.labels" (dict "root" .) | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "stand.selectorLabels" (dict "name" "kyuubi") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "stand.labels" (dict "root" .) | nindent 8 }}
+        {{- include "stand.selectorLabels" (dict "name" "kyuubi") | nindent 8 }}
+    spec:
+      {{- include "stand.hostIdentity" (dict "root" $ "name" "kyuubi") | nindent 6 }}
+      initContainers:
+        {{- include "stand.kerberosInit" (dict "root" .) | nindent 8 }}
+        {{- include "stand.waitFor" (dict "root" . "service" "freeipa" "port" 88) | nindent 8 }}
+        {{- include "stand.waitFor" (dict "root" . "service" "ozone" "port" 9862) | nindent 8 }}
+        {{- include "stand.waitFor" (dict "root" . "service" "flink-jobmanager" "port" 8081) | nindent 8 }}
+        {{- include "stand.waitFor" (dict "root" . "service" "gravitino" "port" 8090) | nindent 8 }}
+      containers:
+        - name: kyuubi
+          image: "{{ .Values.services.kyuubi.image }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            {{- range .Values.services.kyuubi.ports }}
+            - containerPort: {{ . }}
+            {{- end }}
+          volumeMounts:
+            {{- include "stand.sharedMounts" (dict "root" .) | nindent 12 }}
+            - name: work
+              mountPath: {{ .Values.services.kyuubi.work.mountPath }}
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          readinessProbe:
+            exec:
+              command:
+                - bash
+                - -c
+                - >-
+                  test -f /shared/kyuubi.keytab &&
+                  (: > /dev/tcp/$POD_IP/10009) &&
+                  (: > /dev/tcp/$POD_IP/10099)
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 18
+      volumes:
+        {{- include "stand.sharedVolumes" (dict "root" .) | nindent 8 }}
+        - name: work
+          persistentVolumeClaim:
+            claimName: kudos-stand-kyuubi-work
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kyuubi
+  labels:
+    {{- include "stand.labels" (dict "root" .) | nindent 4 }}
+spec:
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "stand.selectorLabels" (dict "name" "kyuubi") | nindent 4 }}
+  ports:
+    {{- range .Values.services.kyuubi.ports }}
+    - name: "p{{ . }}"
+      port: {{ . }}
+      targetPort: {{ . }}
+    {{- end }}

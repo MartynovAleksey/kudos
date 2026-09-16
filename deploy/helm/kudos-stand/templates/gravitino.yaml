@@ -1,0 +1,100 @@
+# Full Apache Gravitino server (Iceberg REST catalog + metalake/role bootstrap).
+# Only waits on ozone, matching compose (the warehouse bucket must exist first).
+#
+# GAP: compose gives gravitino TWO persistent volumes -- gravitino-data at
+# /data/gravitino (the SQLite Iceberg-catalog DB) and
+# gravitino-h2-security-console at /opt/gravitino/data (the H2 entity store:
+# metalakes, catalogs, roles, grants). values.yaml's services.gravitino only
+# defines one "data" entry. Rather than add a second values key, both compose
+# paths are carried as subPaths of the single PVC values.yaml already describes,
+# so both survive a pod restart on the storage values.yaml actually provisions.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kudos-stand-gravitino-data
+  labels:
+    {{- include "stand.labels" (dict "root" .) | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- with .Values.shared.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.services.gravitino.data.size }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gravitino
+  labels:
+    {{- include "stand.labels" (dict "root" .) | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "stand.selectorLabels" (dict "name" "gravitino") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "stand.labels" (dict "root" .) | nindent 8 }}
+        {{- include "stand.selectorLabels" (dict "name" "gravitino") | nindent 8 }}
+    spec:
+      {{- include "stand.hostIdentity" (dict "root" $ "name" "gravitino") | nindent 6 }}
+      initContainers:
+        {{- include "stand.kerberosInit" (dict "root" .) | nindent 8 }}
+        {{- include "stand.waitFor" (dict "root" . "service" "ozone" "port" 9862) | nindent 8 }}
+      containers:
+        - name: gravitino
+          image: "{{ .Values.services.gravitino.image }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            {{- range .Values.services.gravitino.ports }}
+            - containerPort: {{ . }}
+            {{- end }}
+          volumeMounts:
+            {{- include "stand.sharedMounts" (dict "root" .) | nindent 12 }}
+            - name: data
+              mountPath: {{ .Values.services.gravitino.data.mountPath }}
+              subPath: iceberg-catalog
+            - name: data
+              mountPath: /opt/gravitino/data
+              subPath: h2-security-console
+          readinessProbe:
+            exec:
+              command:
+                - bash
+                - -c
+                - >-
+                  curl -fsS -H "Authorization: Basic YW5vbnltb3VzOng="
+                  http://localhost:8090/api/metalakes/metalake_demo/catalogs/catalog_iceberg
+                  >/dev/null
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 40
+      volumes:
+        {{- include "stand.sharedVolumes" (dict "root" .) | nindent 8 }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: kudos-stand-gravitino-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gravitino
+  labels:
+    {{- include "stand.labels" (dict "root" .) | nindent 4 }}
+spec:
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "stand.selectorLabels" (dict "name" "gravitino") | nindent 4 }}
+  ports:
+    {{- range .Values.services.gravitino.ports }}
+    - name: "p{{ . }}"
+      port: {{ . }}
+      targetPort: {{ . }}
+    {{- end }}

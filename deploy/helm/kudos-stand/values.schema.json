@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["domain", "external", "existing", "shared", "image", "services"],
+  "properties": {
+    "domain": { "type": "string", "minLength": 1 },
+    "external": {
+      "type": "object",
+      "required": ["hostAddress", "names"],
+      "properties": {
+        "hostAddress": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Address of the Docker host, where FreeIPA and Vault keep running. Supplied by the bring-up script."
+        },
+        "names": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "existing": {
+      "type": "object",
+      "required": ["kerberosSecret", "appConfigMap", "starrocksBootstrapConfigMap", "starrocksPasswordSecret", "trinoTlsSecret"],
+      "properties": {
+        "kerberosSecret": { "type": "string", "minLength": 1 },
+        "appConfigMap": { "type": "string", "minLength": 1 },
+        "starrocksBootstrapConfigMap": { "type": "string", "minLength": 1 },
+        "starrocksPasswordSecret": { "type": "string", "minLength": 1 },
+        "trinoTlsSecret": { "type": "string", "minLength": 1 }
+      }
+    },
+    "shared": {
+      "type": "object",
+      "required": ["claimName", "mountPath", "size", "accessMode"],
+      "properties": {
+        "claimName": { "type": "string", "minLength": 1 },
+        "mountPath": { "type": "string", "minLength": 1 },
+        "size": { "type": "string" },
+        "storageClass": { "type": "string" },
+        "accessMode": { "type": "string" }
+      }
+    },
+    "image": {
+      "type": "object",
+      "required": ["tag", "pullPolicy"],
+      "properties": {
+        "tag": { "type": "string", "minLength": 1 },
+        "pullPolicy": { "type": "string" }
+      }
+    },
+    "services": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["image"],
+        "properties": {
+          "image": { "type": "string", "minLength": 1 },
+          "ports": { "type": "array", "items": { "type": "integer" } },
+          "amd64": { "type": "boolean" },
+          "privileged": { "type": "boolean" },
+          "data": { "type": "object" },
+          "work": { "type": "object" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,126 @@
+# Copyright 2026 Aleksey Martynov and contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# The Kerberos realm's DNS zone. Every service is addressed as <name>.<domain>,
+# because that is the name its Kerberos principal and its own configuration
+# files already carry. CoreDNS rewrites that name to the Service.
+domain: test.local
+
+# Services that stay in Docker Compose.
+external:
+  # Address of the Docker host; filled in by the bring-up script.
+  hostAddress: ""
+  names:
+    - freeipa
+    - vault
+
+# Address of the cluster node. Only the HDFS pod needs it: sharing the node's
+# network means it must bind its data-transfer port on a real local address, and
+# the Service IP its own name resolves to is not one. Filled in by the bring-up
+# script.
+nodeAddress: ""
+
+# Resources the bring-up script creates from the running compose stand, so the
+# files that feed them have exactly one source (see design decision 4).
+existing:
+  # Keytabs and krb5.conf, read out of the compose stand's shared volume.
+  kerberosSecret: kudos-stand-kerberos
+  # config/application.yml
+  appConfigMap: kudos-stand-app-config
+  # dev/docker/starrocks/bootstrap.{sh,sql}
+  starrocksBootstrapConfigMap: kudos-stand-starrocks-bootstrap
+  # The service-account password Vault issues, read out of the compose stand's
+  # Vault Agent. Vault stays in compose, so the password arrives the same way the
+  # keytabs do rather than being invented here.
+  starrocksPasswordSecret: kudos-stand-starrocks-password
+  # The Vault-issued Trino certificate and CA, copied out of the compose stand.
+  trinoTlsSecret: kudos-stand-trino-tls
+
+# The compose stand shares one named volume at /shared: FreeIPA drops keytabs in
+# it and Ozone publishes the S3 secret it mints at startup. Here that is one
+# read-write-many claim mounted at the same path, seeded with the keytabs by an
+# init container — a read-only Secret could not also take the runtime writes.
+shared:
+  claimName: kudos-stand-shared
+  mountPath: /shared
+  size: 64Mi
+  # Docker Desktop ships a default hostpath StorageClass; on one node it backs a
+  # ReadWriteMany claim. ponytail: single-node only, a real RWX class if the
+  # stand ever spans nodes.
+  storageClass: hostpath
+  accessMode: ReadWriteMany
+
+image:
+  pullPolicy: IfNotPresent
+  # Built locally by the bring-up script. The cluster shares Docker Desktop's
+  # daemon, so no registry and no image loading are involved.
+  tag: "0.1.0"
+
+# Per service: the image the bring-up script builds, published ports, the data
+# volume it keeps, and whether it needs the amd64 or privileged concessions the
+# compose stand already makes for it.
+services:
+  hdfs:
+    image: kudos-stand/hdfs
+    ports: [9870, 1004, 1006]
+    data: { mountPath: /data, size: 8Gi }
+    amd64: true
+  ozone:
+    image: kudos-stand/ozone
+    ports: [9862, 9874, 9860, 9859, 9858, 9878]
+    data: { mountPath: /data, size: 8Gi }
+  hbase:
+    image: kudos-stand/hbase
+    ports: [8080, 16010]
+    data: { mountPath: /data, size: 4Gi }
+  starrocks:
+    image: starrocks/allin1-ubuntu:3.5.20
+    ports: [9030, 8030]
+    # No data volume on purpose: compose gives this service none, and the image
+    # keeps its own entrypoint under /data. Mounting a fresh claim there hides it
+    # and the container dies with "./entrypoint.sh: not found".
+    privileged: true
+  kyuubi:
+    image: kudos-stand/kyuubi
+    ports: [10009, 10099]
+    amd64: true
+    # Engine stdout/stderr, tailed by the log collector.
+    work: { mountPath: /opt/kyuubi/work, size: 4Gi }
+  # Keyed by the name the service actually answers to. Compose calls the service
+  # spark-history but gives it the hostname sparkhistory.test.local, and that is
+  # the name in its Kerberos principal and in config/application.yml.
+  sparkhistory:
+    image: kudos-stand/spark-history
+    ports: [18080]
+  flink-jobmanager:
+    image: kudos-stand/flink
+    ports: [8081]
+  flink-taskmanager:
+    image: kudos-stand/flink
+    ports: []
+  flink-history:
+    image: kudos-stand/flink
+    # 8082 in the container; compose publishes it to the host as 8083.
+    ports: [8082]
+  trino:
+    image: kudos-stand/trino
+    # 8443 is what Trino listens on; compose publishes it to the host as 8446.
+    ports: [8443]
+  gravitino:
+    image: kudos-stand/gravitino
+    ports: [9001, 8090]
+    data: { mountPath: /data/gravitino, size: 2Gi }
+  log-collector:
+    image: kudos-stand/log-collector
+    ports: []
