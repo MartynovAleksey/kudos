@@ -50,6 +50,7 @@ The project is divided into three independent parts:
 | **Test environment** — single-node setup (FreeIPA, HDFS, Kyuubi, Trino, StarRocks, HBase, Ozone, Vault) and running the application against it | Docker Compose (`compose.yaml`) | this README (below) |
 | **Image build** — multi-stage build with optional security scans | Docker (`dev/docker/app/Dockerfile`) | [docs/BUILD.md](BUILD.md) |
 | **Production deployment** of the ready application outside test mode | Helm (`deploy/helm/kudos`) | [docs/DEPLOY-HELM.md](DEPLOY-HELM.md) |
+| **Engine logs** — Kyuubi engine stdout/stderr collected into Ozone and shown on a Spark job's Logs tab | Fluent Bit (`dev/docker/fluentbit`), bucket `/s3v/enginelogs` | [docs/ENGINE-LOGS.md](ENGINE-LOGS.md) |
 
 Project documents for SQL engines and new components are in [docs/design/](design/README.md).
 

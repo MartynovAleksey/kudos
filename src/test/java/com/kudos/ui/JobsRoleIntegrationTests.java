@@ -17,9 +17,11 @@ package com.kudos.ui;
 
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.kudos.ui.service.EngineLogService;
 import com.kudos.ui.service.SparkApplication;
 import com.kudos.ui.service.FlinkService;
 import com.kudos.ui.service.SparkHistoryService;
@@ -50,6 +52,7 @@ class JobsRoleIntegrationTests {
   @MockitoBean KyuubiService kyuubi;
   @MockitoBean KyuubiFlinkService kyuubiFlink;
   @MockitoBean FlinkService flink;
+  @MockitoBean EngineLogService engineLogs;
 
   @Test
   void userCannotUseAHandCraftedOwnerFilterAndCanOpenOnlyOwnJob() throws Exception {
@@ -67,6 +70,24 @@ class JobsRoleIntegrationTests {
     mockMvc.perform(get("/jobs/own").session(session("analyst", "ROLE_USER"))).andExpect(status().isOk());
     mockMvc
         .perform(get("/jobs/foreign").session(session("analyst", "ROLE_USER")))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void userReadsOnlyTheEngineLogOfTheirOwnJob() throws Exception {
+    SparkApplication own = application("own", "analyst", true);
+    SparkApplication foreign = application("foreign", "admin", true);
+    when(history.application("own")).thenReturn(Optional.of(own));
+    when(history.application("foreign")).thenReturn(Optional.of(foreign));
+    when(engineLogs.enabled()).thenReturn(true);
+    when(engineLogs.log("own")).thenReturn("engine line\n");
+
+    mockMvc
+        .perform(get("/jobs/own/engine-log").session(session("analyst", "ROLE_USER")))
+        .andExpect(status().isOk())
+        .andExpect(content().string("engine line\n"));
+    mockMvc
+        .perform(get("/jobs/foreign/engine-log").session(session("analyst", "ROLE_USER")))
         .andExpect(status().isForbidden());
   }
 

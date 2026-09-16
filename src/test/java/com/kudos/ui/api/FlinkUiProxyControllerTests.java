@@ -71,7 +71,7 @@ class FlinkUiProxyControllerTests {
             "",
             "http://flink-jobmanager",
             "http://flink-history",
-            ""),
+            "", ""),
         access) {
       @Override
       HttpURLConnection open(URL target) {

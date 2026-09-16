@@ -19,6 +19,7 @@ import com.kudos.ui.config.FeaturesProperties;
 import com.kudos.ui.service.EngineVisibilityStore;
 import com.kudos.ui.service.SparkApplicationAccessService;
 import com.kudos.ui.service.SqlEngineInfo;
+import com.kudos.ui.service.EngineLogService;
 import com.kudos.ui.service.SqlEngineRegistry;
 import com.kudos.ui.security.RoleAccess;
 import java.util.List;
@@ -31,6 +32,7 @@ import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseBody;
 
 /**
  * Renders the application screens. Each one is a thin shell: the data is fetched
@@ -44,18 +46,21 @@ public class UiController {
   private final SqlEngineRegistry sqlEngines;
   private final EngineVisibilityStore engineVisibility;
   private final RoleAccess roles;
+  private final EngineLogService engineLogs;
 
   public UiController(
       FeaturesProperties features,
       SparkApplicationAccessService sparkAccess,
       SqlEngineRegistry sqlEngines,
       EngineVisibilityStore engineVisibility,
-      RoleAccess roles) {
+      RoleAccess roles,
+      EngineLogService engineLogs) {
     this.features = features;
     this.sparkAccess = sparkAccess;
     this.sqlEngines = sqlEngines;
     this.engineVisibility = engineVisibility;
     this.roles = roles;
+    this.engineLogs = engineLogs;
   }
 
   @GetMapping("/login")
@@ -156,7 +161,26 @@ public class UiController {
     }
     model.addAttribute("app", "jobs");
     model.addAttribute("applicationId", applicationId);
+    model.addAttribute("engineLogs", engineLogs.enabled());
     return "job";
+  }
+
+  /**
+   * The engine's own stdout and stderr for one application, stitched back
+   * together from the objects the log collector wrote to Ozone. Served as plain
+   * text so the Logs tab can show it in an iframe and the browser can save it.
+   */
+  @GetMapping(value = "/jobs/{applicationId}/engine-log", produces = "text/plain;charset=UTF-8")
+  @ResponseBody
+  String engineLog(@PathVariable String applicationId, Authentication authentication) throws Exception {
+    if (!sparkAccess.canView(authentication, applicationId)) {
+      throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+    }
+    String log = engineLogs.log(applicationId);
+    return log.isEmpty()
+        ? "No engine log has been collected for this application yet.\n"
+            + "Lines appear once the collector flushes them, which can lag the engine by a few seconds.\n"
+        : log;
   }
 
   /**

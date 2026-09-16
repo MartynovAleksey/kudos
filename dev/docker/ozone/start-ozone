@@ -87,6 +87,20 @@ ozone sh volume create /s3v --user=admin 2>/dev/null || true
 ozone sh bucket create /s3v/warehouse 2>/dev/null || true
 ozone sh bucket info /s3v/warehouse >/dev/null
 
+# Kyuubi engine logs: the log collector writes every engine's stdout/stderr here
+# through the S3 Gateway, and the application reads them back for the Logs tab of
+# a Spark job. Ozone ACLs are per-bucket, and the application holds no service
+# credentials of its own (it reads ofs:// with the signed-in user's ticket), so
+# the bucket is readable by every authenticated user and ownership is enforced by
+# the application instead. The DEFAULT scope makes new keys inherit that read
+# right; without it only the keys' creator could read them back.
+ozone sh bucket create /s3v/enginelogs 2>/dev/null || true
+ozone sh bucket addacl -a 'world::rl' /s3v/enginelogs >/dev/null 2>&1 || true
+ozone sh bucket addacl -a 'world::rl[DEFAULT]' /s3v/enginelogs >/dev/null 2>&1 || true
+# Listing a bucket requires the LIST right on its volume as well.
+ozone sh volume addacl -a 'world::rl' /s3v >/dev/null 2>&1 || true
+ozone sh bucket info /s3v/enginelogs >/dev/null
+
 # An S3 secret for admin so Gravitino and every engine can sign S3 Gateway
 # requests (awsAccessKey is the Kerberos principal, admin@TEST.LOCAL). This Ozone
 # build's `setsecret` cannot pin a chosen value — it only updates an accessId that

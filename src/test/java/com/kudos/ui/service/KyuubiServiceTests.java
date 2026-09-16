@@ -91,7 +91,7 @@ class KyuubiServiceTests {
         };
     ClusterProperties properties =
         new ClusterProperties(
-            "", "jdbc:kyuubi-test:", "http://kyuubi-rest", "", "", "", "", "", "", "", "", "", "");
+            "", "jdbc:kyuubi-test:", "http://kyuubi-rest", "", "", "", "", "", "", "", "", "", "", "");
 
     KyuubiRestClient rest = mock(KyuubiRestClient.class);
     KyuubiService service = new KyuubiService(properties, kerberos, rest);
@@ -154,7 +154,7 @@ class KyuubiServiceTests {
     KyuubiService service =
         new KyuubiService(
             new ClusterProperties(
-                "", "jdbc:kyuubi-test:", "", "", "", "", "", "", "", "", "", "", ""),
+                "", "jdbc:kyuubi-test:", "", "", "", "", "", "", "", "", "", "", "", ""),
             passthroughKerberos(),
             mock(KyuubiRestClient.class),
             history);
@@ -198,7 +198,7 @@ class KyuubiServiceTests {
     KyuubiService service =
         new KyuubiService(
             new ClusterProperties(
-                "", "jdbc:kyuubi-test:", "", "", "", "", "", "", "", "", "", "", ""),
+                "", "jdbc:kyuubi-test:", "", "", "", "", "", "", "", "", "", "", "", ""),
             passthroughKerberos(),
             mock(KyuubiRestClient.class));
     KyuubiSessionInfo started = service.start("temporary", "");
@@ -223,7 +223,7 @@ class KyuubiServiceTests {
     KyuubiService service =
         new KyuubiService(
             new ClusterProperties(
-                "", "jdbc:kyuubi-test:", "", "", "", "", "", "", "", "", "", "", ""),
+                "", "jdbc:kyuubi-test:", "", "", "", "", "", "", "", "", "", "", "", ""),
             passthroughKerberos(),
             mock(KyuubiRestClient.class));
     KyuubiSessionInfo started = service.start("restart", "");
@@ -249,7 +249,7 @@ class KyuubiServiceTests {
     KyuubiFlinkService service =
         new KyuubiFlinkService(
             new ClusterProperties(
-                "", "jdbc:kyuubi-test:", "", "", "", "", "", "", "", "", "", "", ""),
+                "", "jdbc:kyuubi-test:", "", "", "", "", "", "", "", "", "", "", "", ""),
             passthroughKerberos(),
             mock(KyuubiRestClient.class));
     KyuubiSessionInfo started = service.start("flink", "parallelism.default=2");
