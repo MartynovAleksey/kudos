@@ -1,0 +1,218 @@
+# Flink session cluster: jobmanager, taskmanager and history-server. One image
+# (kudos-stand/flink), three commands/FLINK_PROPERTIES, exactly like compose's
+# three services built from the same kudos-flink:latest image.
+#
+# flink-taskmanager gets no Service: compose never gives it a network alias
+# either (nothing resolves it by name -- the jobmanager tracks workers by their
+# own registered RPC address, not a fixed DNS name), and values.yaml lists no
+# ports for it. It is still enumerated in the chart-wide Service-naming
+# convention list, but "log-collector has no ports and needs no Service" is the
+# rule actually being followed here too; flagged in the final report.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flink-jobmanager
+  labels:
+    {{- include "stand.labels" (dict "root" .) | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "stand.selectorLabels" (dict "name" "flink-jobmanager") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "stand.labels" (dict "root" .) | nindent 8 }}
+        {{- include "stand.selectorLabels" (dict "name" "flink-jobmanager") | nindent 8 }}
+    spec:
+      {{- include "stand.hostIdentity" (dict "root" $ "name" "flink-jobmanager") | nindent 6 }}
+      initContainers:
+        {{- include "stand.kerberosInit" (dict "root" .) | nindent 8 }}
+        {{- include "stand.waitFor" (dict "root" . "service" "freeipa" "port" 88) | nindent 8 }}
+        {{- include "stand.waitFor" (dict "root" . "service" "ozone" "port" 9862) | nindent 8 }}
+      containers:
+        - name: flink-jobmanager
+          image: "{{ index .Values.services "flink-jobmanager" "image" }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # args, not command: compose's `command:` replaces the image CMD and
+          # keeps its entrypoint, while a Kubernetes `command:` replaces the
+          # entrypoint itself — the container then dies with exit 127.
+          args: ["jobmanager"]
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: FLINK_PROPERTIES
+              value: |
+                jobmanager.rpc.address: flink-jobmanager.test.local
+                jobmanager.archive.fs.dir: ofs://ozone.test.local/flink/completed-jobs
+                rest.address: 0.0.0.0
+                rest.bind-address: 0.0.0.0
+                security.kerberos.login.keytab: /shared/flink-flink.test.local.keytab
+                security.kerberos.login.principal: flink/flink.test.local@TEST.LOCAL
+                security.kerberos.login.use-ticket-cache: false
+                env.java.opts.all: -Djava.security.krb5.conf=/shared/krb5.conf
+          ports:
+            {{- range index .Values.services "flink-jobmanager" "ports" }}
+            - containerPort: {{ . }}
+            {{- end }}
+          volumeMounts:
+            {{- include "stand.sharedMounts" (dict "root" .) | nindent 12 }}
+          readinessProbe:
+            exec:
+              command:
+                - bash
+                - -c
+                - ": > /dev/tcp/$POD_IP/8081"
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
+      volumes:
+        {{- include "stand.sharedVolumes" (dict "root" .) | nindent 8 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flink-jobmanager
+  labels:
+    {{- include "stand.labels" (dict "root" .) | nindent 4 }}
+spec:
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "stand.selectorLabels" (dict "name" "flink-jobmanager") | nindent 4 }}
+  ports:
+    {{- range index .Values.services "flink-jobmanager" "ports" }}
+    - name: "p{{ . }}"
+      port: {{ . }}
+      targetPort: {{ . }}
+    {{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flink-taskmanager
+  labels:
+    {{- include "stand.labels" (dict "root" .) | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "stand.selectorLabels" (dict "name" "flink-taskmanager") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "stand.labels" (dict "root" .) | nindent 8 }}
+        {{- include "stand.selectorLabels" (dict "name" "flink-taskmanager") | nindent 8 }}
+    spec:
+      {{- include "stand.hostIdentity" (dict "root" $ "name" "flink-taskmanager") | nindent 6 }}
+      initContainers:
+        {{- include "stand.kerberosInit" (dict "root" .) | nindent 8 }}
+        {{- include "stand.waitFor" (dict "root" . "service" "flink-jobmanager" "port" 8081) | nindent 8 }}
+      containers:
+        - name: flink-taskmanager
+          image: "{{ index .Values.services "flink-taskmanager" "image" }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # args, not command: compose's `command:` replaces the image CMD and
+          # keeps its entrypoint, while a Kubernetes `command:` replaces the
+          # entrypoint itself — the container then dies with exit 127.
+          args: ["taskmanager"]
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: FLINK_PROPERTIES
+              value: |
+                jobmanager.rpc.address: flink-jobmanager.test.local
+                taskmanager.numberOfTaskSlots: 4
+          volumeMounts:
+            {{- include "stand.sharedMounts" (dict "root" .) | nindent 12 }}
+          # No compose healthcheck exists for flink-taskmanager either; none added.
+      volumes:
+        {{- include "stand.sharedVolumes" (dict "root" .) | nindent 8 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flink-history
+  labels:
+    {{- include "stand.labels" (dict "root" .) | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "stand.selectorLabels" (dict "name" "flink-history") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "stand.labels" (dict "root" .) | nindent 8 }}
+        {{- include "stand.selectorLabels" (dict "name" "flink-history") | nindent 8 }}
+    spec:
+      {{- include "stand.hostIdentity" (dict "root" $ "name" "flink-history") | nindent 6 }}
+      initContainers:
+        {{- include "stand.kerberosInit" (dict "root" .) | nindent 8 }}
+        {{- include "stand.waitFor" (dict "root" . "service" "flink-jobmanager" "port" 8081) | nindent 8 }}
+        {{- include "stand.waitFor" (dict "root" . "service" "ozone" "port" 9862) | nindent 8 }}
+      containers:
+        - name: flink-history
+          image: "{{ index .Values.services "flink-history" "image" }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # args, not command: compose's `command:` replaces the image CMD and
+          # keeps its entrypoint, while a Kubernetes `command:` replaces the
+          # entrypoint itself — the container then dies with exit 127.
+          args: ["history-server"]
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: FLINK_PROPERTIES
+              value: |
+                historyserver.web.address: 0.0.0.0
+                historyserver.web.port: 8082
+                historyserver.archive.fs.dir: ofs://ozone.test.local/flink/completed-jobs
+                historyserver.archive.fs.refresh-interval: 5000
+                security.kerberos.login.keytab: /shared/flink-flink.test.local.keytab
+                security.kerberos.login.principal: flink/flink.test.local@TEST.LOCAL
+                security.kerberos.login.use-ticket-cache: false
+                env.java.opts.all: -Djava.security.krb5.conf=/shared/krb5.conf
+          ports:
+            - containerPort: 8082
+          volumeMounts:
+            {{- include "stand.sharedMounts" (dict "root" .) | nindent 12 }}
+          readinessProbe:
+            exec:
+              command:
+                - bash
+                - -c
+                - ": > /dev/tcp/$POD_IP/8082"
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
+      volumes:
+        {{- include "stand.sharedVolumes" (dict "root" .) | nindent 8 }}
+---
+# Service port kept at 8083 (the compose host-side port) while the container
+# actually listens on 8082 (historyserver.web.port above), same host/container
+# split compose makes with "8083:8082".
+apiVersion: v1
+kind: Service
+metadata:
+  name: flink-history
+  labels:
+    {{- include "stand.labels" (dict "root" .) | nindent 4 }}
+spec:
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "stand.selectorLabels" (dict "name" "flink-history") | nindent 4 }}
+  ports:
+    - name: p8083
+      port: 8083
+      targetPort: 8082

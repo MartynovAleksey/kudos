@@ -1,0 +1,163 @@
+{{/*
+StarRocks: single allin1 FE+BE container, matching the compose `starrocks`
+service. Deliberately outside the Kerberos data path (see compose.yaml), so
+unlike hdfs/ozone/hbase it does not mount /shared and skips stand.kerberosInit
+— compose gives it no such volume either. No depends_on in compose, so no
+init container waits on it.
+
+privileged: true because compose runs it privileged (values.services.starrocks.privileged).
+
+The starrocks-bootstrap companion runs once against a healthy starrocks, so it
+is a Job here rather than a sidecar (see design decision 8 in
+openspec/changes/run-test-stand-in-kubernetes/design.md).
+
+The service-account password and the bootstrap files both come from outside the
+chart: the password from the Secret the bring-up script fills from the compose
+stand's Vault Agent, the files from the ConfigMap it builds out of
+dev/docker/starrocks. Neither is duplicated here, so there is still one source
+of truth for each.
+*/}}
+{{- $root := . -}}
+{{- $svc := $root.Values.services.starrocks -}}
+{{- $realm := $root.Values.domain | upper -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: starrocks
+  labels:
+    {{- include "stand.labels" (dict "root" $root) | nindent 4 }}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "stand.selectorLabels" (dict "name" "starrocks") | nindent 4 }}
+  ports:
+    {{- range $svc.ports }}
+    - name: tcp-{{ . }}
+      port: {{ . }}
+      targetPort: {{ . }}
+    {{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: starrocks
+  labels:
+    {{- include "stand.labels" (dict "root" $root) | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "stand.selectorLabels" (dict "name" "starrocks") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "stand.labels" (dict "root" $root) | nindent 8 }}
+        {{- include "stand.selectorLabels" (dict "name" "starrocks") | nindent 8 }}
+    spec:
+      {{- include "stand.hostIdentity" (dict "root" $root "name" "starrocks") | nindent 6 }}
+      containers:
+        - name: starrocks
+          image: {{ if contains ":" $svc.image }}{{ $svc.image }}{{ else }}{{ $svc.image }}:{{ $root.Values.image.tag }}{{ end }}
+          imagePullPolicy: {{ $root.Values.image.pullPolicy }}
+          {{- if $svc.privileged }}
+          securityContext:
+            privileged: true
+          {{- end }}
+          ports:
+            {{- range $svc.ports }}
+            - containerPort: {{ . }}
+            {{- end }}
+          {{- with $svc.data }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .mountPath }}
+          {{- end }}
+          # compose healthcheck: SHOW FRONTENDS succeeds over the MySQL wire
+          # protocol.
+          readinessProbe:
+            exec:
+              command:
+                - mysql
+                - -h
+                - 127.0.0.1
+                - -P
+                - "9030"
+                - -uroot
+                - -e
+                - SHOW FRONTENDS
+            initialDelaySeconds: 45
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 36
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: starrocks-bootstrap
+  labels:
+    {{- include "stand.labels" (dict "root" $root) | nindent 4 }}
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        {{- include "stand.labels" (dict "root" $root) | nindent 8 }}
+        {{- include "stand.selectorLabels" (dict "name" "starrocks-bootstrap") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      # compose: starrocks-bootstrap depends_on starrocks (service_healthy) and
+      # ozone (service_healthy). The third compose dependency, vault-agent, has
+      # no equivalent here — see the GAP note above.
+      initContainers:
+        {{- include "stand.waitFor" (dict "root" $root "service" "starrocks" "port" 9030) | nindent 8 }}
+        {{- include "stand.waitFor" (dict "root" $root "service" "ozone" "port" 9862) | nindent 8 }}
+      containers:
+        - name: starrocks-bootstrap
+          image: {{ if contains ":" $svc.image }}{{ $svc.image }}{{ else }}{{ $svc.image }}:{{ $root.Values.image.tag }}{{ end }}
+          imagePullPolicy: {{ $root.Values.image.pullPolicy }}
+          command: ["bash", "/bootstrap/bootstrap.sh"]
+          volumeMounts:
+            - name: shared
+              mountPath: {{ $root.Values.shared.mountPath }}
+              readOnly: true
+            - name: bootstrap
+              mountPath: /bootstrap
+              readOnly: true
+            # bootstrap.sh reads the password from this exact path, the one the
+            # compose Vault Agent renders. Mounting the Secret there lets the
+            # unmodified script run in the cluster.
+            - name: vault-secrets
+              mountPath: /vault/secrets
+              readOnly: true
+      volumes:
+        {{- with $svc.data }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: starrocks-data
+        {{- end }}
+        - name: shared
+          persistentVolumeClaim:
+            claimName: {{ $root.Values.shared.claimName }}
+        - name: bootstrap
+          configMap:
+            name: {{ .Values.existing.starrocksBootstrapConfigMap }}
+        - name: vault-secrets
+          secret:
+            secretName: {{ .Values.existing.starrocksPasswordSecret }}
+---
+{{- with $svc.data }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: starrocks-data
+  labels:
+    {{- include "stand.labels" (dict "root" $root) | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: {{ .size }}
+{{- end }}

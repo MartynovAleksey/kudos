@@ -34,7 +34,7 @@ while [ $# -gt 0 ]; do
 done
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-root="$(cd -- "$script_dir/.." && pwd)"
+root="$(cd -- "$script_dir/../.." && pwd)"
 compose_bin="${DOCKER_COMPOSE_BIN:-$HOME/.docker/cli-plugins/docker-compose}"
 dc() {
   env -u DOCKER_DEFAULT_PLATFORM DOCKER_CONFIG="$root/dev/docker/.docker-config" \

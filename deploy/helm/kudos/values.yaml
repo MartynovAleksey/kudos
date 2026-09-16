@@ -20,11 +20,14 @@ serviceAccount:
   name: ""
   annotations: {}
 
-# Exposure: ClusterIP only. External access (Ingress/port-forward) is arranged
-# outside this chart.
+# Exposure: ClusterIP by default; external access (Ingress) is arranged outside
+# this chart. The test stand overrides type to NodePort and pins nodePort, so the
+# UI answers at a fixed address instead of a port-forward that has to be running.
 service:
   type: ClusterIP
   port: 8443
+  # Only used when type is NodePort. Empty lets Kubernetes assign one.
+  nodePort: ""
 
 # TLS. HTTPS is OFF by default: the app serves plain HTTP on the service port, so
 # no certificate is required and clients hit no self-signed-cert errors. Set
@@ -117,3 +120,9 @@ vault:
       memory: 64Mi
     limits:
       memory: 128Mi
+
+# Extra volumes and mounts for the application container. The test stand uses
+# them to hand it the Trino truststore, which in Docker Compose arrives on a
+# shared volume that has no equivalent here.
+extraVolumes: []
+extraVolumeMounts: []

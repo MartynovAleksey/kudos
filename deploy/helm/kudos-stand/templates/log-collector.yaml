@@ -1,0 +1,59 @@
+# Tails Kyuubi's engine log files and writes them to Ozone. No Service: it has
+# no ports (nothing calls it back), matching values.yaml (ports: []) and
+# compose (nothing depends on it either).
+#
+# Mounts the SAME kudos-stand-kyuubi-work PVC that templates/kyuubi.yaml
+# provisions, read-only, which is the entire reason this pod exists -- see
+# compose's kyuubi-work named volume, shared the same way.
+#
+# GAP: compose also gives it its own log-collector-data volume at
+# /var/lib/fluent-bit (tail offsets + the $INDEX object-name counter), so a
+# restart resumes instead of resending the backlog. values.yaml has no data/work
+# entry for log-collector, so there is no PVC to back that here; an emptyDir is
+# used instead. ponytail: state resets on every pod restart -- the collector may
+# re-tail from the start of each log file and/or reuse object names after a
+# restart. Add a PVC-backed values entry if that starts to matter.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: log-collector
+  labels:
+    {{- include "stand.labels" (dict "root" .) | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "stand.selectorLabels" (dict "name" "log-collector") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "stand.labels" (dict "root" .) | nindent 8 }}
+        {{- include "stand.selectorLabels" (dict "name" "log-collector") | nindent 8 }}
+    spec:
+      {{- include "stand.hostIdentity" (dict "root" $ "name" "log-collector") | nindent 6 }}
+      initContainers:
+        {{- include "stand.kerberosInit" (dict "root" .) | nindent 8 }}
+        {{- include "stand.waitFor" (dict "root" . "service" "kyuubi" "port" 10009) | nindent 8 }}
+        {{- include "stand.waitFor" (dict "root" . "service" "ozone" "port" 9862) | nindent 8 }}
+      containers:
+        - name: log-collector
+          image: "{{ index .Values.services "log-collector" "image" }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          volumeMounts:
+            {{- include "stand.sharedMounts" (dict "root" .) | nindent 12 }}
+            - name: work
+              mountPath: /opt/kyuubi/work
+              readOnly: true
+            - name: state
+              mountPath: /var/lib/fluent-bit
+          # compose defines no healthcheck for this service either; none added.
+      volumes:
+        {{- include "stand.sharedVolumes" (dict "root" .) | nindent 8 }}
+        - name: work
+          persistentVolumeClaim:
+            claimName: kudos-stand-kyuubi-work
+            readOnly: true
+        - name: state
+          emptyDir: {}

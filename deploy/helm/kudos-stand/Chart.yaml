@@ -1,0 +1,11 @@
+apiVersion: v2
+name: kudos-stand
+description: >-
+  The kudos test cluster in Kubernetes: HDFS, Ozone, HBase, Kyuubi, Spark
+  History, Flink, Trino, StarRocks, Gravitino and the engine-log collector.
+  FreeIPA and Vault stay in Docker Compose; this chart reaches them through the
+  test.local zone served by CoreDNS. A second way to run the stand, alongside
+  compose.yaml rather than instead of it.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

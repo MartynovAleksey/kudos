@@ -1,0 +1,20 @@
+{{/*
+Stands in for the compose stand's `kerberos-shared` named volume: keytabs seeded
+from the Secret, plus the S3 credentials Ozone publishes at startup for the
+engines to read. One claim, mounted by every pod at the same path.
+*/}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Values.shared.claimName }}
+  labels:
+    {{- include "stand.labels" (dict "root" .) | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.shared.accessMode }}
+  {{- with .Values.shared.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.shared.size }}

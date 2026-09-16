@@ -1,0 +1,129 @@
+# Trino coordinator. compose's `trino-tls` companion converts a Vault-issued PEM
+# certificate into the PKCS#12 files Trino's HTTPS listener and JDBC driver
+# expect (/tls/trino.p12, /tls/truststore.p12, both password "changeit" -- fixed
+# values baked into dev/docker/trino/etc/config.properties, not templated at
+# runtime). That is modeled below as the "prepare-trino-tls" init container.
+#
+# GAP: Vault and its Agent sidecar stay in Docker Compose (design Non-Goals), and
+# neither values.yaml nor _helpers.tpl wires an in-cluster channel for the
+# Vault-issued PEM (no AppRole Secret, no host-path to the compose `app-tls`
+# volume). Rather than invent a values key or a Secret this chart doesn't own,
+# the init container below generates its own self-signed certificate for
+# trino.test.local and builds both PKCS12 files from it with plain openssl (no
+# keytool/JRE needed). This is a deliberate deviation from compose, called out
+# in the final report: it keeps Trino's HTTPS working end-to-end (server trusts
+# its own CA for its self-discovery call), but the cert is stand-local rather
+# than the shared Vault-issued one compose's `app` container also trusts. `app`
+# is not part of this chart yet, so nothing else needs to trust this CA today --
+# revisit if/when the app moves into this chart too.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trino
+  labels:
+    {{- include "stand.labels" (dict "root" .) | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "stand.selectorLabels" (dict "name" "trino") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "stand.labels" (dict "root" .) | nindent 8 }}
+        {{- include "stand.selectorLabels" (dict "name" "trino") | nindent 8 }}
+    spec:
+      {{- include "stand.hostIdentity" (dict "root" $ "name" "trino") | nindent 6 }}
+      initContainers:
+        {{- include "stand.kerberosInit" (dict "root" .) | nindent 8 }}
+        # Mirrors dev/docker/trino-tls/refresh-tls: the keystore is built from the
+        # certificate Vault issued, not from a self-signed one, or the application's
+        # truststore (which holds the Vault CA) would reject Trino. The bring-up
+        # script copies the rendered PEM out of the compose Vault Agent, the same way
+        # it copies the keytabs. Ownership matters: Trino runs as uid 1000 and the
+        # key is readable only by it, while the CA-only truststore stays world-readable.
+        - name: prepare-trino-tls
+          image: alpine:3.21
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              apk add --no-cache openssl openjdk21-jre-headless >/dev/null
+              openssl pkcs12 -export -in /vault/secrets/trino.pem -inkey /vault/secrets/trino.pem \
+                -name trino -passout pass:changeit -out /tls/trino.p12
+              keytool -importcert -noprompt -storetype PKCS12 \
+                -keystore /tls/truststore.p12 -storepass changeit \
+                -alias vault-ca -file /vault/secrets/ca.crt
+              chown 1000:1000 /tls/trino.p12
+              chmod 0400 /tls/trino.p12
+              chmod 0444 /tls/truststore.p12
+          volumeMounts:
+            - name: tls
+              mountPath: /tls
+            - name: vault-secrets
+              mountPath: /vault/secrets
+              readOnly: true
+        {{- include "stand.waitFor" (dict "root" . "service" "freeipa" "port" 88) | nindent 8 }}
+        {{- include "stand.waitFor" (dict "root" . "service" "ozone" "port" 9862) | nindent 8 }}
+      containers:
+        - name: trino
+          image: "{{ .Values.services.trino.image }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: JAVA_TOOL_OPTIONS
+              value: >-
+                -Djavax.net.ssl.trustStore=/tls/truststore.p12
+                -Djavax.net.ssl.trustStorePassword=changeit
+                -Djavax.net.ssl.trustStoreType=PKCS12
+          ports:
+            - containerPort: 8443
+          volumeMounts:
+            {{- include "stand.sharedMounts" (dict "root" .) | nindent 12 }}
+            - name: tls
+              mountPath: /tls
+          readinessProbe:
+            exec:
+              command:
+                - bash
+                - -c
+                - ": > /dev/tcp/$POD_IP/8443"
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
+      volumes:
+        - name: vault-secrets
+          secret:
+            secretName: {{ .Values.existing.trinoTlsSecret }}
+        {{- include "stand.sharedVolumes" (dict "root" .) | nindent 8 }}
+        - name: tls
+          emptyDir: {}
+---
+# Service port kept at 8446 (the compose host-side port) while the container
+# actually listens on 8443 (Trino's https-server.https.port), same split
+# compose makes with "8446:8443".
+apiVersion: v1
+kind: Service
+metadata:
+  name: trino
+  labels:
+    {{- include "stand.labels" (dict "root" .) | nindent 4 }}
+spec:
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "stand.selectorLabels" (dict "name" "trino") | nindent 4 }}
+  ports:
+    # Clients address Trino as trino.test.local:8443, the port it listens on;
+    # 8446 is only how compose publishes it to the host.
+    {{- range .Values.services.trino.ports }}
+    - name: "p{{ . }}"
+      port: {{ . }}
+      targetPort: {{ . }}
+    {{- end }}

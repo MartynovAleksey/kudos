@@ -1,0 +1,123 @@
+{{/*
+Ozone: SCM + OM + DataNode + S3 Gateway, all in one container (dev/docker/ozone),
+matching the compose `ozone` service. Kerberized, waits for FreeIPA only.
+
+Config: values.existing.ozoneConfigMap holds core-site.xml and ozone-site.xml,
+the same two files dev/docker/ozone/Dockerfile COPYs into
+/opt/hadoop/etc/hadoop at image build time. Mounted here with subPath per file
+so the ConfigMap only overlays those two files instead of hiding the rest of
+the image's /opt/hadoop/etc/hadoop directory (a directory-mode ConfigMap mount
+would shadow log4j.properties and friends that still need to come from the
+image).
+*/}}
+{{- $root := . -}}
+{{- $svc := $root.Values.services.ozone -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: ozone
+  labels:
+    {{- include "stand.labels" (dict "root" $root) | nindent 4 }}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "stand.selectorLabels" (dict "name" "ozone") | nindent 4 }}
+  ports:
+    {{- range $svc.ports }}
+    - name: tcp-{{ . }}
+      port: {{ . }}
+      targetPort: {{ . }}
+    {{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ozone
+  labels:
+    {{- include "stand.labels" (dict "root" $root) | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "stand.selectorLabels" (dict "name" "ozone") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "stand.labels" (dict "root" $root) | nindent 8 }}
+        {{- include "stand.selectorLabels" (dict "name" "ozone") | nindent 8 }}
+    spec:
+      {{- include "stand.hostIdentity" (dict "root" $root "name" "ozone") | nindent 6 }}
+      # compose: ozone depends_on freeipa (service_healthy).
+      initContainers:
+        {{- include "stand.kerberosInit" (dict "root" $root) | nindent 8 }}
+        {{- include "stand.waitFor" (dict "root" $root "service" "freeipa" "port" 88) | nindent 8 }}
+      containers:
+        - name: ozone
+          image: {{ if contains ":" $svc.image }}{{ $svc.image }}{{ else }}{{ $svc.image }}:{{ $root.Values.image.tag }}{{ end }}
+          imagePullPolicy: {{ $root.Values.image.pullPolicy }}
+          ports:
+            {{- range $svc.ports }}
+            - containerPort: {{ . }}
+            {{- end }}
+          volumeMounts:
+            - name: conf
+              mountPath: /opt/hadoop/etc/hadoop/core-site.xml
+              subPath: core-site.xml
+            - name: conf
+              mountPath: /opt/hadoop/etc/hadoop/ozone-site.xml
+              subPath: ozone-site.xml
+            {{- include "stand.sharedMounts" (dict "root" $root) | nindent 12 }}
+            - name: data
+              mountPath: {{ $svc.data.mountPath }}
+          # compose healthcheck: SCM/OM/DataNode processes running, the
+          # eventlogs-ready marker and the runtime S3 secret both published, and
+          # the OM RPC (9862) and S3 Gateway (9878) ports accepting connections.
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          readinessProbe:
+            exec:
+              command:
+                - bash
+                - -c
+                - >-
+                  ps -ef | grep -q '[o]rg.apache.hadoop.hdds.scm.server.StorageContainerManagerStarter'
+                  && ps -ef | grep -q '[o]rg.apache.hadoop.ozone.om.OzoneManagerStarter'
+                  && ps -ef | grep -q '[o]rg.apache.hadoop.ozone.HddsDatanodeService'
+                  && test -f {{ $svc.data.mountPath }}/ozone/.eventlogs-ready
+                  && test -f {{ $root.Values.shared.mountPath }}/s3-credentials.env
+                  && bash -c ': > /dev/tcp/$POD_IP/9862'
+                  && bash -c ': > /dev/tcp/$POD_IP/9878'
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
+      volumes:
+        - name: conf
+          configMap:
+            name: kudos-stand-ozone-conf
+        {{- with $svc.data }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: ozone-data
+        {{- end }}
+        {{- include "stand.sharedVolumes" (dict "root" $root) | nindent 8 }}
+---
+{{- with $svc.data }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ozone-data
+  labels:
+    {{- include "stand.labels" (dict "root" $root) | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: {{ .size }}
+{{- end }}
+

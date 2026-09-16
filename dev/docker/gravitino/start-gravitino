@@ -189,31 +189,42 @@ fi
 # --- Demo authorization -----------------------------------------------------
 # A worked example of the metadata gate: the `analyst` user may see and load
 # only demo.customers. Idempotent: re-running just re-asserts the grant.
-echo "provisioning demo authorization (analyst -> demo.customers)"
-ensure_user analyst
-ensure_role demo_customers_reader '{
-  "name":"demo_customers_reader",
-  "properties":{},
-  "securableObjects":[
-    {"fullName":"catalog_iceberg","type":"CATALOG","privileges":[{"name":"USE_CATALOG","condition":"ALLOW"}]},
-    {"fullName":"catalog_iceberg.demo","type":"SCHEMA","privileges":[{"name":"USE_SCHEMA","condition":"ALLOW"}]},
-    {"fullName":"catalog_iceberg.demo.customers","type":"TABLE","privileges":[{"name":"SELECT_TABLE","condition":"ALLOW"}]}
-  ]}'
-grant_role analyst demo_customers_reader
+#
+# The grants below name schemas and tables, and Gravitino rejects a role whose
+# securable objects do not exist. On a stand whose warehouse has not been
+# loaded that is the normal state, so the whole section is best-effort: the
+# server stays up and the next start re-asserts the grants once the demo data
+# is in place. Without this a fresh stand loses its metadata service entirely.
+if ! (
+  set -e
+  echo "provisioning demo authorization (analyst -> demo.customers)"
+  ensure_user analyst
+    ensure_role demo_customers_reader '{
+    "name":"demo_customers_reader",
+    "properties":{},
+    "securableObjects":[
+      {"fullName":"catalog_iceberg","type":"CATALOG","privileges":[{"name":"USE_CATALOG","condition":"ALLOW"}]},
+      {"fullName":"catalog_iceberg.demo","type":"SCHEMA","privileges":[{"name":"USE_SCHEMA","condition":"ALLOW"}]},
+      {"fullName":"catalog_iceberg.demo.customers","type":"TABLE","privileges":[{"name":"SELECT_TABLE","condition":"ALLOW"}]}
+    ]}'
+    grant_role analyst demo_customers_reader
 
-# The LDAP administrator also needs an explicit Gravitino grant. Service-admin
-# is intentionally kept as `anonymous` for engine query-path compatibility;
-# this named-user grant is what makes the complete Iceberg catalog visible to
-# admin. Catalog-level privileges are inherited by every schema and table.
-echo "provisioning catalog authorization (admin -> catalog_iceberg)"
-ensure_user admin
-ensure_role demo_catalog_reader '{
-  "name":"demo_catalog_reader",
-  "properties":{},
-  "securableObjects":[
-    {"fullName":"catalog_iceberg","type":"CATALOG","privileges":[{"name":"USE_CATALOG","condition":"ALLOW"},{"name":"USE_SCHEMA","condition":"ALLOW"},{"name":"SELECT_TABLE","condition":"ALLOW"}]}
-  ]}'
-grant_role admin demo_catalog_reader
+  # The LDAP administrator also needs an explicit Gravitino grant. Service-admin
+  # is intentionally kept as `anonymous` for engine query-path compatibility;
+  # this named-user grant is what makes the complete Iceberg catalog visible to
+  # admin. Catalog-level privileges are inherited by every schema and table.
+  echo "provisioning catalog authorization (admin -> catalog_iceberg)"
+  ensure_user admin
+  ensure_role demo_catalog_reader '{
+    "name":"demo_catalog_reader",
+    "properties":{},
+    "securableObjects":[
+      {"fullName":"catalog_iceberg","type":"CATALOG","privileges":[{"name":"USE_CATALOG","condition":"ALLOW"},{"name":"USE_SCHEMA","condition":"ALLOW"},{"name":"SELECT_TABLE","condition":"ALLOW"}]}
+    ]}'
+  grant_role admin demo_catalog_reader
+); then
+  echo "demo grants skipped: warehouse objects are not in place yet" >&2
+fi
 
 echo "GRAVITINO_BOOTSTRAP_DONE"
 

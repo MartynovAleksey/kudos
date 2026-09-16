@@ -11,5 +11,8 @@ spec:
       port: {{ .Values.service.port }}
       targetPort: https
       protocol: TCP
+      {{- if and (eq .Values.service.type "NodePort") .Values.service.nodePort }}
+      nodePort: {{ .Values.service.nodePort }}
+      {{- end }}
   selector:
     {{- include "kudos.selectorLabels" . | nindent 4 }}

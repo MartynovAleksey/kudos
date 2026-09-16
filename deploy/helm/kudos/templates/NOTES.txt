@@ -13,9 +13,13 @@ Prerequisites this release references (must exist in the namespace):
   - Secret    {{ . }}                                        (env for application.yml)
 {{- end }}
 
-Reach it (no Ingress is created — ClusterIP only):
+Reach it (no Ingress is created):
+{{- if and (eq .Values.service.type "NodePort") .Values.service.nodePort }}
+  http{{ if .Values.tls.enabled }}s{{ end }}://localhost:{{ .Values.service.nodePort }}/   (NodePort, no port-forward needed)
+{{- else }}
   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "kudos.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }}
   # then open https://localhost:{{ .Values.service.port }}/
+{{- end }}
 
 Check readiness:
   kubectl -n {{ .Release.Namespace }} rollout status deploy/{{ include "kudos.fullname" . }}

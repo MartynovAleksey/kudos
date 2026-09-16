@@ -1,0 +1,110 @@
+{{/*
+HBase: single Master+RegionServer container (dev/docker/hbase), matching the
+compose `hbase` service. Kerberized, waits for FreeIPA only (compose has no
+other depends_on for it).
+*/}}
+{{- $root := . -}}
+{{- $svc := $root.Values.services.hbase -}}
+{{- $realm := $root.Values.domain | upper -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: hbase
+  labels:
+    {{- include "stand.labels" (dict "root" $root) | nindent 4 }}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "stand.selectorLabels" (dict "name" "hbase") | nindent 4 }}
+  ports:
+    {{- range $svc.ports }}
+    - name: tcp-{{ . }}
+      port: {{ . }}
+      targetPort: {{ . }}
+    {{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hbase
+  labels:
+    {{- include "stand.labels" (dict "root" $root) | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "stand.selectorLabels" (dict "name" "hbase") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "stand.labels" (dict "root" $root) | nindent 8 }}
+        {{- include "stand.selectorLabels" (dict "name" "hbase") | nindent 8 }}
+    spec:
+      {{- include "stand.hostIdentity" (dict "root" $root "name" "hbase") | nindent 6 }}
+      # compose: hbase depends_on freeipa (service_healthy).
+      initContainers:
+        {{- include "stand.kerberosInit" (dict "root" $root) | nindent 8 }}
+        {{- include "stand.waitFor" (dict "root" $root "service" "freeipa" "port" 88) | nindent 8 }}
+      containers:
+        - name: hbase
+          image: {{ if contains ":" $svc.image }}{{ $svc.image }}{{ else }}{{ $svc.image }}:{{ $root.Values.image.tag }}{{ end }}
+          imagePullPolicy: {{ $root.Values.image.pullPolicy }}
+          ports:
+            {{- range $svc.ports }}
+            - containerPort: {{ . }}
+            {{- end }}
+          volumeMounts:
+            - name: conf
+              mountPath: /opt/hbase/conf/core-site.xml
+              subPath: core-site.xml
+            - name: conf
+              mountPath: /opt/hbase/conf/hbase-site.xml
+              subPath: hbase-site.xml
+            {{- include "stand.sharedMounts" (dict "root" $root) | nindent 12 }}
+            - name: data
+              mountPath: {{ $svc.data.mountPath }}
+          # compose healthcheck: Master + RegionServer processes running, then a
+          # SPNEGO-authenticated curl against the REST API (port 8080).
+          readinessProbe:
+            exec:
+              command:
+                - bash
+                - -c
+                - >-
+                  ps -ef | grep -q '[o]rg.apache.hadoop.hbase.master.HMaster'
+                  && ps -ef | grep -q '[o]rg.apache.hadoop.hbase.regionserver.HRegionServer'
+                  && export KRB5_CONFIG={{ $root.Values.shared.mountPath }}/krb5.conf
+                  && kinit -kt {{ $root.Values.shared.mountPath }}/hbase-hbase.{{ $root.Values.domain }}.keytab hbase/hbase.{{ $root.Values.domain }}@{{ $realm }}
+                  && curl --fail --silent --noproxy '*' --connect-timeout 3 --max-time 8
+                  --negotiate -u : http://hbase.{{ $root.Values.domain }}:8080/ >/dev/null
+            periodSeconds: 10
+            timeoutSeconds: 15
+            failureThreshold: 30
+      volumes:
+        - name: conf
+          configMap:
+            name: kudos-stand-hbase-conf
+        {{- with $svc.data }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: hbase-data
+        {{- end }}
+        {{- include "stand.sharedVolumes" (dict "root" $root) | nindent 8 }}
+---
+{{- with $svc.data }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hbase-data
+  labels:
+    {{- include "stand.labels" (dict "root" $root) | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: {{ .size }}
+{{- end }}
+
