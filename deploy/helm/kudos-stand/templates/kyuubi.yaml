@@ -63,6 +63,11 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
+            # The engines announce their live Spark UI here. In the cluster the
+            # application is the `kudos` Service, not the Compose container
+            # app.test.local that the image defaults to.
+            - name: KUDOS_URL
+              value: {{ .Values.services.kyuubi.kudosUrl | quote }}
           readinessProbe:
             exec:
               command:

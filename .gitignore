@@ -9,6 +9,8 @@ target/
 logs/
 OWASP-API.key
 dist/
+# Staged into the Kyuubi build context from dist/ by run-test-env.sh.
+dev/docker/kyuubi/kudos-spark-plugin.jar
 # Local-only planning, security, and generated report artifacts.
 /openspec/
 /docs/app-sec/

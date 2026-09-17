@@ -365,7 +365,7 @@ public class KyuubiService implements KyuubiSqlEngine {
     try {
       Connection connection =
           kerberos.asLoggedInUser(
-              () -> openKyuubiConnection(sessionUrl(session.sparkParams, engineId)));
+              () -> openKyuubiConnection(sessionUrl(session.sparkParams, engineId, session.id)));
       session.attach(connection, kyuubiSessionId(connection), engineName);
       if (session.stopped) {
         close(session);
@@ -429,7 +429,7 @@ public class KyuubiService implements KyuubiSqlEngine {
   }
 
   /** Appends CONNECTION share level and the user's Spark params to the base URL. */
-  private String sessionUrl(String sparkParams, String engineId) {
+  private String sessionUrl(String sparkParams, String engineId, String kudosSessionId) {
     StringBuilder confs =
         new StringBuilder("kyuubi.engine.share.level=CONNECTION;kyuubi.engine.type=").append(engineType);
     boolean driverOptionsSet = false;
@@ -460,11 +460,17 @@ public class KyuubiService implements KyuubiSqlEngine {
           .append(";spark.driver.extraJavaOptions=-Dderby.system.home=/tmp/kudos-metastore-")
           .append(engineId);
     }
+    // The engine's Spark plugin reports this back when it registers its live UI,
+    // so the Jobs row for this session is replaced by the real application
+    // instead of being shown twice.
+    if ("SPARK_SQL".equals(engineType) && kudosSessionId != null) {
+      confs.append(";spark.kudos.sessionId=").append(kudosSessionId);
+    }
     return properties.kyuubiUrl() + "?" + confs;
   }
 
   private String perQueryUrl() {
-    return sessionUrl("", UUID.randomUUID().toString());
+    return sessionUrl("", UUID.randomUUID().toString(), null);
   }
 
   private static String kyuubiSessionId(Connection connection) throws Exception {

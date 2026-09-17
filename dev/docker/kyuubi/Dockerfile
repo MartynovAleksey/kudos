@@ -72,6 +72,10 @@ COPY --from=ozone \
 COPY --from=ozone \
   /opt/hadoop/share/ozone/lib/ozone-filesystem-hadoop3-2.2.0.jar \
   /tmp/ozone-fs-flink.jar
+# The KUDOS Spark UI hook (spark-plugin/), built into ./dist and copied into this
+# build context by dev/scripts/run-test-env.sh. Every engine loads it through
+# spark.plugins and reports its live Spark UI address to the application.
+COPY kyuubi/kudos-spark-plugin.jar /tmp/kudos-spark-plugin.jar
 COPY --from=iceberg /tmp/iceberg-spark-runtime.jar /tmp/iceberg-spark-runtime.jar
 COPY --from=iceberg /tmp/iceberg-flink-runtime.jar /tmp/iceberg-flink-runtime.jar
 COPY --from=iceberg /tmp/iceberg-aws-bundle.jar /tmp/iceberg-aws-bundle-spark.jar
@@ -103,6 +107,7 @@ RUN set -eux; \
       && jar cf "$spark_home/jars/ozone-hadoop34-fs-shim.jar" org ); \
     rm -rf /tmp/fsshim; \
     mv /tmp/iceberg-spark-runtime.jar "$spark_home/jars/"; \
+    mv /tmp/kudos-spark-plugin.jar "$spark_home/jars/"; \
     mv /tmp/iceberg-flink-runtime.jar /opt/flink/lib/; \
     mv /tmp/iceberg-aws-bundle-spark.jar "$spark_home/jars/iceberg-aws-bundle.jar"; \
     mv /tmp/iceberg-aws-bundle-flink.jar /opt/flink/lib/iceberg-aws-bundle.jar; \

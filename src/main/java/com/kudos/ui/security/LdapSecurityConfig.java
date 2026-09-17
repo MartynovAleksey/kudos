@@ -15,6 +15,7 @@
  */
 package com.kudos.ui.security;
 
+import com.kudos.ui.config.SparkRegistrationProperties;
 import jakarta.servlet.DispatcherType;
 import javax.security.auth.login.LoginException;
 import org.springframework.beans.factory.annotation.Value;
@@ -110,6 +111,30 @@ public class LdapSecurityConfig {
       authorities.add(new SimpleGrantedAuthority("ROLE_SECURITY_OFFICER"));
     }
     return java.util.List.copyOf(authorities);
+  }
+
+  /**
+   * The transport Spark engines use to announce their live UI. It carries the
+   * shared registration token, never a user, so it gets its own chain ahead of
+   * every other one: no session, no CSRF, and no login page to be redirected to.
+   */
+  @Bean
+  @Order(0)
+  SecurityFilterChain engineApiSecurity(HttpSecurity http, SparkRegistrationProperties spark)
+      throws Exception {
+    return http
+        .securityMatcher("/engine-api/**")
+        .csrf(csrf -> csrf.disable())
+        // The filter below is the whole authorization: a request that reaches
+        // the controller has already presented the token.
+        .authorizeHttpRequests(authorization -> authorization.anyRequest().permitAll())
+        .requestCache(cache -> cache.disable())
+        .sessionManagement(
+            session ->
+                session.sessionCreationPolicy(
+                    org.springframework.security.config.http.SessionCreationPolicy.STATELESS))
+        .addFilterBefore(new EngineTokenFilter(spark), SecurityContextHolderFilter.class)
+        .build();
   }
 
   /**

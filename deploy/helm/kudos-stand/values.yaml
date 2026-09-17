@@ -97,6 +97,10 @@ services:
     amd64: true
     # Engine stdout/stderr, tailed by the log collector.
     work: { mountPath: /opt/kyuubi/work, size: 4Gi }
+    # Where the engines register their live Spark UI. The application runs as the
+    # `kudos` release in this namespace, so it answers to kudos.test.local here
+    # and not to the app.test.local the Compose image defaults to.
+    kudosUrl: http://kudos.test.local:8443
   # Keyed by the name the service actually answers to. Compose calls the service
   # spark-history but gives it the hostname sparkhistory.test.local, and that is
   # the name in its Kerberos principal and in config/application.yml.

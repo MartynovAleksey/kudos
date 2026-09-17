@@ -64,3 +64,13 @@ kudos.cluster:
   # Gravitino Iceberg REST catalog for the Editor catalog tree; blank disables it.
   gravitino-iceberg-uri: ${GRAVITINO_ICEBERG_URI:}
 kudos.api.enabled: ${KUDOS_API_ENABLED:true}
+kudos.spark:
+  # Shared secret the KUDOS Spark plugin presents when a driver announces its
+  # live UI. Blank (the default) turns the /engine-api transport off entirely.
+  registration-token: ${KUDOS_SPARK_REGISTRATION_TOKEN:}
+  # Hosts whose Spark UI may be proxied: exact names, *.suffix patterns or IPv4
+  # prefixes. The address is reported by the engine, so nothing is allowed by
+  # default.
+  ui-hosts: ${KUDOS_SPARK_UI_HOSTS:}
+  # Backstop for a driver killed without unregistering itself.
+  running-ttl: ${KUDOS_SPARK_RUNNING_TTL:12h}

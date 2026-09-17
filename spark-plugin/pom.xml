@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Copyright 2026 Aleksey Martynov and contributors
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<!--
+  Standalone project on purpose: the jar is loaded by a Spark driver, not by the
+  KUDOS application, so it shares neither the Spring Boot parent nor its
+  dependency management. Built separately:
+
+    mvn -f spark-plugin/pom.xml package   ->  target/kudos-spark-plugin-0.1.0.jar
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.kudos</groupId>
+  <artifactId>kudos-spark-plugin</artifactId>
+  <version>0.1.0</version>
+  <name>kudos-spark-plugin</name>
+  <packaging>jar</packaging>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <!-- Spark 3.5 on Scala 2.12, as shipped by the apache/kyuubi:*-spark image.
+         The plugin API itself is stable since Spark 3.0. -->
+    <spark.version>3.5.6</spark.version>
+    <!-- Spark 3.5 runs on Java 17 at most; the engines here use exactly that. -->
+    <maven.compiler.release>17</maven.compiler.release>
+    <junit.version>5.12.2</junit.version>
+  </properties>
+
+  <dependencies>
+    <!-- Provided by the driver's own classpath; nothing is bundled, so the jar
+         adds no transitive dependency to any Spark application that loads it. -->
+    <dependency>
+      <groupId>org.apache.spark</groupId>
+      <artifactId>spark-core_2.12</artifactId>
+      <version>${spark.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.14.1</version>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.5.5</version>
+      </plugin>
+    </plugins>
+  </build>
+</project>

@@ -3119,15 +3119,17 @@
         (application.completed ? 'fa-check-circle k8s-ok' : 'fa-spinner k8s-running');
       icon.title = application.completed ? 'Completed' : 'Running';
 
-      // History owns completed applications. A live Kyuubi engine has no
-      // History UI yet, so show it without a broken link.
-      var name = document.createElement(application.completed ? 'a' : 'span');
-      if (application.completed) {
+      // History owns completed applications, and a running one is openable as
+      // soon as its driver has reported its own UI. A Kyuubi engine that has
+      // not reported yet has nothing to open, so it stays plain text.
+      var openable = application.completed || application.live;
+      var name = document.createElement(openable ? 'a' : 'span');
+      if (openable) {
         name.href = '/jobs/' + encodeURIComponent(application.id);
       }
       name.appendChild(text(application.name));
-      var id = document.createElement(application.completed ? 'a' : 'span');
-      if (application.completed) {
+      var id = document.createElement(openable ? 'a' : 'span');
+      if (openable) {
         id.href = '/jobs/' + encodeURIComponent(application.id);
       }
       id.appendChild(text(application.id));

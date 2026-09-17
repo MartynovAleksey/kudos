@@ -20,7 +20,7 @@
 #
 #   DOCKER_BUILDKIT=1 docker build -f dev/docker/app/Dockerfile.build \
 #     --output type=local,dest=dist .
-#   -> dist/kudos-0.1.0.jar, dist/HealthCheck.class
+#   -> dist/kudos-0.1.0.jar, dist/healthcheck.jar, dist/kudos-spark-plugin-0.1.0.jar
 #
 # The optional security-scan stages live here too (they scan the built jar):
 #   DOCKER_BUILDKIT=1 docker build -f dev/docker/app/Dockerfile.build --target trivy-report \
@@ -35,6 +35,15 @@ RUN echo 'Downloading Maven dependencies (this can take several minutes on the f
 COPY src src
 RUN echo 'Compiling kudos...' && \
     mvn -B -Dstyle.color=never -DskipTests package
+# The Spark UI hook is a separate project with its own pom: it is loaded by a
+# Spark driver, not by this application, and shares none of its dependencies.
+COPY spark-plugin spark-plugin
+# Its dependencies (spark-core and friends) are not the application's, so they are
+# not in the layer above; a cache mount keeps a plugin edit from re-downloading
+# them, the way the scan stages below cache theirs.
+RUN --mount=type=cache,target=/root/.m2 \
+    echo 'Compiling the Spark UI plugin...' && \
+    mvn -B -Dstyle.color=never -DskipTests -f spark-plugin/pom.xml package
 # Scan scripts live in the build stage so the optional scan stages below inherit
 # them; copied after packaging so editing a script does not bust the build cache.
 COPY dev/scripts scripts
@@ -79,3 +88,5 @@ COPY --from=trivy-scan /workspace/trivy.md /trivy.md
 FROM scratch AS artifacts
 COPY --from=build /workspace/target/kudos-0.1.0.jar /kudos-0.1.0.jar
 COPY --from=build /workspace/healthcheck.jar /healthcheck.jar
+# Goes into the Kyuubi image's Spark jars/, not into the runtime image.
+COPY --from=build /workspace/spark-plugin/target/kudos-spark-plugin-0.1.0.jar /kudos-spark-plugin-0.1.0.jar

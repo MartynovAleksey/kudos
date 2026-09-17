@@ -19,7 +19,9 @@ import com.kudos.ui.security.RoleAccess;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -32,6 +34,7 @@ public class SparkApplicationAccessService {
       Pattern.compile("Submitting job '.*?' \\(([0-9a-f]{32})\\)");
 
   private final SparkHistoryService history;
+  private final RunningSparkApplications running;
   private final KyuubiService kyuubi;
   private final KyuubiFlinkService kyuubiFlink;
   private final SqlQueryHistory sqlHistory;
@@ -40,12 +43,14 @@ public class SparkApplicationAccessService {
 
   public SparkApplicationAccessService(
       SparkHistoryService history,
+      RunningSparkApplications running,
       KyuubiService kyuubi,
       KyuubiFlinkService kyuubiFlink,
       SqlQueryHistory sqlHistory,
       FlinkService flink,
       RoleAccess roles) {
     this.history = history;
+    this.running = running;
     this.kyuubi = kyuubi;
     this.kyuubiFlink = kyuubiFlink;
     this.sqlHistory = sqlHistory;
@@ -58,12 +63,33 @@ public class SparkApplicationAccessService {
     boolean administrator = roles.isAdministrator(authentication);
     String user = roles.username(authentication);
     String filter = administrator ? requestedUser : user;
-    return Stream.concat(
-            (administrator ? kyuubi.runningApplicationsForAllUsers() : kyuubi.runningApplications())
-                .stream(),
+    List<RunningSparkApplication> live = running.applications();
+    // A Kyuubi session is shown as a placeholder only until its engine announces
+    // itself; from then on the registered application is the same job, with a
+    // real application id and a UI to open.
+    Set<String> registeredSessions =
+        live.stream()
+            .map(RunningSparkApplication::sessionId)
+            .filter(sessionId -> sessionId != null && !sessionId.isBlank())
+            .collect(Collectors.toSet());
+    Stream<SparkApplication> engines =
+        (administrator ? kyuubi.runningApplicationsForAllUsers() : kyuubi.runningApplications())
+            .stream()
+            .filter(application -> !registeredSessions.contains(kyuubiSessionId(application.id())));
+    LinkedHashMap<String, SparkApplication> applications = new LinkedHashMap<>();
+    Stream.concat(
+            Stream.concat(live.stream().map(RunningSparkApplication::toSparkApplication), engines),
             history.applications(Math.clamp(limit, 1, 5_000), minDate).stream())
         .filter(application -> filter == null || filter.isBlank() || filter.equals(application.user()))
-        .toList();
+        // The history server also lists an application that is still running;
+        // the registration is the fresher of the two, so it wins.
+        .forEach(application -> applications.putIfAbsent(application.id(), application));
+    return List.copyOf(applications.values());
+  }
+
+  /** Placeholder rows carry the KUDOS session id behind a {@code kyuubi-} prefix. */
+  private static String kyuubiSessionId(String applicationId) {
+    return applicationId.startsWith("kyuubi-") ? applicationId.substring("kyuubi-".length()) : applicationId;
   }
 
   /**
@@ -124,6 +150,10 @@ public class SparkApplicationAccessService {
       return true;
     }
     String user = roles.username(authentication);
+    Optional<RunningSparkApplication> live = running.find(applicationId);
+    if (live.isPresent()) {
+      return user.equals(live.get().user());
+    }
     return history
         .application(applicationId)
         .map(application -> user.equals(application.user()))

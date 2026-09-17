@@ -18,6 +18,10 @@ package com.kudos.ui.service;
 /**
  * One Spark application as the history server reports it, flattened to the
  * attempt the jobs screen shows.
+ *
+ * @param live whether a running application announced its own UI and can
+ *     therefore be opened while it runs; a placeholder row for an engine that
+ *     has not registered yet has no UI to link to.
  */
 public record SparkApplication(
     String id,
@@ -27,4 +31,19 @@ public record SparkApplication(
     String endTime,
     long durationMillis,
     boolean completed,
-    String sparkVersion) {}
+    String sparkVersion,
+    boolean live) {
+
+  /** Most sources describe applications that are either finished or not openable yet. */
+  public SparkApplication(
+      String id,
+      String name,
+      String user,
+      String startTime,
+      String endTime,
+      long durationMillis,
+      boolean completed,
+      String sparkVersion) {
+    this(id, name, user, startTime, endTime, durationMillis, completed, sparkVersion, false);
+  }
+}
