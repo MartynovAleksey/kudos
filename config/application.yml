@@ -97,6 +97,18 @@ kudos:
     # that tab.
     engine-logs-path: /s3v/enginelogs
 
+  # How Spark engines announce their live UI (see the KUDOS Spark plugin in
+  # spark-plugin/). The same token is set for the engines in
+  # dev/docker/kyuubi/kyuubi-defaults.conf; in a real installation it comes from
+  # Vault like every other secret. Blank turns the /engine-api transport off.
+  spark:
+    registration-token: kudos-stand-spark-ui-token
+    # Compose publishes the engines as kyuubi.test.local. In Kubernetes the
+    # driver reports whatever its pod address resolves to: the bare pod IP, or a
+    # cluster DNS name when a Service selects the pod.
+    ui-hosts: "*.test.local,*.cluster.local,10."
+    running-ttl: 12h
+
   # UI-level settings.
   ui:
     # Optional HTML shown as a banner across the top of every screen. Trusted

@@ -42,7 +42,8 @@
 
   <div class="k8s-breadcrumbs">
     <a th:href="@{/jobs(type='spark')}"><i class="fa fa-fw fa-arrow-left"></i> Back to jobs</a>
-    <a class="k8s-spaced"
+    <!-- Event logs are complete only once the application has finished. -->
+    <a class="k8s-spaced" th:unless="${live}"
        th:href="@{'/spark-ui/api/v1/applications/' + ${applicationId} + '/logs'}">
       <i class="fa fa-fw fa-download"></i> Download logs
     </a>
@@ -51,7 +52,7 @@
       <i class="fa fa-fw fa-align-left"></i> Engine log as text
     </a>
     <a class="k8s-spaced" target="_blank"
-       th:href="@{'/spark-ui/history/' + ${applicationId} + '/jobs/'}">
+       th:href="@{(${live} ? '/spark-ui/running/' : '/spark-ui/history/') + ${applicationId} + '/jobs/'}">
       <i class="fa fa-fw fa-external-link"></i> Open in a new tab
     </a>
   </div>
@@ -60,7 +61,7 @@
        from the same origin and behind the same session. -->
   <div id="sparkUiPane" class="tab-pane active" role="tabpanel">
     <iframe id="sparkUi" class="k8s-spark-frame"
-            th:src="@{'/spark-ui/history/' + ${applicationId} + '/jobs/'}"
+            th:src="@{(${live} ? '/spark-ui/running/' : '/spark-ui/history/') + ${applicationId} + '/jobs/'}"
             title="Spark UI"></iframe>
   </div>
 

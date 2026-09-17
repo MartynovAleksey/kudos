@@ -19,7 +19,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.kudos.ui.config.SparkRegistrationProperties;
 import com.kudos.ui.security.RoleAccess;
+import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -32,8 +34,12 @@ class SparkApplicationAccessServiceTests {
   private final KyuubiFlinkService kyuubiFlink = mock(KyuubiFlinkService.class);
   private final SqlQueryHistory sqlHistory = mock(SqlQueryHistory.class);
   private final FlinkService flink = mock(FlinkService.class);
+  private final RunningSparkApplications running =
+      new RunningSparkApplications(
+          new SparkRegistrationProperties("token", List.of("*.test.local"), Duration.ofHours(1)));
   private final SparkApplicationAccessService access =
-      new SparkApplicationAccessService(history, kyuubi, kyuubiFlink, sqlHistory, flink, new RoleAccess());
+      new SparkApplicationAccessService(
+          history, running, kyuubi, kyuubiFlink, sqlHistory, flink, new RoleAccess());
 
   @Test
   void userGetsOnlyOwnApplicationsEvenWhenPassingAnotherUserFilter() throws Exception {
@@ -71,6 +77,61 @@ class SparkApplicationAccessServiceTests {
     when(kyuubi.runningApplications()).thenReturn(List.of(running));
 
     assertThat(access.applications(user("analyst"), 500, null, null)).containsExactly(running);
+  }
+
+  @Test
+  void aRegisteredEngineReplacesItsKyuubiPlaceholderAndItsHistoryEntry() throws Exception {
+    SparkApplication placeholder = application("kyuubi-session-7", "analyst", false);
+    // The history server lists a still-running application too; the registration
+    // is the same job, with a UI to open.
+    when(history.applications(500, null))
+        .thenReturn(List.of(application("spark-app-1", "analyst", false)));
+    when(kyuubi.runningApplications()).thenReturn(List.of(placeholder));
+    running.register(
+        new RunningSparkApplication(
+            "spark-app-1",
+            "engine",
+            "analyst",
+            "http://kyuubi.test.local:4040",
+            System.currentTimeMillis(),
+            "3.5.6",
+            "session-7",
+            System.currentTimeMillis()));
+
+    List<SparkApplication> applications = access.applications(user("analyst"), 500, null, null);
+
+    assertThat(applications).extracting(SparkApplication::id).containsExactly("spark-app-1");
+    assertThat(applications.get(0).live()).isTrue();
+  }
+
+  @Test
+  void aPlaceholderStaysUntilItsEngineRegisters() throws Exception {
+    when(history.applications(500, null)).thenReturn(List.of());
+    when(kyuubi.runningApplications())
+        .thenReturn(List.of(application("kyuubi-session-9", "analyst", false)));
+
+    List<SparkApplication> applications = access.applications(user("analyst"), 500, null, null);
+
+    assertThat(applications).extracting(SparkApplication::id).containsExactly("kyuubi-session-9");
+    assertThat(applications.get(0).live()).isFalse();
+  }
+
+  @Test
+  void aRegisteredApplicationIsVisibleOnlyToItsOwner() throws Exception {
+    running.register(
+        new RunningSparkApplication(
+            "spark-app-2",
+            "engine",
+            "analyst",
+            "http://kyuubi.test.local:4040",
+            System.currentTimeMillis(),
+            "3.5.6",
+            null,
+            System.currentTimeMillis()));
+
+    assertThat(access.canView(user("analyst"), "spark-app-2")).isTrue();
+    assertThat(access.canView(user("someone-else"), "spark-app-2")).isFalse();
+    assertThat(access.canView(administrator(), "spark-app-2")).isTrue();
   }
 
   @Test

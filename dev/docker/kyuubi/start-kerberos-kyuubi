@@ -33,6 +33,13 @@ sed -i "s|^\(spark.sql.catalog.iceberg.s3.secret-access-key=\).*|\1${AWS_SECRET_
 # kyuubi-defaults.conf; template the same secret into that store entry.
 sed -i "s|^\(s3.secret-access-key: \).*|\1\"${AWS_SECRET_ACCESS_KEY}\"|" /opt/flink/catalog-store/iceberg.yaml
 
+# Where the engines report their live Spark UI. The application answers to a
+# different name per stand — the container app.test.local under Compose, the
+# `kudos` Service in Kubernetes — so one image serves both. Rewriting the value
+# (placeholder or the previous one) keeps restarts idempotent.
+sed -i "s|^\(spark.kudos.url=\).*|\1${KUDOS_URL:-http://app.test.local:8443}|" \
+  /opt/kyuubi/conf/kyuubi-defaults.conf
+
 # The Flink SQL engine is Hadoop-free and reaches ofs:// through the vanilla
 # unshaded Hadoop on HADOOP_CLASSPATH (which carries the plain Ozone filesystem
 # jar in common/lib). Spark builds its classpath from its own jars/, so it

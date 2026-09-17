@@ -23,6 +23,7 @@ import org.springframework.context.annotation.Configuration;
   ClusterProperties.class,
   UiProperties.class,
   FeaturesProperties.class,
-  ApiProperties.class
+  ApiProperties.class,
+  SparkRegistrationProperties.class
 })
 public class AppConfig {}

@@ -39,22 +39,11 @@ run_compose() {
     "$@"
 }
 
-# Build the app artifacts (fat-jar + healthcheck class) into ./dist. The runtime
-# image (dev/docker/app/Dockerfile.runtime, distroless) is built from these by compose,
-# so it carries no build tooling. Uses `--target build` + docker cp instead of
-# BuildKit --output so it works with the keychain-safe, PATH-stripped run_docker
-# wrapper (buildx is not on that PATH).
+# The artifacts (fat-jar, healthcheck, Spark UI plugin) are built by the same
+# script the Kubernetes stand uses, so both ways of running the stand ship
+# identical bits.
 build_artifacts() {
-  echo "Building application artifacts (jar + healthcheck) into ./dist ..."
-  rm -rf "$project_root/dist"
-  mkdir -p "$project_root/dist"
-  run_docker build -f "$project_root/dev/docker/app/Dockerfile.build" \
-    --target build -t kudos-test-artifacts "$project_root"
-  local cid
-  cid="$(run_docker create kudos-test-artifacts)"
-  run_docker cp "$cid:/workspace/target/kudos-0.1.0.jar" "$project_root/dist/kudos-0.1.0.jar"
-  run_docker cp "$cid:/workspace/healthcheck.jar" "$project_root/dist/healthcheck.jar"
-  run_docker rm -f "$cid" >/dev/null
+  bash "$script_dir/build-artifacts.sh"
 }
 
 host_architecture="$(uname -m)"

@@ -27,6 +27,8 @@ import java.net.URL;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import com.kudos.ui.service.RunningSparkApplication;
+import com.kudos.ui.service.RunningSparkApplications;
 import com.kudos.ui.service.SparkApplicationAccessService;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
@@ -34,9 +36,14 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 
 /**
- * Serves the Spark History Server's own web UI from this application, so it is
- * reached through the same session and origin as the rest of the screens
- * instead of as a separate unauthenticated site on port 18080.
+ * Serves Spark's own web UI from this application, so it is reached through the
+ * same session and origin as the rest of the screens instead of as a separate
+ * unauthenticated site on port 18080.
+ *
+ * <p>Two upstreams, chosen by the first path segment, the way
+ * {@link FlinkUiProxyController} does it: {@code /running/{appId}} is the live UI
+ * of an application that registered itself while running, everything else is the
+ * history server.
  *
  * <p>No rewriting of the proxied HTML is needed: Spark builds every link
  * against the {@code X-Forwarded-Context} header, which is set below.
@@ -47,6 +54,7 @@ public class SparkUiProxyController {
 
   static final String PREFIX = "/spark-ui";
   private static final Pattern HISTORY_APPLICATION = Pattern.compile("^/history/([^/]+)/.*");
+  private static final Pattern RUNNING_APPLICATION = Pattern.compile("^/running/([^/]+)(/.*)?");
   private static final Pattern API_APPLICATION = Pattern.compile("^/api/v1/applications/([^/]+)(?:/.*)?");
 
   /**
@@ -62,10 +70,15 @@ public class SparkUiProxyController {
 
   private final ClusterProperties properties;
   private final SparkApplicationAccessService sparkAccess;
+  private final RunningSparkApplications running;
 
-  public SparkUiProxyController(ClusterProperties properties, SparkApplicationAccessService sparkAccess) {
+  public SparkUiProxyController(
+      ClusterProperties properties,
+      SparkApplicationAccessService sparkAccess,
+      RunningSparkApplications running) {
     this.properties = properties;
     this.sparkAccess = sparkAccess;
+    this.running = running;
   }
 
   @GetMapping("/**")
@@ -75,7 +88,27 @@ public class SparkUiProxyController {
     if (path.isEmpty()) {
       path = "/";
     }
-    if (!sparkAccess.isAdministrator(authentication) && !isStaticResource(path)) {
+    String upstream = properties.sparkHistoryUrl();
+    String context = PREFIX;
+    String liveApplicationId = null;
+    Matcher live = RUNNING_APPLICATION.matcher(path);
+    if (live.matches()) {
+      liveApplicationId = live.group(1);
+      RunningSparkApplication application = running.find(liveApplicationId).orElse(null);
+      if (application == null) {
+        // Either it never registered or it has already finished; the history UI
+        // is where a finished application is read from.
+        response.sendError(HttpServletResponse.SC_NOT_FOUND);
+        return;
+      }
+      if (!sparkAccess.canView(authentication, liveApplicationId)) {
+        response.sendError(HttpServletResponse.SC_FORBIDDEN);
+        return;
+      }
+      upstream = application.uiUrl();
+      context = PREFIX + "/running/" + liveApplicationId;
+      path = live.group(2) == null || live.group(2).isEmpty() ? "/" : live.group(2);
+    } else if (!sparkAccess.isAdministrator(authentication) && !isStaticResource(path)) {
       String applicationId = applicationId(path);
       if (applicationId == null || !sparkAccess.canView(authentication, applicationId)) {
         response.sendError(HttpServletResponse.SC_FORBIDDEN);
@@ -83,9 +116,7 @@ public class SparkUiProxyController {
       }
     }
     String query = request.getQueryString();
-    URL target =
-        URI.create(properties.sparkHistoryUrl() + path + (query == null ? "" : "?" + query))
-            .toURL();
+    URL target = URI.create(upstream + path + (query == null ? "" : "?" + query)).toURL();
 
     HttpURLConnection connection = open(target);
     connection.setRequestMethod("GET");
@@ -94,12 +125,24 @@ public class SparkUiProxyController {
     // Redirects are passed back to the browser so it stays on this origin.
     connection.setInstanceFollowRedirects(false);
     // Tells Spark to prefix every link it renders with this application's path.
-    connection.setRequestProperty("X-Forwarded-Context", PREFIX);
+    connection.setRequestProperty("X-Forwarded-Context", context);
     // Ask for an uncompressed body so what is streamed on matches what the
     // headers describe.
     connection.setRequestProperty("Accept-Encoding", "identity");
 
-    int status = connection.getResponseCode();
+    int status;
+    try {
+      status = connection.getResponseCode();
+    } catch (IOException unreachable) {
+      if (liveApplicationId == null) {
+        throw unreachable;
+      }
+      // The driver is gone: nobody will unregister it now, so do it here rather
+      // than leaving a row in Jobs that opens onto nothing.
+      running.unregister(liveApplicationId);
+      response.sendError(HttpServletResponse.SC_NOT_FOUND);
+      return;
+    }
     response.setStatus(status);
     for (String header : FORWARDED_HEADERS) {
       String value = connection.getHeaderField(header);
@@ -109,7 +152,7 @@ public class SparkUiProxyController {
     }
     String location = connection.getHeaderField("Location");
     if (location != null) {
-      response.setHeader("Location", rewriteLocation(location));
+      response.setHeader("Location", rewriteLocation(location, upstream, context));
     }
 
     try (InputStream body =
@@ -123,15 +166,15 @@ public class SparkUiProxyController {
 
   /**
    * Keeps a redirect inside the proxy. Spark answers a directory URL with an
-   * absolute Location; followed as-is the browser would leave for port 18080.
+   * absolute Location; followed as-is the browser would leave for port 18080 or
+   * for the driver's own port.
    */
-  private String rewriteLocation(String location) {
-    String base = properties.sparkHistoryUrl();
-    if (location.startsWith(base)) {
-      return PREFIX + location.substring(base.length());
+  private static String rewriteLocation(String location, String upstream, String context) {
+    if (location.startsWith(upstream)) {
+      return context + location.substring(upstream.length());
     }
-    if (location.startsWith("/") && !location.startsWith(PREFIX)) {
-      return PREFIX + location;
+    if (location.startsWith("/") && !location.startsWith(context)) {
+      return context + location;
     }
     return location;
   }

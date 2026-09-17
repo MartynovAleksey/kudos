@@ -20,6 +20,7 @@ import com.kudos.ui.service.EngineVisibilityStore;
 import com.kudos.ui.service.SparkApplicationAccessService;
 import com.kudos.ui.service.SqlEngineInfo;
 import com.kudos.ui.service.EngineLogService;
+import com.kudos.ui.service.RunningSparkApplications;
 import com.kudos.ui.service.SqlEngineRegistry;
 import com.kudos.ui.security.RoleAccess;
 import java.util.List;
@@ -47,6 +48,7 @@ public class UiController {
   private final EngineVisibilityStore engineVisibility;
   private final RoleAccess roles;
   private final EngineLogService engineLogs;
+  private final RunningSparkApplications running;
 
   public UiController(
       FeaturesProperties features,
@@ -54,13 +56,15 @@ public class UiController {
       SqlEngineRegistry sqlEngines,
       EngineVisibilityStore engineVisibility,
       RoleAccess roles,
-      EngineLogService engineLogs) {
+      EngineLogService engineLogs,
+      RunningSparkApplications running) {
     this.features = features;
     this.sparkAccess = sparkAccess;
     this.sqlEngines = sqlEngines;
     this.engineVisibility = engineVisibility;
     this.roles = roles;
     this.engineLogs = engineLogs;
+    this.running = running;
   }
 
   @GetMapping("/login")
@@ -162,6 +166,9 @@ public class UiController {
     model.addAttribute("app", "jobs");
     model.addAttribute("applicationId", applicationId);
     model.addAttribute("engineLogs", engineLogs.enabled());
+    // A running application is read from its own driver, a finished one from the
+    // history server; only the proxied path differs.
+    model.addAttribute("live", running.find(applicationId).isPresent());
     return "job";
   }
 

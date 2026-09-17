@@ -23,6 +23,7 @@ import com.kudos.ui.security.RoleAccess;
 import com.kudos.ui.service.FlinkService;
 import com.kudos.ui.service.KyuubiFlinkService;
 import com.kudos.ui.service.KyuubiService;
+import com.kudos.ui.service.RunningSparkApplications;
 import com.kudos.ui.service.SqlQueryHistory;
 import com.kudos.ui.service.SparkApplicationAccessService;
 import com.kudos.ui.service.SparkHistoryService;
@@ -52,6 +53,7 @@ class FlinkUiProxyControllerTests {
     var access =
         new SparkApplicationAccessService(
             mock(SparkHistoryService.class),
+            mock(RunningSparkApplications.class),
             mock(KyuubiService.class),
             mock(KyuubiFlinkService.class),
             mock(SqlQueryHistory.class),
